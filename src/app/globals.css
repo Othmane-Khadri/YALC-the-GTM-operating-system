@@ -1,0 +1,96 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0e0f14;
+  --surface: #1a1b22;
+  --surface-2: #22232e;
+  --surface-3: #1d2026;
+  --border: #2c2e3e;
+  --border-subtle: #1f2130;
+  --text-primary: #f0f1f6;
+  --text-secondary: #8b91a8;
+  --text-muted: #4e5470;
+  --blueberry-50: #1a2040;
+  --blueberry-300: #7fa0f8;
+  --blueberry-600: #4b72f5;
+  --blueberry-800: #2d4db8;
+  --matcha-300: #6ee7b0;
+  --matcha-600: #22c578;
+  --tangerine-600: #f97316;
+  --pomegranate-600: #ef4444;
+  --lemon-600: #ca8a04;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  background-color: var(--background);
+  color: var(--text-primary);
+  font-family: 'Space Mono', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Streaming cursor animation */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.streaming-cursor::after {
+  content: '▋';
+  display: inline;
+  animation: blink 1s step-end infinite;
+  color: var(--blueberry-600);
+}
+
+/* Message fade in */
+@keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message-enter {
+  animation: messageIn 0.2s ease-out forwards;
+}
+
+/* Focus styles */
+*:focus-visible {
+  outline: 2px solid var(--blueberry-600);
+  outline-offset: 2px;
+  border-radius: 4px;
+}

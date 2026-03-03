@@ -1,25 +1,80 @@
-# YALC: The GTM-operating-system
-Clay Pro costs $720/month. That's $8,640/year for webhooks, CRM sync, and a credit system on top of APIs you're already paying for.
+# GTM-OS
 
-I already run dozens of enrichment and scoring agents in production they scrape, enrich, score, and push leads to my CRM every morning before I wake up. All outside of Clay. No credit system. No tier gates. Just my own API keys and logic.
-So I'm building the whole thing in the open. 30 days. An open-source Clay alternative using Claude Code, Apify, and direct API calls to the same enrichment providers. Signal detection. Waterfall enrichment. Account scoring. CRM sync. All of it. 
-I'll push updates here daily: what I built, what broke, where AI helped, and where I had to think.
+**An open-source, AI-native operating system for running any GTM campaign.**
 
-# About
-GTM OS is a self-hosted lead enrichment and scoring engine. It will do what Clay does: waterfall enrichment, account scoring, CRM sync — but you bring your own API keys and pay nothing for the orchestration layer.
-You plug in the providers you already use (Apollo, Clearbit, Hunter, Proxycurl, or whatever else), connect your own LLM keys for AI scoring and personalization, and the system handles the rest: waterfall logic, deduplication, transforms, and pushing enriched data to your CRM or outreach tool.
-No per-lead pricing. No usage credits. No middleman markup on API calls you could make yourself.
+Describe your goal in plain language. GTM-OS proposes the best workflow — the data sources, enrichment steps, qualification criteria — all informed by your own knowledge base. Approve, execute, verify results in an interactive table.
 
-Built with:
+> Built in public. 30 days. No shortcuts.
+> Day 1 of 30 · March 3, 2026
 
-- Claude Code — AI-assisted development
-- Apify — web scraping and data collection
-- Direct API calls to enrichment providers
+---
 
-# Build Log
-Day 0 — Setup
-Challenge announced. Repo is live. Let's go.
+## The Core Idea
 
-# License
-MIT — see LICENSE.
-Built by Earleads
+Clay is a spreadsheet with enrichment columns. GTM-OS is an intelligence layer that happens to output tables.
+
+- **Chat-first interface** — the spreadsheet is a verification layer, not the creation layer
+- **AI proposes, you approve** — like Cursor, but for GTM workflows
+- **Your knowledge base is the differentiator** — upload your ICP, templates, competitor docs. The AI uses them in every workflow.
+- **RLHF built in** — approve/reject rows, tag bad data. The system gets better at your specific GTM operation.
+- **MCP-interoperable** — bring your own Apollo, Firecrawl, BuiltWith, Clay keys
+
+---
+
+## Getting Started
+
+```bash
+git clone https://github.com/earleads/gtm-os
+cd gtm-os
+pnpm install
+cp .env.example .env.local
+# Add your ANTHROPIC_API_KEY to .env.local
+pnpm db:push
+pnpm dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+---
+
+## What Ships in 30 Days
+
+- [x] **Day 1:** Chat interface + AI workflow planner + SQLite foundation
+- [ ] **Day 2:** Workflow execution engine (Apollo search)
+- [ ] **Day 3:** Results table with RLHF feedback
+- [ ] **Day 4:** Knowledge base (drag-and-drop ICP/template upload)
+- [ ] **Day 5:** API key vault (encrypted local storage)
+- [ ] ...
+
+---
+
+## Tech Stack
+
+| Layer | Choice |
+|-------|--------|
+| Frontend | Next.js 14, React 18, TypeScript |
+| Styling | Tailwind CSS, Space Mono font |
+| State | Jotai |
+| Backend | Next.js API Routes (streaming SSE) |
+| Database | SQLite + Drizzle ORM (local) / Postgres (hosted) |
+| AI | Anthropic Claude (Sonnet for planning, Opus for qualification) |
+| License | MIT |
+
+---
+
+## Philosophy
+
+> Intelligence is available at every step. Structure is the foundation. The user's knowledge is the differentiator. The table is the verification layer, not the creation layer.
+
+---
+
+## Follow the Build
+
+- Daily build logs: [Substack](https://othmanekhadri.substack.com)
+- LinkedIn updates: [Othmane Khadri](https://linkedin.com/in/othmanekhadri)
+
+---
+
+## License
+
+MIT — do whatever you want with it.
