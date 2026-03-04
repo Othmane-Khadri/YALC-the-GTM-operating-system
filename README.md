@@ -1,4 +1,4 @@
-# GTM-operating-system
+# YALC: The GTM-operating-system
 Clay Pro costs $720/month. That's $8,640/year for webhooks, CRM sync, and a credit system on top of APIs you're already paying for.
 
 I already run dozens of enrichment and scoring agents in production they scrape, enrich, score, and push leads to my CRM every morning before I wake up. All outside of Clay. No credit system. No tier gates. Just my own API keys and logic.
