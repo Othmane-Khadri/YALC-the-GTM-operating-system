@@ -3,15 +3,19 @@ import { createClient } from '@libsql/client'
 import { db } from '@/lib/db'
 import { conversations, messages } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
-
-const rawClient = createClient({ url: process.env.DATABASE_URL ?? 'file:./gtm-os.db' })
 import { getAnthropicClient, PLANNER_MODEL } from '@/lib/ai/client'
 import {
   proposeWorkflowTool,
+  proposeCampaignTool,
   buildSystemPrompt,
   parseWorkflowFromToolUse,
 } from '@/lib/ai/workflow-planner'
 import type { StreamEvent, KnowledgeChunk } from '@/lib/ai/types'
+import { buildFrameworkContext } from '@/lib/framework/context'
+import type { GTMFramework } from '@/lib/framework/types'
+import { getCollector } from '@/lib/signals/collector'
+
+const rawClient = createClient({ url: process.env.DATABASE_URL ?? 'file:./gtm-os.db' })
 
 export const runtime = 'nodejs'
 
@@ -98,11 +102,17 @@ export async function POST(req: NextRequest) {
           messageType: 'text',
         })
 
-        // ── 3. Fetch knowledge context + connected providers ──────────────
-        const [knowledgeChunks, connectedProviders] = await Promise.all([
+        // ── 3. Fetch knowledge context + connected providers + framework ──
+        const [knowledgeChunks, connectedProviders, frameworkRow] = await Promise.all([
           searchKnowledge(message),
           getConnectedProviders(),
+          db.query.frameworks.findFirst({
+            where: (t, { eq }) => eq(t.userId, 'default'),
+          }).catch(() => null),
         ])
+        const frameworkContext = await buildFrameworkContext(
+          (frameworkRow?.data as GTMFramework) ?? null
+        )
 
         // ── 4. Build conversation history for Claude ──────────────────────
         const history = await db.query.messages.findMany({
@@ -119,7 +129,7 @@ export async function POST(req: NextRequest) {
 
         // ── 5. Stream from Claude ─────────────────────────────────────────
         const anthropic = getAnthropicClient()
-        const systemPrompt = buildSystemPrompt(knowledgeChunks, connectedProviders)
+        const systemPrompt = buildSystemPrompt(knowledgeChunks, connectedProviders, frameworkContext)
 
         // Send conversation ID so frontend can track it
         send({ type: 'text_delta', content: '', conversationId: convId })
@@ -128,7 +138,7 @@ export async function POST(req: NextRequest) {
           model: PLANNER_MODEL,
           max_tokens: 1024,
           system: systemPrompt,
-          tools: [proposeWorkflowTool],
+          tools: [proposeWorkflowTool, proposeCampaignTool],
           tool_choice: { type: 'auto' },
           messages: anthropicMessages,
           stream: true,
@@ -169,22 +179,48 @@ export async function POST(req: NextRequest) {
               const workflow = parseWorkflowFromToolUse(toolUseBlock.input)
               send({ type: 'workflow_proposal', workflow })
               finalText = "Here's a workflow I'd suggest for your goal:"
+            } else if (toolUseBlock?.name === 'propose_campaign' && toolUseBlock.input) {
+              send({ type: 'campaign_proposal', campaign: toolUseBlock.input } as unknown as StreamEvent)
+              finalText = "Here's a campaign I'd suggest:"
             }
           }
         }
 
         // ── 6. Save assistant message to DB ──────────────────────────────
+        const isWorkflow = toolUseBlock?.name === 'propose_workflow'
+        const isCampaign = toolUseBlock?.name === 'propose_campaign'
+
         await db.insert(messages).values({
           conversationId: convId,
           role: 'assistant',
           content: finalText || '',
-          messageType: toolUseBlock?.name === 'propose_workflow'
-            ? 'workflow_proposal'
+          messageType: isWorkflow ? 'workflow_proposal'
+            : isCampaign ? 'campaign_proposal'
             : 'text',
-          metadata: toolUseBlock?.name === 'propose_workflow'
-            ? { workflowDefinition: toolUseBlock.input }
+          metadata: isWorkflow ? { workflowDefinition: toolUseBlock!.input }
+            : isCampaign ? { campaignProposal: toolUseBlock!.input }
             : null,
         })
+
+        // ── 7. Detect corrections and emit signals ─────────────────────
+        const correctionPrefixes = ['no,', 'no ', 'actually', 'not that', "that's wrong", 'wrong', 'i meant', 'what i meant']
+        const lowerMessage = message.toLowerCase().trim()
+        const isCorrection = correctionPrefixes.some(p => lowerMessage.startsWith(p))
+
+        if (isCorrection && history.length >= 2) {
+          const lastAssistant = history.filter(m => m.role === 'assistant').pop()
+          if (lastAssistant) {
+            await getCollector().emit({
+              type: 'chat_correction',
+              category: 'qualification',
+              data: {
+                userMessage: message,
+                previousAssistantMessage: lastAssistant.content.slice(0, 500),
+              },
+              conversationId: convId,
+            })
+          }
+        }
 
         send({ type: 'done' })
       } catch (err) {

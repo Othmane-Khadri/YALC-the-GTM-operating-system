@@ -1,5 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk'
 import type { WorkflowDefinition, KnowledgeChunk } from './types'
+import { getRegistry } from '../providers/registry'
+import { getSkillRegistry } from '../skills/registry'
 
 // ─── Tool Definition ──────────────────────────────────────────────────────────
 
@@ -69,11 +71,57 @@ export const proposeWorkflowTool: Anthropic.Tool = {
   },
 }
 
+// ─── Campaign Tool Definition ────────────────────────────────────────────────
+
+export const proposeCampaignTool: Anthropic.Tool = {
+  name: 'propose_campaign',
+  description:
+    'Propose a hypothesis-driven campaign when the user describes a multi-step, multi-channel outreach effort. Use this instead of propose_workflow when the request involves testing a hypothesis, reaching a specific segment across channels, or measuring success metrics.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      title: { type: 'string', description: 'Short campaign title' },
+      hypothesis: { type: 'string', description: 'The thesis being tested' },
+      targetSegment: { type: 'string', description: 'ICP segment to target' },
+      channels: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Channels to use (email, linkedin, etc.)',
+      },
+      successMetrics: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            metric: { type: 'string' },
+            target: { type: 'number' },
+          },
+          required: ['metric', 'target'],
+        },
+      },
+      steps: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            skillId: { type: 'string' },
+            channel: { type: 'string' },
+            approvalRequired: { type: 'boolean' },
+          },
+          required: ['skillId'],
+        },
+      },
+    },
+    required: ['title', 'hypothesis', 'targetSegment', 'channels', 'successMetrics', 'steps'],
+  },
+}
+
 // ─── System Prompt Builder ────────────────────────────────────────────────────
 
 export function buildSystemPrompt(
   knowledgeChunks: KnowledgeChunk[],
-  connectedProviders: string[]
+  connectedProviders: string[],
+  frameworkContext: string = ''
 ): string {
   const knowledgeSection =
     knowledgeChunks.length > 0
@@ -105,13 +153,12 @@ Your role is to transform natural language GTM goals into structured, executable
 - Typical workflow pattern: search → enrich → qualify → filter → export
 
 ## Available Providers
-- **apollo**: Company and contact search, email finding, B2B data
-- **firecrawl**: Website scraping and content extraction
-- **anthropic**: AI-powered qualification, personalization, reasoning
-- **builtwith**: Technology stack detection
-- **hunter**: Email verification and finding
-- **clay**: Clay table operations (if user has Clay account)
-- **internal**: Built-in GTM-OS operations (dedup, merge, format)
+${getRegistry().getAvailableForPlanner()}
+
+## Available Skills
+Skills are high-level, reusable GTM operations. Prefer using skills over raw provider steps when a skill matches the user's intent.
+
+${getSkillRegistry().getForPlanner()}
 
 ## Workflow Step Types
 - **search**: Find companies or contacts matching criteria
@@ -119,8 +166,12 @@ Your role is to transform natural language GTM goals into structured, executable
 - **qualify**: Use AI to judge fit against ICP or criteria
 - **filter**: Apply rule-based filters (headcount, funding, etc.)
 - **export**: Output to CSV, CRM, or trigger outreach
+${frameworkContext ? '\n' + frameworkContext : ''}
 ${knowledgeSection}
 ${providersSection}
+
+## When to Use propose_campaign vs propose_workflow
+When the user describes a multi-step, multi-channel outreach effort with a clear hypothesis or goal, use the propose_campaign tool. When they describe a simpler data operation (find, enrich, qualify), use propose_workflow. Campaign proposals should always include a testable hypothesis and success metrics.
 
 When the user asks a general question (not a GTM workflow request), answer conversationally without calling the tool. Keep responses concise and direct.`
 }
