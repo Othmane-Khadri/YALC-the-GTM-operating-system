@@ -1,0 +1,1601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yalc — Lead Review Table</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ── Reset & Tokens ── */
+  :root {
+    --bg: #F9F8F6;
+    --white: #FFFFFF;
+    --border: #E8E5E0;
+    --text-primary: #1A1A1A;
+    --text-secondary: #6B6560;
+    --text-muted: #A09A93;
+    --matcha: #16A34A;
+    --matcha-bg: #F0FDF4;
+    --matcha-light: #DCFCE7;
+    --pomegranate: #DC2626;
+    --pomegranate-bg: #FEF2F2;
+    --pomegranate-light: #FEE2E2;
+    --tangerine: #EA580C;
+    --tangerine-bg: #FFF7ED;
+    --tangerine-light: #FFEDD5;
+    --blueberry: #2563EB;
+    --blueberry-bg: #EFF6FF;
+    --blueberry-light: #DBEAFE;
+    --grape: #9333EA;
+    --grape-bg: #F5F3FF;
+    --peach: #F97316;
+    --peach-bg: #FFF7ED;
+    --transition: 150ms ease;
+  }
+
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ── Focus rings for accessibility ── */
+  :focus-visible {
+    outline: 2px solid var(--blueberry);
+    outline-offset: 2px;
+  }
+
+  /* ── Reduced motion ── */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* ── Header ── */
+  .header {
+    padding: 24px 32px 0;
+    background: var(--bg);
+    flex-shrink: 0;
+  }
+
+  .header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+    text-decoration: none;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color var(--transition);
+    min-height: 44px;
+    padding: 0 4px;
+  }
+  .back-link:hover { color: var(--text-primary); }
+  .back-link svg { flex-shrink: 0; }
+
+  .table-name {
+    font-family: 'Space Mono', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+  }
+
+  .row-badge {
+    background: var(--blueberry-bg);
+    color: var(--blueberry);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 3px;
+  }
+
+  .done-btn {
+    background: var(--text-primary);
+    color: var(--bg);
+    border: none;
+    padding: 12px 28px;
+    border-radius: 10px;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity var(--transition);
+    min-height: 44px;
+  }
+  .done-btn:hover { opacity: 0.85; }
+
+  /* ── Progress Section ── */
+  .progress-section {
+    padding: 0 32px;
+    margin-bottom: 20px;
+    flex-shrink: 0;
+  }
+
+  .progress-stats {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 10px;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+
+  .progress-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .stat-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .stat-dot--approved { background: var(--matcha); }
+  .stat-dot--rejected { background: var(--pomegranate); }
+  .stat-dot--flagged { background: var(--tangerine); }
+  .stat-dot--pending { background: var(--border); }
+
+  .progress-bar {
+    height: 8px;
+    background: var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+  }
+
+  .progress-segment {
+    height: 100%;
+    transition: width 400ms ease;
+    border-radius: 8px;
+  }
+  .progress-approved { background: var(--matcha); }
+  .progress-rejected { background: var(--pomegranate); }
+  .progress-flagged { background: var(--tangerine); }
+
+  /* ── Toolbar ── */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 32px 16px;
+    background: var(--bg);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+
+  .filter-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 3px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    background: var(--white);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition);
+    min-height: 44px;
+  }
+  .filter-pill:hover { border-color: var(--text-muted); }
+
+  .filter-pill.active {
+    background: var(--text-primary);
+    color: var(--white);
+    border-color: var(--text-primary);
+  }
+  .filter-pill.active--approved {
+    background: var(--matcha-bg);
+    color: var(--matcha);
+    border-color: var(--matcha);
+  }
+  .filter-pill.active--rejected {
+    background: var(--pomegranate-bg);
+    color: var(--pomegranate);
+    border-color: var(--pomegranate);
+  }
+  .filter-pill.active--flagged {
+    background: var(--tangerine-bg);
+    color: var(--tangerine);
+    border-color: var(--tangerine);
+  }
+  .filter-pill.active--pending {
+    background: var(--blueberry-bg);
+    color: var(--blueberry);
+    border-color: var(--blueberry);
+  }
+
+  .pill-count {
+    font-size: 10px;
+    opacity: 0.7;
+  }
+
+  .toolbar-spacer { flex: 1; }
+
+  .kbd-help-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .kbd-help-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--white);
+    color: var(--text-muted);
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition);
+  }
+  .kbd-help-btn:hover {
+    border-color: var(--text-secondary);
+    color: var(--text-primary);
+  }
+
+  .kbd-tooltip {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    right: 0;
+    background: var(--text-primary);
+    color: var(--white);
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 50;
+    line-height: 1.8;
+  }
+  .kbd-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    right: 12px;
+    border: 6px solid transparent;
+    border-top-color: var(--text-primary);
+  }
+  .kbd-help-wrapper:hover .kbd-tooltip { display: block; }
+
+  .kbd {
+    display: inline-block;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    margin: 0 2px;
+  }
+
+  .search-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 12px;
+    pointer-events: none;
+    color: var(--text-muted);
+  }
+
+  .search-input {
+    padding: 10px 16px 10px 36px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    background: var(--white);
+    color: var(--text-primary);
+    width: 220px;
+    outline: none;
+    transition: border-color var(--transition);
+    min-height: 44px;
+  }
+  .search-input::placeholder { color: var(--text-muted); }
+  .search-input:focus { border-color: var(--blueberry); }
+
+  /* ── Table ── */
+  .table-wrapper {
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: auto;
+    padding: 0 32px;
+    padding-bottom: 120px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    min-width: 1280px;
+  }
+
+  thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  thead th {
+    background: var(--bg);
+    padding: 10px 16px;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    transition: color var(--transition), border-bottom-color var(--transition);
+  }
+  thead th:hover {
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--text-primary);
+  }
+  thead th.th-right { text-align: right; }
+  thead th.th-center { text-align: center; }
+  thead th.th-review {
+    position: sticky;
+    right: 0;
+    background: var(--bg);
+    text-align: center;
+    min-width: 140px;
+  }
+
+  /* ── Table Body ── */
+  tbody tr {
+    transition: background var(--transition), opacity var(--transition);
+  }
+  tbody tr:nth-child(even) { background: rgba(0,0,0,0.015); }
+  tbody tr:hover { background: rgba(0,0,0,0.03); }
+
+  tbody td {
+    padding: 14px 16px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  tbody td.td-right {
+    text-align: right;
+    font-family: 'Space Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  tbody td.td-review {
+    position: sticky;
+    right: 0;
+    background: var(--white);
+    text-align: center;
+    min-width: 140px;
+  }
+
+  /* Row states — full-row background tint */
+  tr.row-approved { background: var(--matcha-bg) !important; }
+  tr.row-approved:hover { background: var(--matcha-light) !important; }
+
+  tr.row-rejected { background: var(--pomegranate-bg) !important; opacity: 0.55; }
+  tr.row-rejected:hover { opacity: 0.75; background: var(--pomegranate-light) !important; }
+
+  tr.row-flagged { background: var(--tangerine-bg) !important; }
+  tr.row-flagged:hover { background: var(--tangerine-light) !important; }
+
+  tr.row-focused {
+    outline: 2px solid var(--blueberry);
+    outline-offset: -2px;
+  }
+
+  /* Sticky review cell inherits row bg */
+  tr.row-approved td.td-review { background: var(--matcha-bg); }
+  tr.row-approved:hover td.td-review { background: var(--matcha-light); }
+  tr.row-rejected td.td-review { background: var(--pomegranate-bg); }
+  tr.row-flagged td.td-review { background: var(--tangerine-bg); }
+  tr.row-flagged:hover td.td-review { background: var(--tangerine-light); }
+
+  /* ── Cell types ── */
+  .cell-company {
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+    font-size: 13px;
+  }
+
+  .cell-url {
+    color: var(--blueberry);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+  }
+  .cell-url:hover { text-decoration: underline; }
+  .cell-url svg { flex-shrink: 0; opacity: 0.5; }
+
+  .cell-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+  }
+  .badge-fintech { background: var(--matcha-bg); color: var(--matcha); }
+  .badge-productivity { background: var(--blueberry-bg); color: var(--blueberry); }
+  .badge-devops { background: var(--grape-bg); color: var(--grape); }
+  .badge-design { background: var(--peach-bg); color: var(--peach); }
+  .badge-revenue { background: var(--tangerine-bg); color: var(--tangerine); }
+  .badge-hr { background: var(--grape-bg); color: var(--grape); }
+  .badge-compliance { background: var(--blueberry-bg); color: var(--blueberry); }
+  .badge-scheduling { background: var(--blueberry-bg); color: var(--blueberry); }
+  .badge-media { background: var(--tangerine-bg); color: var(--tangerine); }
+  .badge-newsletter { background: var(--peach-bg); color: var(--peach); }
+  .badge-social { background: var(--grape-bg); color: var(--grape); }
+  .badge-marketing { background: var(--pomegranate-bg); color: var(--pomegranate); }
+
+  .cell-email {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-family: 'Space Mono', monospace;
+  }
+
+  .cell-employees {
+    font-family: 'Space Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Score bars — label BEFORE bar ── */
+  .score-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .score-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    min-width: 28px;
+    text-align: right;
+  }
+
+  .score-track {
+    flex: 1;
+    height: 8px;
+    background: var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    min-width: 60px;
+  }
+
+  .score-fill {
+    height: 100%;
+    border-radius: 8px;
+    transition: width 300ms ease;
+  }
+
+  /* ── Row index ── */
+  .row-index {
+    color: var(--text-muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Feedback buttons ── */
+  .feedback-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .fb-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--white);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition);
+    min-width: 44px;
+    min-height: 44px;
+    padding: 4px;
+  }
+  .fb-btn:hover { border-color: var(--text-muted); }
+  .fb-btn svg { width: 16px; height: 16px; }
+  .fb-btn:active { transform: scale(0.92); }
+
+  /* Approve */
+  .fb-btn.fb-approve:hover {
+    background: var(--matcha-bg);
+    border-color: var(--matcha);
+  }
+  .fb-btn.fb-approve.active {
+    background: var(--matcha);
+    border-color: var(--matcha);
+  }
+  .fb-btn.fb-approve.active svg { stroke: var(--white); }
+
+  /* Reject */
+  .fb-btn.fb-reject:hover {
+    background: var(--pomegranate-bg);
+    border-color: var(--pomegranate);
+  }
+  .fb-btn.fb-reject.active {
+    background: var(--pomegranate);
+    border-color: var(--pomegranate);
+  }
+  .fb-btn.fb-reject.active svg { stroke: var(--white); }
+
+  /* Flag */
+  .fb-btn.fb-flag:hover {
+    background: var(--tangerine-bg);
+    border-color: var(--tangerine);
+  }
+  .fb-btn.fb-flag.active {
+    background: var(--tangerine);
+    border-color: var(--tangerine);
+  }
+  .fb-btn.fb-flag.active svg { stroke: var(--white); }
+
+  /* ── Chat bar — floating ── */
+  .chat-bar {
+    position: fixed;
+    bottom: 16px;
+    left: 16px;
+    right: 16px;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 12px 20px;
+    z-index: 100;
+  }
+
+  .chat-bar-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .chat-sparkle {
+    flex-shrink: 0;
+    color: var(--blueberry);
+  }
+
+  .chat-input {
+    flex: 1;
+    padding: 12px 0;
+    border: none;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    color: var(--text-primary);
+    background: transparent;
+    outline: none;
+  }
+  .chat-input::placeholder { color: var(--text-muted); }
+
+  .chat-send {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    background: var(--text-primary);
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity var(--transition);
+    flex-shrink: 0;
+  }
+  .chat-send:hover { opacity: 0.8; }
+  .chat-send svg { stroke: var(--white); }
+
+  .chat-context {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: center;
+    margin-top: 6px;
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* ── Signal button ── */
+  .signal-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--white);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--blueberry);
+    cursor: pointer;
+    transition: all var(--transition);
+    white-space: nowrap;
+    min-height: 32px;
+  }
+  .signal-btn:hover {
+    background: var(--blueberry-bg);
+    border-color: var(--blueberry);
+  }
+  .signal-btn svg { flex-shrink: 0; }
+
+  /* ── Signal panel (slide-out) ── */
+  .signal-panel {
+    position: fixed;
+    top: 0;
+    right: -460px;
+    width: 440px;
+    height: 100vh;
+    background: var(--white);
+    border-left: 1px solid var(--border);
+    z-index: 300;
+    display: flex;
+    flex-direction: column;
+    transition: right 250ms ease;
+    overflow: hidden;
+  }
+  .signal-panel.open { right: 0; }
+
+  .signal-panel-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 26, 26, 0.25);
+    z-index: 250;
+  }
+  .signal-panel-backdrop.open { display: block; }
+
+  .signal-panel-header {
+    padding: 24px 24px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .signal-panel-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .signal-panel-subtitle {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .signal-panel-close {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--white);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition);
+    min-width: 44px;
+    min-height: 44px;
+    flex-shrink: 0;
+  }
+  .signal-panel-close:hover { border-color: var(--text-muted); }
+  .signal-panel-close svg { width: 16px; height: 16px; stroke: var(--text-secondary); }
+
+  .signal-panel-score {
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .signal-panel-score-num {
+    font-family: 'Space Mono', monospace;
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  .signal-panel-score-label {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .signal-panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 24px 32px;
+  }
+
+  .signal-card {
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 10px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    transition: background var(--transition);
+  }
+  .signal-card:hover { background: rgba(0,0,0,0.015); }
+
+  .signal-card-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 14px;
+  }
+  .signal-icon-hiring { background: var(--matcha-bg); color: var(--matcha); }
+  .signal-icon-funding { background: var(--blueberry-bg); color: var(--blueberry); }
+  .signal-icon-techStack { background: var(--grape-bg); color: var(--grape); }
+  .signal-icon-growth { background: var(--tangerine-bg); color: var(--tangerine); }
+  .signal-icon-icp { background: var(--matcha-bg); color: var(--matcha); }
+  .signal-icon-intent { background: var(--blueberry-bg); color: var(--blueberry); }
+  .signal-icon-role { background: var(--grape-bg); color: var(--grape); }
+  .signal-icon-timing { background: var(--peach-bg); color: var(--peach); }
+  .signal-icon-market { background: var(--tangerine-bg); color: var(--tangerine); }
+  .signal-icon-negative { background: var(--pomegranate-bg); color: var(--pomegranate); }
+
+  .signal-card-content { flex: 1; min-width: 0; }
+
+  .signal-card-type {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 3px;
+  }
+
+  .signal-card-text {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: var(--text-primary);
+    line-height: 1.5;
+  }
+
+  .signal-card-weight {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding-top: 18px;
+  }
+  .signal-weight-positive { color: var(--matcha); }
+  .signal-weight-negative { color: var(--pomegranate); }
+
+  .signal-section-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin: 20px 0 10px;
+  }
+  .signal-section-label:first-child { margin-top: 0; }
+
+  /* ── Done overlay ── */
+  .overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 26, 26, 0.5);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+  .overlay.visible {
+    display: flex;
+  }
+
+  .overlay-card {
+    background: var(--white);
+    border-radius: 16px;
+    padding: 48px 56px;
+    text-align: center;
+    max-width: 420px;
+    width: 90%;
+  }
+
+  .overlay-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: var(--matcha-bg);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+  }
+  .overlay-icon svg { stroke: var(--matcha); }
+
+  .overlay-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+  }
+
+  .overlay-text {
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 24px;
+  }
+
+  .overlay-close {
+    background: var(--text-primary);
+    color: var(--white);
+    border: none;
+    padding: 12px 32px;
+    border-radius: 10px;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity var(--transition);
+    min-height: 44px;
+  }
+  .overlay-close:hover { opacity: 0.85; }
+
+  /* ── Row entrance animation ── */
+  @keyframes fadeInRow {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  tbody tr {
+    animation: fadeInRow 200ms ease both;
+  }
+  tbody tr:nth-child(1) { animation-delay: 20ms; }
+  tbody tr:nth-child(2) { animation-delay: 40ms; }
+  tbody tr:nth-child(3) { animation-delay: 60ms; }
+  tbody tr:nth-child(4) { animation-delay: 80ms; }
+  tbody tr:nth-child(5) { animation-delay: 100ms; }
+  tbody tr:nth-child(6) { animation-delay: 120ms; }
+  tbody tr:nth-child(7) { animation-delay: 140ms; }
+  tbody tr:nth-child(8) { animation-delay: 160ms; }
+  tbody tr:nth-child(9) { animation-delay: 180ms; }
+  tbody tr:nth-child(10) { animation-delay: 200ms; }
+  tbody tr:nth-child(11) { animation-delay: 220ms; }
+  tbody tr:nth-child(12) { animation-delay: 240ms; }
+  tbody tr:nth-child(13) { animation-delay: 260ms; }
+  tbody tr:nth-child(14) { animation-delay: 280ms; }
+  tbody tr:nth-child(15) { animation-delay: 300ms; }
+
+  /* Hidden rows (filtered out) */
+  tbody tr.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<div class="header">
+  <div class="header-top">
+    <div class="header-left">
+      <a href="#" class="back-link" tabindex="0">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        Back to chat
+      </a>
+      <h1 class="table-name">US SaaS Leads &mdash; ICP Review</h1>
+      <span class="row-badge">50 rows</span>
+    </div>
+    <button class="done-btn" id="doneBtn" tabindex="0">Done Reviewing</button>
+  </div>
+</div>
+
+<!-- ── Progress ── -->
+<div class="progress-section">
+  <div class="progress-stats">
+    <span class="progress-stat"><span class="stat-dot stat-dot--approved"></span> <span id="statApproved">6</span> approved</span>
+    <span class="progress-stat"><span class="stat-dot stat-dot--rejected"></span> <span id="statRejected">4</span> rejected</span>
+    <span class="progress-stat"><span class="stat-dot stat-dot--flagged"></span> <span id="statFlagged">2</span> flagged</span>
+    <span class="progress-stat"><span class="stat-dot stat-dot--pending"></span> <span id="statPending">3</span> pending</span>
+  </div>
+  <div class="progress-bar">
+    <div class="progress-segment progress-approved" id="progressApproved" style="width: 40%"></div>
+    <div class="progress-segment progress-rejected" id="progressRejected" style="width: 26.67%"></div>
+    <div class="progress-segment progress-flagged" id="progressFlagged" style="width: 13.33%"></div>
+  </div>
+</div>
+
+<!-- ── Toolbar ── -->
+<div class="toolbar">
+  <button class="filter-pill active" data-filter="all" tabindex="0">All <span class="pill-count" id="countAll">15</span></button>
+  <button class="filter-pill" data-filter="pending" tabindex="0">Pending <span class="pill-count" id="countPending">3</span></button>
+  <button class="filter-pill" data-filter="approved" tabindex="0">
+    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    <span class="pill-count" id="countApproved">6</span>
+  </button>
+  <button class="filter-pill" data-filter="rejected" tabindex="0">
+    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    <span class="pill-count" id="countRejected">4</span>
+  </button>
+  <button class="filter-pill" data-filter="flagged" tabindex="0">
+    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+    <span class="pill-count" id="countFlagged">2</span>
+  </button>
+  <div class="toolbar-spacer"></div>
+
+  <div class="kbd-help-wrapper">
+    <button class="kbd-help-btn" tabindex="0" aria-label="Keyboard shortcuts">?</button>
+    <div class="kbd-tooltip" role="tooltip">
+      <span class="kbd">j</span> / <span class="kbd">k</span> navigate rows<br>
+      <span class="kbd">a</span> approve &middot; <span class="kbd">r</span> reject &middot; <span class="kbd">f</span> flag<br>
+      <span class="kbd">s</span> view signals &middot; <span class="kbd">esc</span> close panel<br>
+      <span class="kbd">/</span> focus search
+    </div>
+  </div>
+
+  <div class="search-wrap">
+    <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="text" class="search-input" id="searchInput" placeholder="Search leads..." tabindex="0">
+  </div>
+</div>
+
+<!-- ── Table ── -->
+<div class="table-wrapper">
+<table>
+  <thead>
+    <tr>
+      <th style="width: 40px">#</th>
+      <th>Company</th>
+      <th style="min-width: 160px">ICP Score</th>
+      <th class="th-center" style="min-width: 100px">Signals</th>
+      <th>Website</th>
+      <th>Industry</th>
+      <th class="th-right">Employees</th>
+      <th>City</th>
+      <th>Title</th>
+      <th>Email</th>
+      <th class="th-review">Review</th>
+    </tr>
+  </thead>
+  <tbody id="tableBody">
+    <!-- Rows injected by JS -->
+  </tbody>
+</table>
+</div>
+
+<!-- ── Chat bar ── -->
+<div class="chat-bar">
+  <div class="chat-bar-inner">
+    <!-- Sparkle SVG icon -->
+    <svg class="chat-sparkle" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/>
+    </svg>
+    <input type="text" class="chat-input" placeholder="Ask anything about this table..." tabindex="0">
+    <button class="chat-send" tabindex="0" aria-label="Send message">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+    </button>
+  </div>
+  <div class="chat-context">Yalc understands context &mdash; filter, sort, explain patterns, or refine your ICP</div>
+</div>
+
+<!-- ── Signal panel ── -->
+<div class="signal-panel-backdrop" id="signalBackdrop"></div>
+<div class="signal-panel" id="signalPanel">
+  <div class="signal-panel-header">
+    <div>
+      <div class="signal-panel-title" id="signalPanelTitle">Stripe</div>
+      <div class="signal-panel-subtitle" id="signalPanelSubtitle">Qualification reasoning</div>
+    </div>
+    <button class="signal-panel-close" id="signalPanelClose" tabindex="0" aria-label="Close signal panel">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+  </div>
+  <div class="signal-panel-score" id="signalPanelScore"></div>
+  <div class="signal-panel-body" id="signalPanelBody"></div>
+</div>
+
+<!-- ── Done overlay ── -->
+<div class="overlay" id="overlay">
+  <div class="overlay-card">
+    <div class="overlay-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <div class="overlay-title">Learnings extracted!</div>
+    <div class="overlay-text">
+      Your feedback has been processed. Yalc will use these signals to improve future lead scoring and ICP matching.
+    </div>
+    <button class="overlay-close" id="overlayClose" tabindex="0">Close</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ── SVG icon templates ──
+  var SVG = {
+    check: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#A09A93" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+    checkActive: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+    x: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#A09A93" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    xActive: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    flag: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#A09A93" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>',
+    flagActive: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>',
+    extLink: '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
+  };
+
+  // ── Signal icon map ──
+  var SIGNAL_ICONS = {
+    hiring: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>',
+    funding: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>',
+    techStack: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+    growth: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
+    icp: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+    intent: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+    role: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4-4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+    timing: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+    market: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>',
+    negative: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'
+  };
+
+  // ── Lead data ──
+  var leads = [
+    { id: 1, company: 'Stripe', website: 'stripe.com', industry: 'FinTech', badgeClass: 'badge-fintech', employees: '8,200', city: 'San Francisco, CA', title: 'VP of Sales', email: 'm.chen@stripe.com', score: 94, state: 'approved', signals: [
+      { type: 'icp', label: 'Perfect ICP match: FinTech SaaS, 8K+ employees, US HQ', weight: '+20' },
+      { type: 'hiring', label: 'Hiring 5 Account Executives and 2 Sales Engineers on LinkedIn this month', weight: '+15' },
+      { type: 'role', label: 'VP of Sales — direct budget authority, decision maker for sales tooling', weight: '+18' },
+      { type: 'growth', label: 'Revenue grew 25% YoY to $16.3B in 2025, expanding enterprise segment', weight: '+14' },
+      { type: 'intent', label: 'Visited G2 pages for "sales intelligence" and "lead enrichment" tools (Bombora)', weight: '+12' },
+      { type: 'techStack', label: 'Uses Salesforce, Outreach, and ZoomInfo — potential displacement opportunity', weight: '+8' },
+      { type: 'timing', label: 'Q1 budget cycle — new fiscal year started Jan 2026', weight: '+7' }
+    ]},
+    { id: 2, company: 'Notion', website: 'notion.so', industry: 'Productivity SaaS', badgeClass: 'badge-productivity', employees: '800', city: 'San Francisco, CA', title: 'Head of Revenue', email: 'j.patel@notion.so', score: 91, state: 'approved', signals: [
+      { type: 'icp', label: 'Strong ICP fit: Productivity SaaS, 800 employees, hypergrowth phase', weight: '+18' },
+      { type: 'role', label: 'Head of Revenue — owns full revenue stack, reports to CRO', weight: '+18' },
+      { type: 'growth', label: 'Enterprise ARR doubled in 2025, now 50% of total revenue', weight: '+16' },
+      { type: 'hiring', label: 'Posted 3 enterprise sales roles and 1 RevOps manager this week', weight: '+14' },
+      { type: 'intent', label: 'Attended SaaStr Annual panel on "AI-powered sales workflows"', weight: '+10' },
+      { type: 'techStack', label: 'Runs HubSpot CRM — lightweight stack suggests room for specialized tools', weight: '+8' },
+      { type: 'timing', label: 'Just closed Series D — budget is flush for tooling investments', weight: '+7' }
+    ]},
+    { id: 3, company: 'Datadog', website: 'datadoghq.com', industry: 'DevOps SaaS', badgeClass: 'badge-devops', employees: '5,400', city: 'New York, NY', title: 'Director of Sales', email: 'r.kim@datadoghq.com', score: 88, state: 'approved', signals: [
+      { type: 'icp', label: 'Good ICP fit: DevOps SaaS, 5K+ employees, public company with budget', weight: '+16' },
+      { type: 'role', label: 'Director of Sales — manages 40+ reps, evaluates tools for team', weight: '+15' },
+      { type: 'growth', label: 'Added 3,200 new enterprise customers in 2025, ARR $2.5B+', weight: '+14' },
+      { type: 'hiring', label: 'Hiring 8 SDRs and 2 Sales Ops analysts — scaling outbound motion', weight: '+14' },
+      { type: 'intent', label: 'CTO blogged about "rethinking sales data infrastructure" last month', weight: '+12' },
+      { type: 'market', label: 'Expanding into security and CI/CD — new market means new prospecting needs', weight: '+10' },
+      { type: 'negative', label: 'Has existing contract with Apollo.io (renews Q3) — switching cost', weight: '-7' }
+    ]},
+    { id: 4, company: 'Figma', website: 'figma.com', industry: 'Design SaaS', badgeClass: 'badge-design', employees: '1,200', city: 'San Francisco, CA', title: 'VP Growth', email: 'a.rodriguez@figma.com', score: 86, state: 'approved', signals: [
+      { type: 'icp', label: 'ICP fit: Design SaaS, 1.2K employees, strong PLG + enterprise sales motion', weight: '+15' },
+      { type: 'role', label: 'VP Growth — bridges product-led and sales-led, evaluates enrichment tools', weight: '+16' },
+      { type: 'growth', label: 'Enterprise segment grew 40% after Adobe deal fell through — doubling down', weight: '+14' },
+      { type: 'intent', label: 'Published job req for "Growth Data Analyst" — building data infrastructure', weight: '+12' },
+      { type: 'hiring', label: 'Hiring 2 enterprise AEs focused on Fortune 500 accounts', weight: '+12' },
+      { type: 'techStack', label: 'Uses Clearbit for enrichment — sunsetting after Hubspot acquisition', weight: '+10' },
+      { type: 'timing', label: 'Clearbit contract ends March 2026 — active replacement window', weight: '+7' }
+    ]},
+    { id: 5, company: 'Brex', website: 'brex.com', industry: 'FinTech', badgeClass: 'badge-fintech', employees: '1,100', city: 'San Francisco, CA', title: 'Sales Director', email: 's.johnson@brex.com', score: 83, state: 'approved', signals: [
+      { type: 'icp', label: 'ICP match: FinTech SaaS, 1.1K employees, enterprise pivot', weight: '+14' },
+      { type: 'role', label: 'Sales Director — runs mid-market team of 15 reps', weight: '+14' },
+      { type: 'growth', label: 'Pivoted fully to enterprise — new GTM motion needs better data', weight: '+12' },
+      { type: 'hiring', label: 'Hiring 4 enterprise AEs and a VP of Sales Engineering', weight: '+12' },
+      { type: 'intent', label: 'Sales team attended Clay workshop at SaaStr — evaluating alternatives', weight: '+14' },
+      { type: 'techStack', label: 'Currently using Clay + Apollo stack — $180K/yr combined spend', weight: '+10' },
+      { type: 'negative', label: 'Recent layoffs (Jan 2026) — budget scrutiny may slow procurement', weight: '-5' }
+    ]},
+    { id: 6, company: 'Gong', website: 'gong.io', industry: 'Revenue Intelligence', badgeClass: 'badge-revenue', employees: '1,800', city: 'San Francisco, CA', title: 'VP Revenue', email: 'k.williams@gong.io', score: 79, state: 'approved', signals: [
+      { type: 'icp', label: 'Decent fit: Revenue Intelligence, 1.8K employees, knows the space well', weight: '+12' },
+      { type: 'role', label: 'VP Revenue — full P&L ownership, can sponsor 6-figure deals', weight: '+16' },
+      { type: 'market', label: 'Revenue intelligence + sales data — natural integration partner', weight: '+12' },
+      { type: 'hiring', label: 'Hiring 2 Data Engineers for "sales data platform" team', weight: '+10' },
+      { type: 'intent', label: 'Evaluated 3 enrichment vendors in Q4 2025 per TrustRadius review', weight: '+10' },
+      { type: 'negative', label: 'Builds some enrichment in-house — may prefer build over buy', weight: '-8' },
+      { type: 'negative', label: 'Competitor adjacency — could eventually build similar features', weight: '-5' }
+    ]},
+    { id: 7, company: 'Airtable', website: 'airtable.com', industry: 'Productivity SaaS', badgeClass: 'badge-productivity', employees: '900', city: 'San Francisco, CA', title: 'Enterprise AE', email: 'd.martinez@airtable.com', score: 72, state: 'pending', signals: [
+      { type: 'icp', label: 'Moderate ICP: Productivity SaaS, 900 employees, shifting to enterprise', weight: '+12' },
+      { type: 'role', label: 'Enterprise AE — end user, not decision maker. Would need manager buy-in', weight: '+6' },
+      { type: 'growth', label: 'Enterprise revenue up 35% YoY, product-market fit proven', weight: '+12' },
+      { type: 'hiring', label: 'Hiring RevOps lead and 3 AEs — building formal sales org', weight: '+10' },
+      { type: 'intent', label: 'Airtable templates for "sales pipeline" trending — self-serve signal', weight: '+8' },
+      { type: 'negative', label: 'Contact is individual contributor, not budget holder', weight: '-8' },
+      { type: 'timing', label: 'Mid-quarter — less likely to start new vendor eval until Q2', weight: '-4' }
+    ]},
+    { id: 8, company: 'Calendly', website: 'calendly.com', industry: 'Scheduling SaaS', badgeClass: 'badge-scheduling', employees: '700', city: 'Atlanta, GA', title: 'Head of Sales', email: 'n.brown@calendly.com', score: 65, state: 'pending', signals: [
+      { type: 'icp', label: 'Moderate ICP: Scheduling SaaS, 700 employees, established PLG', weight: '+10' },
+      { type: 'role', label: 'Head of Sales — right title, decision maker for sales tools', weight: '+14' },
+      { type: 'growth', label: 'Growing enterprise but primarily product-led — small outbound team', weight: '+6' },
+      { type: 'hiring', label: 'Hiring 1 SDR manager — early-stage outbound build-out', weight: '+8' },
+      { type: 'negative', label: 'Primary motion is PLG — limited need for outbound enrichment today', weight: '-10' },
+      { type: 'negative', label: 'Atlanta-based — limited SF/NY network effects for referrals', weight: '-3' },
+      { type: 'timing', label: 'Series B was 2021 — no recent funding, budget may be conservative', weight: '-6' }
+    ]},
+    { id: 9, company: 'Lattice', website: 'lattice.com', industry: 'HR Tech', badgeClass: 'badge-hr', employees: '600', city: 'San Francisco, CA', title: 'Sales Manager', email: 't.davis@lattice.com', score: 58, state: 'flagged', signals: [
+      { type: 'icp', label: 'Weak ICP: HR Tech, 600 employees — different buyer persona than core', weight: '+6' },
+      { type: 'role', label: 'Sales Manager — mid-level, can champion but not sign', weight: '+8' },
+      { type: 'growth', label: 'Grew 20% YoY but slowing — market consolidation in HR tech', weight: '+6' },
+      { type: 'intent', label: 'Sales team active on LinkedIn posting about "prospecting challenges"', weight: '+10' },
+      { type: 'negative', label: 'HR Tech sells to HR buyers — ICP enrichment needs are different', weight: '-8' },
+      { type: 'negative', label: 'Recent reorg — 3 sales leaders left in Q4, team in flux', weight: '-6' },
+      { type: 'timing', label: 'Budget freeze reported on Glassdoor reviews from Dec 2025', weight: '-6' }
+    ]},
+    { id: 10, company: 'Drata', website: 'drata.com', industry: 'Compliance SaaS', badgeClass: 'badge-compliance', employees: '500', city: 'San Diego, CA', title: 'Account Executive', email: 'l.wilson@drata.com', score: 52, state: 'pending', signals: [
+      { type: 'icp', label: 'Weak ICP: Compliance SaaS, 500 employees — niche market', weight: '+6' },
+      { type: 'role', label: 'Account Executive — too junior to sponsor a tool purchase', weight: '+4' },
+      { type: 'growth', label: 'SOC 2 market growing 30% but Drata faces Vanta competition', weight: '+6' },
+      { type: 'hiring', label: 'Hiring 2 SDRs — some outbound motion', weight: '+6' },
+      { type: 'intent', label: 'No intent signals detected in last 90 days', weight: '+0' },
+      { type: 'negative', label: 'Contact is AE, not RevOps or VP — wrong entry point', weight: '-8' },
+      { type: 'negative', label: 'Compliance buyers are CFOs/CISOs — Drata team sells differently', weight: '-6' }
+    ]},
+    { id: 11, company: 'Ramp', website: 'ramp.com', industry: 'FinTech', badgeClass: 'badge-fintech', employees: '1,000', city: 'New York, NY', title: 'VP of Sales', email: 'e.garcia@ramp.com', score: 45, state: 'flagged', signals: [
+      { type: 'role', label: 'VP of Sales — strong title, budget authority', weight: '+16' },
+      { type: 'icp', label: 'FinTech match but Ramp sells to finance teams, not sales teams', weight: '+6' },
+      { type: 'growth', label: 'Tripled revenue in 2025, aggressive growth mode', weight: '+10' },
+      { type: 'negative', label: 'Ramp builds most sales tooling internally — strong engineering culture', weight: '-12' },
+      { type: 'negative', label: 'CEO publicly stated "we don\'t buy SaaS, we build it" at a conference', weight: '-10' },
+      { type: 'negative', label: 'Prior outreach to Ramp (Oct 2025) got no response — cold account', weight: '-8' },
+      { type: 'timing', label: 'In the middle of a major product launch — team distracted', weight: '-5' }
+    ]},
+    { id: 12, company: 'Substack', website: 'substack.com', industry: 'Media SaaS', badgeClass: 'badge-media', employees: '90', city: 'San Francisco, CA', title: 'Business Dev', email: 'p.lee@substack.com', score: 32, state: 'rejected', signals: [
+      { type: 'role', label: 'Business Dev — not sales, unlikely to need lead enrichment', weight: '+4' },
+      { type: 'negative', label: 'Only 90 employees — below 200 minimum for enterprise sales motion', weight: '-14' },
+      { type: 'negative', label: 'Creator platform — no outbound sales team, business is inbound-only', weight: '-14' },
+      { type: 'negative', label: 'No hiring for sales roles in last 6 months', weight: '-8' },
+      { type: 'negative', label: 'Revenue model is creator subscriptions — no B2B sales motion', weight: '-10' }
+    ]},
+    { id: 13, company: 'Beehiiv', website: 'beehiiv.com', industry: 'Newsletter SaaS', badgeClass: 'badge-newsletter', employees: '120', city: 'Orlando, FL', title: 'SDR', email: 'c.taylor@beehiiv.com', score: 28, state: 'rejected', signals: [
+      { type: 'role', label: 'SDR — most junior sales role, zero purchasing authority', weight: '+2' },
+      { type: 'growth', label: 'Growing fast in newsletter space — 50K+ creators', weight: '+6' },
+      { type: 'negative', label: '120 employees — too small for enterprise sales tooling needs', weight: '-12' },
+      { type: 'negative', label: 'Primary revenue is self-serve subscriptions — minimal outbound', weight: '-12' },
+      { type: 'negative', label: 'Contact is SDR — would need 3+ levels up for budget approval', weight: '-10' },
+      { type: 'negative', label: 'Orlando HQ — limited SaaS ecosystem, harder to get warm intros', weight: '-4' }
+    ]},
+    { id: 14, company: 'Typefully', website: 'typefully.com', industry: 'Social SaaS', badgeClass: 'badge-social', employees: '15', city: 'Remote', title: 'Founder', email: 'h.moore@typefully.com', score: 18, state: 'rejected', signals: [
+      { type: 'role', label: 'Founder — technically decision maker, but company is tiny', weight: '+4' },
+      { type: 'negative', label: '15 employees — micro-startup, no sales team at all', weight: '-18' },
+      { type: 'negative', label: 'Fully remote with no sales org — zero use case for enrichment', weight: '-14' },
+      { type: 'negative', label: 'Social scheduling tool — B2C adjacent, not B2B enterprise', weight: '-12' },
+      { type: 'negative', label: 'Annual revenue estimated under $5M — cannot afford enterprise tools', weight: '-8' }
+    ]},
+    { id: 15, company: 'ClickFunnels', website: 'clickfunnels.com', industry: 'Marketing SaaS', badgeClass: 'badge-marketing', employees: '400', city: 'Boise, ID', title: 'Sales Rep', email: 'm.jackson@clickfunnels.com', score: 14, state: 'rejected', signals: [
+      { type: 'role', label: 'Sales Rep — individual contributor, no authority', weight: '+2' },
+      { type: 'negative', label: 'Marketing SaaS for SMBs — completely different buyer than our ICP', weight: '-16' },
+      { type: 'negative', label: 'Sells to solopreneurs and coaches — not enterprise B2B', weight: '-14' },
+      { type: 'negative', label: 'Contact is a Sales Rep — 4+ levels below any budget authority', weight: '-12' },
+      { type: 'negative', label: 'Boise, ID — outside core tech ecosystem, limited network value', weight: '-6' },
+      { type: 'negative', label: 'Company culture is "marketing guru" space — misaligned values', weight: '-8' }
+    ]}
+  ];
+
+  var currentFilter = 'all';
+  var searchQuery = '';
+  var focusedIndex = -1;
+
+  // ── Score color logic ──
+  function scoreColor(score) {
+    if (score >= 70) return '#16A34A';
+    if (score >= 40) return '#EA580C';
+    return '#DC2626';
+  }
+
+  // ── Row class from state ──
+  function rowClass(state) {
+    if (state === 'approved') return 'row-approved';
+    if (state === 'rejected') return 'row-rejected';
+    if (state === 'flagged') return 'row-flagged';
+    return '';
+  }
+
+  // ── Build a single row ──
+  function buildRow(lead, index) {
+    var rc = rowClass(lead.state);
+    var focused = index === focusedIndex ? ' row-focused' : '';
+    var color = scoreColor(lead.score);
+
+    var html = '<tr class="' + rc + focused + '" data-index="' + index + '" data-state="' + lead.state + '" data-company="' + lead.company.toLowerCase() + '">';
+    html += '<td class="row-index">' + lead.id + '</td>';
+    html += '<td class="cell-company">' + lead.company + '</td>';
+
+    // ICP Score — right after company
+    html += '<td>';
+    html += '<div class="score-bar">';
+    html += '<span class="score-label" style="color:' + color + '">' + lead.score + '</span>';
+    html += '<div class="score-track"><div class="score-fill" style="width:' + lead.score + '%;background:' + color + '"></div></div>';
+    html += '</div>';
+    html += '</td>';
+
+    // Signals — right after score
+    var sigCount = lead.signals ? lead.signals.length : 0;
+    html += '<td style="text-align:center">';
+    html += '<button class="signal-btn" data-signal-lead="' + index + '" tabindex="0" aria-label="View signals for ' + lead.company + '">';
+    html += '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+    html += sigCount + ' signals';
+    html += '</button>';
+    html += '</td>';
+
+    // Remaining columns
+    html += '<td><a href="https://' + lead.website + '" class="cell-url" target="_blank" rel="noopener">' + lead.website + ' ' + SVG.extLink + '</a></td>';
+    html += '<td><span class="cell-badge ' + lead.badgeClass + '">' + lead.industry + '</span></td>';
+    html += '<td class="td-right cell-employees">' + lead.employees + '</td>';
+    html += '<td>' + lead.city + '</td>';
+    html += '<td>' + lead.title + '</td>';
+    html += '<td class="cell-email">' + lead.email + '</td>';
+
+    // Feedback
+    html += '<td class="td-review">';
+    html += '<div class="feedback-actions">';
+    html += '<button class="fb-btn fb-approve' + (lead.state === 'approved' ? ' active' : '') + '" data-action="approved" data-lead="' + index + '" tabindex="0" aria-label="Approve ' + lead.company + '">' + (lead.state === 'approved' ? SVG.checkActive : SVG.check) + '</button>';
+    html += '<button class="fb-btn fb-reject' + (lead.state === 'rejected' ? ' active' : '') + '" data-action="rejected" data-lead="' + index + '" tabindex="0" aria-label="Reject ' + lead.company + '">' + (lead.state === 'rejected' ? SVG.xActive : SVG.x) + '</button>';
+    html += '<button class="fb-btn fb-flag' + (lead.state === 'flagged' ? ' active' : '') + '" data-action="flagged" data-lead="' + index + '" tabindex="0" aria-label="Flag ' + lead.company + '">' + (lead.state === 'flagged' ? SVG.flagActive : SVG.flag) + '</button>';
+    html += '</div>';
+    html += '</td>';
+    html += '</tr>';
+    return html;
+  }
+
+  // ── Render table ──
+  function render() {
+    var tbody = document.getElementById('tableBody');
+    var html = '';
+    for (var i = 0; i < leads.length; i++) {
+      html += buildRow(leads[i], i);
+    }
+    tbody.innerHTML = html;
+    applyFilters();
+    updateCounts();
+  }
+
+  // ── Count & update stats ──
+  function updateCounts() {
+    var approved = 0, rejected = 0, flagged = 0, pending = 0;
+    for (var i = 0; i < leads.length; i++) {
+      if (leads[i].state === 'approved') approved++;
+      else if (leads[i].state === 'rejected') rejected++;
+      else if (leads[i].state === 'flagged') flagged++;
+      else pending++;
+    }
+    var total = leads.length;
+
+    document.getElementById('statApproved').textContent = approved;
+    document.getElementById('statRejected').textContent = rejected;
+    document.getElementById('statFlagged').textContent = flagged;
+    document.getElementById('statPending').textContent = pending;
+
+    document.getElementById('progressApproved').style.width = (approved / total * 100) + '%';
+    document.getElementById('progressRejected').style.width = (rejected / total * 100) + '%';
+    document.getElementById('progressFlagged').style.width = (flagged / total * 100) + '%';
+
+    document.getElementById('countAll').textContent = total;
+    document.getElementById('countApproved').textContent = approved;
+    document.getElementById('countRejected').textContent = rejected;
+    document.getElementById('countFlagged').textContent = flagged;
+    document.getElementById('countPending').textContent = pending;
+  }
+
+  // ── Apply filter + search ──
+  function applyFilters() {
+    var rows = document.querySelectorAll('#tableBody tr');
+    for (var i = 0; i < rows.length; i++) {
+      var state = rows[i].getAttribute('data-state');
+      var company = rows[i].getAttribute('data-company');
+      var matchFilter = (currentFilter === 'all' || state === currentFilter);
+      var matchSearch = (searchQuery === '' || company.indexOf(searchQuery) !== -1);
+      if (matchFilter && matchSearch) {
+        rows[i].classList.remove('hidden');
+      } else {
+        rows[i].classList.add('hidden');
+      }
+    }
+  }
+
+  // ── Toggle lead state ──
+  function toggleState(leadIndex, action) {
+    var lead = leads[leadIndex];
+    if (lead.state === action) {
+      lead.state = 'pending';
+    } else {
+      lead.state = action;
+    }
+    render();
+  }
+
+  // ── Filter pill click ──
+  function setFilter(filter) {
+    currentFilter = filter;
+    var pills = document.querySelectorAll('.filter-pill');
+    for (var i = 0; i < pills.length; i++) {
+      var pf = pills[i].getAttribute('data-filter');
+      pills[i].className = 'filter-pill';
+      if (pf === filter) {
+        if (filter === 'approved') pills[i].classList.add('active--approved');
+        else if (filter === 'rejected') pills[i].classList.add('active--rejected');
+        else if (filter === 'flagged') pills[i].classList.add('active--flagged');
+        else if (filter === 'pending') pills[i].classList.add('active--pending');
+        else pills[i].classList.add('active');
+      }
+    }
+    applyFilters();
+  }
+
+  // ── Focus management ──
+  function setFocused(index) {
+    var rows = document.querySelectorAll('#tableBody tr:not(.hidden)');
+    if (rows.length === 0) return;
+    if (index < 0) index = 0;
+    if (index >= rows.length) index = rows.length - 1;
+    focusedIndex = parseInt(rows[index].getAttribute('data-index'), 10);
+
+    // Remove all focused
+    var allRows = document.querySelectorAll('#tableBody tr');
+    for (var i = 0; i < allRows.length; i++) {
+      allRows[i].classList.remove('row-focused');
+    }
+    rows[index].classList.add('row-focused');
+    rows[index].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  function getVisibleFocusIndex() {
+    var rows = document.querySelectorAll('#tableBody tr:not(.hidden)');
+    for (var i = 0; i < rows.length; i++) {
+      if (parseInt(rows[i].getAttribute('data-index'), 10) === focusedIndex) return i;
+    }
+    return -1;
+  }
+
+  // ── Event: feedback buttons ──
+  document.getElementById('tableBody').addEventListener('click', function(e) {
+    var btn = e.target.closest('.fb-btn');
+    if (!btn) return;
+    var action = btn.getAttribute('data-action');
+    var leadIndex = parseInt(btn.getAttribute('data-lead'), 10);
+    toggleState(leadIndex, action);
+  });
+
+  // ── Event: filter pills ──
+  document.querySelector('.toolbar').addEventListener('click', function(e) {
+    var pill = e.target.closest('.filter-pill');
+    if (!pill) return;
+    var filter = pill.getAttribute('data-filter');
+    setFilter(filter);
+  });
+
+  // ── Event: search ──
+  document.getElementById('searchInput').addEventListener('input', function(e) {
+    searchQuery = e.target.value.toLowerCase().trim();
+    applyFilters();
+  });
+
+  // ── Event: keyboard shortcuts ──
+  document.addEventListener('keydown', function(e) {
+    // Don't capture when typing in inputs
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+      if (e.key === 'Escape') {
+        e.target.blur();
+      }
+      return;
+    }
+
+    if (e.key === 'j') {
+      e.preventDefault();
+      var idx = getVisibleFocusIndex();
+      setFocused(idx + 1);
+    } else if (e.key === 'k') {
+      e.preventDefault();
+      var idx2 = getVisibleFocusIndex();
+      setFocused(idx2 - 1);
+    } else if (e.key === 'a' && focusedIndex >= 0) {
+      e.preventDefault();
+      toggleState(focusedIndex, 'approved');
+    } else if (e.key === 'r' && focusedIndex >= 0) {
+      e.preventDefault();
+      toggleState(focusedIndex, 'rejected');
+    } else if (e.key === 'f' && focusedIndex >= 0) {
+      e.preventDefault();
+      toggleState(focusedIndex, 'flagged');
+    } else if (e.key === 's' && focusedIndex >= 0) {
+      e.preventDefault();
+      openSignalPanel(focusedIndex);
+    } else if (e.key === 'Escape' && signalPanelOpen) {
+      e.preventDefault();
+      closeSignalPanel();
+    } else if (e.key === '/') {
+      e.preventDefault();
+      document.getElementById('searchInput').focus();
+    }
+  });
+
+  // ── Event: Done button ──
+  document.getElementById('doneBtn').addEventListener('click', function() {
+    document.getElementById('overlay').classList.add('visible');
+  });
+
+  // ── Event: Overlay close ──
+  document.getElementById('overlayClose').addEventListener('click', function() {
+    document.getElementById('overlay').classList.remove('visible');
+  });
+  document.getElementById('overlay').addEventListener('click', function(e) {
+    if (e.target === this) {
+      this.classList.remove('visible');
+    }
+  });
+
+  // ── Signal panel logic ──
+  var signalPanelOpen = false;
+
+  function openSignalPanel(leadIndex) {
+    var lead = leads[leadIndex];
+    if (!lead || !lead.signals) return;
+
+    var panel = document.getElementById('signalPanel');
+    var backdrop = document.getElementById('signalBackdrop');
+    var color = scoreColor(lead.score);
+
+    document.getElementById('signalPanelTitle').textContent = lead.company;
+    document.getElementById('signalPanelSubtitle').textContent = lead.industry + ' · ' + lead.employees + ' employees';
+
+    // Score section
+    var scoreHtml = '<div class="signal-panel-score-num" style="color:' + color + '">' + lead.score + '</div>';
+    scoreHtml += '<div><div class="signal-panel-score-label">ICP Score</div>';
+    scoreHtml += '<div style="font-size:12px;color:var(--text-muted);margin-top:2px">';
+    var pos = 0, neg = 0;
+    for (var i = 0; i < lead.signals.length; i++) {
+      var w = lead.signals[i].weight;
+      if (w.charAt(0) === '+' && w !== '+0') pos++;
+      else if (w.charAt(0) === '-') neg++;
+    }
+    scoreHtml += pos + ' positive signal' + (pos !== 1 ? 's' : '');
+    if (neg > 0) scoreHtml += ' · ' + neg + ' risk' + (neg !== 1 ? 's' : '');
+    scoreHtml += '</div></div>';
+    document.getElementById('signalPanelScore').innerHTML = scoreHtml;
+
+    // Separate positive and negative signals
+    var positiveSignals = [];
+    var negativeSignals = [];
+    for (var j = 0; j < lead.signals.length; j++) {
+      var sig = lead.signals[j];
+      if (sig.weight.charAt(0) === '-') {
+        negativeSignals.push(sig);
+      } else {
+        positiveSignals.push(sig);
+      }
+    }
+
+    // Build body
+    var bodyHtml = '';
+    if (positiveSignals.length > 0) {
+      bodyHtml += '<div class="signal-section-label">Qualification Signals</div>';
+      for (var k = 0; k < positiveSignals.length; k++) {
+        bodyHtml += buildSignalCard(positiveSignals[k]);
+      }
+    }
+    if (negativeSignals.length > 0) {
+      bodyHtml += '<div class="signal-section-label">Risks & Concerns</div>';
+      for (var m = 0; m < negativeSignals.length; m++) {
+        bodyHtml += buildSignalCard(negativeSignals[m]);
+      }
+    }
+    document.getElementById('signalPanelBody').innerHTML = bodyHtml;
+
+    panel.classList.add('open');
+    backdrop.classList.add('open');
+    signalPanelOpen = true;
+  }
+
+  function buildSignalCard(sig) {
+    var weightClass = sig.weight.charAt(0) === '-' ? 'signal-weight-negative' : 'signal-weight-positive';
+    var iconClass = 'signal-icon-' + sig.type;
+    var icon = SIGNAL_ICONS[sig.type] || SIGNAL_ICONS.icp;
+    var typeLabel = sig.type.replace(/([A-Z])/g, ' $1').replace(/^./, function(s) { return s.toUpperCase(); });
+
+    var html = '<div class="signal-card">';
+    html += '<div class="signal-card-icon ' + iconClass + '">' + icon + '</div>';
+    html += '<div class="signal-card-content">';
+    html += '<div class="signal-card-type">' + typeLabel + '</div>';
+    html += '<div class="signal-card-text">' + sig.label + '</div>';
+    html += '</div>';
+    html += '<div class="signal-card-weight ' + weightClass + '">' + sig.weight + '</div>';
+    html += '</div>';
+    return html;
+  }
+
+  function closeSignalPanel() {
+    document.getElementById('signalPanel').classList.remove('open');
+    document.getElementById('signalBackdrop').classList.remove('open');
+    signalPanelOpen = false;
+  }
+
+  // Event: signal button click
+  document.getElementById('tableBody').addEventListener('click', function(e) {
+    var btn = e.target.closest('.signal-btn');
+    if (!btn) return;
+    var leadIndex = parseInt(btn.getAttribute('data-signal-lead'), 10);
+    openSignalPanel(leadIndex);
+  });
+
+  // Event: close signal panel
+  document.getElementById('signalPanelClose').addEventListener('click', closeSignalPanel);
+  document.getElementById('signalBackdrop').addEventListener('click', closeSignalPanel);
+
+  // ── Initial render ──
+  render();
+
+})();
+</script>
+</body>
+</html>
