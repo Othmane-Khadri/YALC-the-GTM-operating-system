@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core'
-import { relations } from 'drizzle-orm'
+import { relations, sql } from 'drizzle-orm'
 
 // ─── Conversations ──────────────────────────────────────────────────────────
 // Primary entity — every chat thread is a conversation
@@ -142,10 +142,217 @@ export const apiConnections = sqliteTable('api_connections', {
     .$defaultFn(() => new Date()),
 })
 
+// ─── Frameworks ─────────────────────────────────────────────────────────────
+// GTM Framework — the living intelligence layer. One per user.
+export const frameworks = sqliteTable('frameworks', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: text('user_id').notNull().default('default'),
+  data: text('data', { mode: 'json' }).notNull(),
+  onboardingStep: integer('onboarding_step').default(0),
+  onboardingComplete: integer('onboarding_complete', { mode: 'boolean' }).default(false),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp' })
+    .$defaultFn(() => new Date()),
+})
+
+// ─── Intelligence ──────────────────────────────────────────────────────────
+// Structured intelligence entries — evidence-backed, bias-checked, confidence-scored
+export const intelligence = sqliteTable('intelligence', {
+  id: text('id').primaryKey(),
+  category: text('category').notNull(),
+  insight: text('insight').notNull(),
+  evidence: text('evidence').notNull(), // JSON: Evidence[]
+  segment: text('segment'),
+  channel: text('channel'),
+  confidence: text('confidence').notNull().default('hypothesis'),
+  confidenceScore: integer('confidence_score').default(0),
+  source: text('source').notNull(),
+  biasCheck: text('bias_check'), // JSON: BiasCheck | null
+  supersedes: text('supersedes'),
+  createdAt: text('created_at').default(sql`(datetime('now'))`),
+  validatedAt: text('validated_at'),
+  expiresAt: text('expires_at'),
+})
+
+// ─── MCP Servers ────────────────────────────────────────────────────────────
+// MCP server configurations and connection state
+export const mcpServers = sqliteTable('mcp_servers', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  transport: text('transport').notNull(), // 'stdio' | 'sse'
+  command: text('command'),
+  args: text('args'), // JSON string
+  url: text('url'),
+  env: text('env'), // encrypted JSON string
+  status: text('status').default('disconnected'),
+  lastConnectedAt: text('last_connected_at'),
+  discoveredTools: text('discovered_tools'), // JSON string
+  createdAt: text('created_at').default(sql`(datetime('now'))`),
+})
+
+// ─── Review Queue ──────────────────────────────────────────────────────────
+// Unified human-in-the-loop review queue
+export const reviewQueue = sqliteTable('review_queue', {
+  id: text('id').primaryKey(),
+  type: text('type').notNull(),
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  sourceSystem: text('source_system').notNull(),
+  sourceId: text('source_id').notNull(),
+  priority: text('priority').notNull().default('normal'),
+  status: text('status').notNull().default('pending'),
+  payload: text('payload').notNull(), // JSON
+  action: text('action'), // JSON
+  nudgeEvidence: text('nudge_evidence'), // JSON
+  reviewedAt: text('reviewed_at'),
+  reviewNotes: text('review_notes'),
+  expiresAt: text('expires_at'),
+  createdAt: text('created_at').default(sql`(datetime('now'))`),
+})
+
+// ─── Notification Preferences ──────────────────────────────────────────────
+export const notificationPreferences = sqliteTable('notification_preferences', {
+  id: text('id').primaryKey(),
+  channel: text('channel').notNull(),
+  config: text('config').notNull(), // JSON
+  minPriority: text('min_priority').notNull().default('normal'),
+  enabled: integer('enabled').notNull().default(1),
+})
+
+// ─── Web Cache ────────────────────────────────────────────────────────────
+// Cached web pages with TTL per content type
+export const webCache = sqliteTable('web_cache', {
+  id: text('id').primaryKey(),
+  url: text('url').notNull().unique(),
+  content: text('content').notNull(),
+  contentType: text('content_type').notNull(),
+  extractedInsights: text('extracted_insights'),
+  fetchedAt: text('fetched_at').notNull(),
+  expiresAt: text('expires_at').notNull(),
+})
+
+// ─── Web Research Tasks ──────────────────────────────────────────────────
+export const webResearchTasks = sqliteTable('web_research_tasks', {
+  id: text('id').primaryKey(),
+  targetType: text('target_type').notNull(),
+  targetIdentifier: text('target_identifier').notNull(),
+  status: text('status').notNull().default('pending'),
+  results: text('results'),
+  requestedBy: text('requested_by').notNull(),
+  createdAt: text('created_at').default(sql`(datetime('now'))`),
+  completedAt: text('completed_at'),
+})
+
+// ─── Campaigns ──────────────────────────────────────────────────────────────
+export const campaigns = sqliteTable('campaigns', {
+  id: text('id').primaryKey(),
+  conversationId: text('conversation_id').notNull().references(() => conversations.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  hypothesis: text('hypothesis').notNull(),
+  status: text('status').notNull().default('draft'),
+  targetSegment: text('target_segment'),
+  channels: text('channels').notNull(),
+  successMetrics: text('success_metrics').notNull(),
+  metrics: text('metrics').notNull(),
+  verdict: text('verdict'),
+  createdAt: text('created_at').default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').default(sql`(datetime('now'))`),
+})
+
+// ─── Campaign Steps ─────────────────────────────────────────────────────────
+export const campaignSteps = sqliteTable('campaign_steps', {
+  id: text('id').primaryKey(),
+  campaignId: text('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  stepIndex: integer('step_index').notNull(),
+  skillId: text('skill_id').notNull(),
+  skillInput: text('skill_input').notNull(),
+  channel: text('channel'),
+  status: text('status').notNull().default('pending'),
+  dependsOn: text('depends_on').notNull().default('[]'),
+  approvalRequired: integer('approval_required').notNull().default(1),
+  resultSetId: text('result_set_id'),
+  scheduledAt: text('scheduled_at'),
+  completedAt: text('completed_at'),
+})
+
+// ─── Campaign Content ───────────────────────────────────────────────────────
+export const campaignContent = sqliteTable('campaign_content', {
+  id: text('id').primaryKey(),
+  campaignId: text('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  stepId: text('step_id').notNull().references(() => campaignSteps.id, { onDelete: 'cascade' }),
+  contentType: text('content_type').notNull(),
+  targetLeadId: text('target_lead_id'),
+  content: text('content').notNull(),
+  variant: text('variant'),
+  status: text('status').notNull().default('draft'),
+  personalizationData: text('personalization_data').notNull(),
+  sentAt: text('sent_at'),
+  openedAt: text('opened_at'),
+  clickedAt: text('clicked_at'),
+  repliedAt: text('replied_at'),
+  convertedAt: text('converted_at'),
+  bouncedAt: text('bounced_at'),
+})
+
+// ─── Provider Stats ────────────────────────────────────────────────────────
+// Provider performance tracking per execution
+export const providerStats = sqliteTable('provider_stats', {
+  id: text('id').primaryKey(),
+  providerId: text('provider_id').notNull(),
+  metric: text('metric').notNull(), // 'accuracy' | 'latency_ms' | 'cost_per_call' | 'coverage'
+  value: real('value').notNull(),
+  sampleSize: integer('sample_size').default(1),
+  segment: text('segment'),
+  measuredAt: text('measured_at').default(sql`(datetime('now'))`),
+})
+
+// ─── Provider Preferences ──────────────────────────────────────────────────
+// User or auto-derived provider preferences per skill+segment
+export const providerPreferences = sqliteTable('provider_preferences', {
+  id: text('id').primaryKey(),
+  skillId: text('skill_id').notNull(),
+  segment: text('segment'),
+  preferredProvider: text('preferred_provider').notNull(),
+  reason: text('reason'),
+  source: text('source').notNull().default('auto'), // 'auto' | 'user' | 'intelligence'
+  createdAt: text('created_at').default(sql`(datetime('now'))`),
+})
+
+// ─── Signals Log ──────────────────────────────────────────────────────────────
+// Passive signal collection from user interactions
+export const signalsLog = sqliteTable('signals_log', {
+  id: text('id').primaryKey(),
+  type: text('type').notNull(),
+  category: text('category').notNull(),
+  data: text('data').notNull(), // JSON
+  conversationId: text('conversation_id'),
+  resultSetId: text('result_set_id'),
+  campaignId: text('campaign_id'),
+  createdAt: text('created_at').default(sql`(datetime('now'))`),
+})
+
+// ─── Data Quality Log ──────────────────────────────────────────────────────
+// Data quality issues detected by the monitor
+export const dataQualityLog = sqliteTable('data_quality_log', {
+  id: text('id').primaryKey(),
+  resultSetId: text('result_set_id').notNull(),
+  rowId: text('row_id'),
+  checkType: text('check_type').notNull(),
+  severity: text('severity').notNull(),
+  details: text('details'), // JSON
+  nudge: text('nudge'),
+  action: text('action'), // JSON
+  resolved: integer('resolved').notNull().default(0),
+  resolvedAt: text('resolved_at'),
+  createdAt: text('created_at').default(sql`(datetime('now'))`),
+})
+
 // ─── Relations ───────────────────────────────────────────────────────────────
 export const conversationsRelations = relations(conversations, ({ many }) => ({
   messages: many(messages),
   workflows: many(workflows),
+  campaigns: many(campaigns),
 }))
 
 export const messagesRelations = relations(messages, ({ one }) => ({
@@ -189,3 +396,45 @@ export const resultRowsRelations = relations(resultRows, ({ one }) => ({
     references: [resultSets.id],
   }),
 }))
+
+export const intelligenceRelations = relations(intelligence, () => ({}))
+
+export const reviewQueueRelations = relations(reviewQueue, () => ({}))
+export const notificationPreferencesRelations = relations(notificationPreferences, () => ({}))
+
+export const webCacheRelations = relations(webCache, () => ({}))
+export const webResearchTasksRelations = relations(webResearchTasks, () => ({}))
+
+export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
+  conversation: one(conversations, {
+    fields: [campaigns.conversationId],
+    references: [conversations.id],
+  }),
+  steps: many(campaignSteps),
+  content: many(campaignContent),
+}))
+
+export const campaignStepsRelations = relations(campaignSteps, ({ one }) => ({
+  campaign: one(campaigns, {
+    fields: [campaignSteps.campaignId],
+    references: [campaigns.id],
+  }),
+}))
+
+export const campaignContentRelations = relations(campaignContent, ({ one }) => ({
+  campaign: one(campaigns, {
+    fields: [campaignContent.campaignId],
+    references: [campaigns.id],
+  }),
+  step: one(campaignSteps, {
+    fields: [campaignContent.stepId],
+    references: [campaignSteps.id],
+  }),
+}))
+
+export const signalsLogRelations = relations(signalsLog, () => ({}))
+
+export const providerStatsRelations = relations(providerStats, () => ({}))
+export const providerPreferencesRelations = relations(providerPreferences, () => ({}))
+
+export const dataQualityLogRelations = relations(dataQualityLog, () => ({}))
