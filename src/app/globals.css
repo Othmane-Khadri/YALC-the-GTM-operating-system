@@ -1,65 +1,88 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+/* Font loaded via next/font/google in layout.tsx — no @import needed */
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Clay color system — light mode (warm oat canvas, black type, fruit accents) */
 :root {
-  --background: #0e0f14;
-  --surface: #1a1b22;
-  --surface-2: #22232e;
-  --surface-3: #1d2026;
-  --border: #2c2e3e;
-  --border-subtle: #1f2130;
-  --text-primary: #f0f1f6;
-  --text-secondary: #8b91a8;
-  --text-muted: #4e5470;
-  --blueberry-50: #1a2040;
-  --blueberry-300: #7fa0f8;
-  --blueberry-600: #4b72f5;
-  --blueberry-800: #2d4db8;
+  --background: #F9F8F6;
+  --surface: #F4F3F0;
+  --surface-2: #EEE9DF;
+  --surface-3: #FEFDFB;
+  --border: #E6E8EC;
+  --border-subtle: #D1CDC7;
+  --text-primary: #1B1A18;
+  --text-secondary: #525A69;
+  --text-muted: #7B7974;
+  --blueberry-50: #E8EDFE;
+  --blueberry-300: #7FA0F8;
+  --blueberry-600: #3859F9;
+  --blueberry-800: #0053B5;
+  --matcha-50: #E8F5EF;
   --matcha-300: #6ee7b0;
-  --matcha-600: #22c578;
-  --tangerine-600: #f97316;
+  --matcha-600: #02693E;
+  --tangerine-50: #FEF3E8;
+  --tangerine-600: #FF7614;
+  --tangerine-700: #C34E1B;
   --pomegranate-600: #ef4444;
-  --lemon-600: #ca8a04;
+  --dragonfruit-50: #FCE7F6;
+  --dragonfruit-600: #8B045C;
+  --lemon-50: #FEFCE8;
+  --lemon-600: #6B7F00;
+  --oat-100: #F3F2ED;
+  --oat-200: #EEE9DF;
 }
 
-* {
+/* Ensure Space Mono applies everywhere */
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   padding: 0;
   margin: 0;
+  font-family: var(--font-space-mono), 'Space Mono', monospace;
 }
 
-html,
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   max-width: 100vw;
   overflow-x: hidden;
   background-color: var(--background);
   color: var(--text-primary);
-  font-family: 'Space Mono', monospace;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.6;
+  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.01em;
 }
 
-/* Custom scrollbar */
+/* Selection highlight — blueberry tint */
+::selection {
+  background: var(--blueberry-50);
+  color: var(--text-primary);
+}
+
+/* Refined scrollbar */
 ::-webkit-scrollbar {
-  width: 4px;
+  width: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 2px;
+  background: var(--border-subtle);
+  border-radius: 99px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
 
-/* Streaming cursor animation */
+/* Streaming cursor */
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
@@ -72,8 +95,24 @@ body {
   color: var(--blueberry-600);
 }
 
-/* Message fade in */
+/* Message entrance — smooth, confident */
 @keyframes messageIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message-enter {
+  animation: messageIn 0.3s ease-out forwards;
+}
+
+/* Staggered fade-in for processing steps */
+@keyframes fadeInUp {
   from {
     opacity: 0;
     transform: translateY(6px);
@@ -84,8 +123,29 @@ body {
   }
 }
 
-.message-enter {
-  animation: messageIn 0.2s ease-out forwards;
+.fade-in-up {
+  animation: fadeInUp 0.4s ease-out forwards;
+}
+
+/* Modal entrance */
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-enter {
+  animation: modalIn 0.3s ease-out forwards;
+}
+
+/* Shared input focus ring */
+.input-focus {
+  @apply focus:border-blueberry-600 focus:ring-[3px] focus:ring-blueberry-600/[0.06] focus:outline-none;
 }
 
 /* Focus styles */
@@ -93,4 +153,21 @@ body {
   outline: 2px solid var(--blueberry-600);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* Row feedback animation — subtle scale pop */
+@keyframes feedbackPop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.005); }
+  100% { transform: scale(1); }
+}
+
+.row-feedback-enter {
+  animation: feedbackPop 0.2s ease-out;
+}
+
+/* Rejected row fade */
+.row-rejected {
+  opacity: 0.6;
+  transition: opacity 0.3s ease-out;
 }

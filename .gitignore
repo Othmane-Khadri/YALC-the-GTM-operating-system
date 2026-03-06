@@ -24,6 +24,12 @@ Thumbs.db
 .idea
 *.swp
 
+# Build cache
+tsconfig.tsbuildinfo
+
+# Project instructions (private)
+CLAUDE.md
+
 # Logs
 *.log
 npm-debug.log*
