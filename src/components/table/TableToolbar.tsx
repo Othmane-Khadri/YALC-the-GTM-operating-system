@@ -1,0 +1,122 @@
+'use client'
+
+import { useAtom, useAtomValue } from 'jotai'
+import {
+  feedbackFilterAtom,
+  tableSearchAtom,
+  filteredRowsAtom,
+  feedbackStatsAtom,
+  selectedRowIdsAtom,
+  tableRowsAtom,
+} from '@/atoms/table'
+import type { FeedbackFilter } from '@/atoms/table'
+import { cn } from '@/lib/utils'
+
+interface TableToolbarProps {
+  onBulkFeedback: (rowIds: string[], feedback: 'approved' | 'rejected') => void
+}
+
+const FILTERS: { value: FeedbackFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'flagged', label: 'Flagged' },
+]
+
+const FILTER_COLORS: Record<FeedbackFilter, string> = {
+  all: 'var(--text-primary)',
+  pending: 'var(--text-muted)',
+  approved: 'var(--matcha-600)',
+  rejected: 'var(--pomegranate-600)',
+  flagged: 'var(--tangerine-600)',
+}
+
+export function TableToolbar({ onBulkFeedback }: TableToolbarProps) {
+  const [filter, setFilter] = useAtom(feedbackFilterAtom)
+  const [search, setSearch] = useAtom(tableSearchAtom)
+  const filteredRows = useAtomValue(filteredRowsAtom)
+  const stats = useAtomValue(feedbackStatsAtom)
+  const [selectedIds, setSelectedIds] = useAtom(selectedRowIdsAtom)
+  const allRows = useAtomValue(tableRowsAtom)
+
+  const hasSelection = selectedIds.size > 0
+
+  return (
+    <div className="flex items-center gap-3 px-5 py-3 border-b border-border bg-white">
+      {/* Filter pills */}
+      <div className="flex items-center gap-1">
+        {FILTERS.map(f => {
+          const count = f.value === 'all' ? stats.total : stats[f.value]
+          const isActive = filter === f.value
+          return (
+            <button
+              key={f.value}
+              onClick={() => setFilter(f.value)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-150",
+                isActive
+                  ? "bg-surface-2"
+                  : "hover:bg-surface"
+              )}
+              style={{ color: isActive ? FILTER_COLORS[f.value] : 'var(--text-muted)' }}
+            >
+              {f.label}
+              <span className="tabular-nums">{count}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Separator */}
+      <div className="w-px h-5 bg-border-subtle" />
+
+      {/* Search */}
+      <div className="relative flex-1 max-w-[260px]">
+        <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-muted" width="13" height="13" viewBox="0 0 13 13" fill="none">
+          <circle cx="5.5" cy="5.5" r="4" stroke="currentColor" strokeWidth="1.3"/>
+          <path d="M8.5 8.5L11.5 11.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+        </svg>
+        <input
+          type="text"
+          placeholder="Search rows..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="w-full pl-8 pr-3 py-1.5 rounded-lg text-xs bg-surface border border-border-subtle input-focus"
+        />
+      </div>
+
+      {/* Bulk actions */}
+      {hasSelection && (
+        <>
+          <div className="w-px h-5 bg-border-subtle" />
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => {
+                onBulkFeedback(Array.from(selectedIds), 'approved')
+                setSelectedIds(new Set())
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-matcha-600 bg-matcha-50 hover:bg-matcha-50/80 transition-colors"
+            >
+              Approve {selectedIds.size}
+            </button>
+            <button
+              onClick={() => {
+                onBulkFeedback(Array.from(selectedIds), 'rejected')
+                setSelectedIds(new Set())
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-pomegranate-600 bg-red-50 hover:bg-red-50/80 transition-colors"
+            >
+              Reject {selectedIds.size}
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Row count */}
+      <div className="ml-auto text-xs text-text-muted tabular-nums">
+        {filteredRows.length} of {allRows.length} rows
+      </div>
+    </div>
+  )
+}
