@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { useAtom, useAtomValue } from 'jotai'
 import { inputValueAtom, isStreamingAtom } from '@/atoms/conversation'
+import { cn } from '@/lib/utils'
 
 interface ChatInputProps {
   onSubmit: (message: string) => void
@@ -13,7 +14,6 @@ export function ChatInput({ onSubmit }: ChatInputProps) {
   const isStreaming = useAtomValue(isStreamingAtom)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Listen for example prompt clicks
   useEffect(() => {
     const handler = (e: Event) => {
       const prompt = (e as CustomEvent<string>).detail
@@ -24,7 +24,6 @@ export function ChatInput({ onSubmit }: ChatInputProps) {
     return () => window.removeEventListener('set-input', handler)
   }, [setValue])
 
-  // Auto-resize textarea
   useEffect(() => {
     const el = textareaRef.current
     if (!el) return
@@ -49,67 +48,45 @@ export function ChatInput({ onSubmit }: ChatInputProps) {
     }
   }
 
+  const canSubmit = value.trim() && !isStreaming
+
   return (
-    <div
-      className="border-t px-4 py-3"
-      style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
-    >
-      <div
-        className="flex items-end gap-3 rounded-lg border px-4 py-3 transition-colors"
-        style={{
-          backgroundColor: 'var(--surface)',
-          borderColor: 'var(--border)',
-        }}
-        onFocus={() => {}}
-      >
+    <div className="border-t px-8 py-5 border-border bg-white">
+      <div className="flex items-end gap-3 rounded-2xl border px-5 py-4 transition-all duration-200 shadow-sm bg-surface-3 border-border focus-within:border-blueberry-600 focus-within:shadow-[0_0_0_3px_rgba(56,89,249,0.06)]">
         <textarea
           ref={textareaRef}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Describe your GTM goal... (⏎ to send, Shift+⏎ for newline)"
+          placeholder="Describe your GTM goal..."
           disabled={isStreaming}
           rows={1}
-          className="flex-1 resize-none bg-transparent text-xs leading-relaxed outline-none disabled:opacity-50"
-          style={{
-            color: 'var(--text-primary)',
-            fontFamily: 'Space Mono, monospace',
-            caretColor: 'var(--blueberry-600)',
-            minHeight: '20px',
-            maxHeight: '200px',
-          }}
+          className="flex-1 resize-none bg-transparent text-sm leading-relaxed outline-none disabled:opacity-50 text-text-primary caret-blueberry-600 min-h-[28px] max-h-[200px]"
         />
 
-        {/* Send button */}
         <button
           onClick={handleSubmit}
-          disabled={!value.trim() || isStreaming}
-          className="flex-shrink-0 w-8 h-8 rounded flex items-center justify-center text-sm transition-all disabled:opacity-30"
-          style={{
-            backgroundColor: value.trim() && !isStreaming
-              ? 'var(--blueberry-600)'
-              : 'var(--surface-2)',
-            color: 'white',
-            cursor: value.trim() && !isStreaming ? 'pointer' : 'not-allowed',
-          }}
+          disabled={!canSubmit}
+          className={cn(
+            "flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-xl text-sm font-bold transition-all duration-150",
+            canSubmit
+              ? "bg-text-primary text-background cursor-pointer hover:scale-105"
+              : "bg-surface-2 text-text-muted cursor-not-allowed"
+          )}
           title="Send (Enter)"
         >
           {isStreaming ? (
-            <span className="animate-spin text-xs">◌</span>
+            <span className="animate-spin text-sm">◌</span>
           ) : (
-            '▲'
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M8 13V3M8 3L3 8M8 3L13 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
           )}
         </button>
       </div>
 
-      <div
-        className="flex items-center justify-between mt-1.5 px-1"
-        style={{ color: 'var(--text-muted)', fontSize: '10px' }}
-      >
+      <div className="flex items-center mt-2.5 px-1 text-text-muted text-[11px] opacity-50">
         <span>⏎ send · Shift+⏎ newline</span>
-        {value.length > 0 && (
-          <span>{value.length} chars</span>
-        )}
       </div>
     </div>
   )

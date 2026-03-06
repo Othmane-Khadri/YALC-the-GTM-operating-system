@@ -2,8 +2,9 @@
 
 import { useEffect, useRef } from 'react'
 import { useAtomValue } from 'jotai'
-import { messagesAtom, isStreamingAtom, streamingTextAtom } from '@/atoms/conversation'
+import { messagesAtom, isStreamingAtom, streamingTextAtom, executionStateAtom } from '@/atoms/conversation'
 import { MessageBubble } from './MessageBubble'
+import { ExecutionProgressCard } from '../table/ExecutionProgressCard'
 import type { ChatMessage } from '@/lib/ai/types'
 
 interface MessageListProps {
@@ -12,67 +13,111 @@ interface MessageListProps {
   ) => void
 }
 
+const ACTION_CARDS = [
+  {
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="1.5"/>
+        <path d="M10 7v6M7 10h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+    ),
+    iconBg: 'var(--matcha-50)',
+    iconColor: 'var(--matcha-600)',
+    accent: 'var(--matcha-600)',
+    title: 'Find companies',
+    description: 'Find 50 SaaS companies in France hiring for sales roles',
+  },
+  {
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <rect x="3" y="3" width="14" height="14" rx="3" stroke="currentColor" strokeWidth="1.5"/>
+        <path d="M7 8h6M7 11h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+    ),
+    iconBg: 'var(--blueberry-50)',
+    iconColor: 'var(--blueberry-600)',
+    accent: 'var(--blueberry-600)',
+    title: 'Enrich your list',
+    description: 'Enrich my lead list with tech stack and decision maker emails',
+  },
+  {
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+        <path d="M10 3l2 4 4.5.7-3.25 3.2.8 4.6L10 13.2 5.95 15.5l.8-4.6L3.5 7.7 8 7z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+      </svg>
+    ),
+    iconBg: 'var(--dragonfruit-50)',
+    iconColor: 'var(--dragonfruit-600)',
+    accent: 'var(--dragonfruit-600)',
+    title: 'Qualify ICP',
+    description: 'Qualify 200 companies against my ICP for enterprise accounts',
+  },
+]
+
 export function MessageList({ onApproveWorkflow }: MessageListProps) {
   const messages = useAtomValue(messagesAtom)
   const isStreaming = useAtomValue(isStreamingAtom)
   const streamingText = useAtomValue(streamingTextAtom)
+  const execution = useAtomValue(executionStateAtom)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingText])
 
   if (messages.length === 0 && !isStreaming) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-6 px-8">
-        {/* Empty state */}
-        <div className="text-center space-y-3">
-          <div
-            className="text-4xl font-bold tracking-tight"
-            style={{ color: 'var(--text-primary)', fontFamily: 'Space Mono, monospace' }}
-          >
-            GTM-OS
+      <div className="flex-1 flex flex-col items-center justify-center gap-10 px-8 py-16">
+        {/* Wordmark */}
+        <div className="text-center flex flex-col gap-3">
+          <div className="font-bold text-text-primary tracking-[-0.04em] text-[60px] leading-none">
+            Yalc
           </div>
-          <p
-            className="text-sm max-w-sm leading-relaxed"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            Describe your GTM goal. I'll propose the best workflow to get there.
+          <div className="text-text-muted text-base italic tracking-wide">
+            Clay in reverse. Open source. And AI native.
+          </div>
+          <p className="leading-relaxed text-text-secondary max-w-[380px] mx-auto mt-1 text-sm">
+            Describe your GTM goal. I&apos;ll propose the best workflow to get there.
           </p>
         </div>
 
-        {/* Example prompts */}
-        <div className="grid gap-2 w-full max-w-lg">
-          {[
-            'Find 50 SaaS companies in France hiring for sales roles',
-            'Enrich my lead list with tech stack and decision maker emails',
-            'Qualify 200 companies against my ICP for enterprise accounts',
-          ].map((prompt) => (
+        {/* Action cards */}
+        <div className="grid grid-cols-3 gap-4 w-full max-w-[760px]">
+          {ACTION_CARDS.map((card) => (
             <button
-              key={prompt}
-              className="text-left px-4 py-3 rounded-lg border text-xs transition-colors"
-              style={{
-                backgroundColor: 'var(--surface)',
-                borderColor: 'var(--border)',
-                color: 'var(--text-secondary)',
-                fontFamily: 'Space Mono, monospace',
-              }}
+              key={card.title}
+              className="text-left rounded-2xl border transition-all duration-200 bg-surface-3 border-border p-6 hover:bg-white hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] hover:-translate-y-0.5"
+              style={{ '--accent': card.accent } as React.CSSProperties}
               onClick={() => {
-                const event = new CustomEvent('set-input', { detail: prompt })
+                const event = new CustomEvent('set-input', { detail: card.description })
                 window.dispatchEvent(event)
               }}
             >
-              {prompt}
+              <div
+                className="flex items-center justify-center rounded-xl mb-4 w-12 h-12"
+                style={{ backgroundColor: card.iconBg, color: card.iconColor }}
+              >
+                {card.icon}
+              </div>
+              <div className="text-sm font-bold mb-1.5 text-text-primary">
+                {card.title}
+              </div>
+              <div className="text-xs leading-relaxed text-text-muted">
+                {card.description}
+              </div>
             </button>
           ))}
+        </div>
+
+        <div className="text-xs text-text-muted opacity-40">
+          or type anything below
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
+    <div className="flex-1 overflow-y-auto px-8 py-8 space-y-6">
       {messages.map((message) => (
         <MessageBubble
           key={message.id}
@@ -81,37 +126,23 @@ export function MessageList({ onApproveWorkflow }: MessageListProps) {
         />
       ))}
 
-      {/* Streaming indicator */}
+      {execution.status === 'running' && (
+        <ExecutionProgressCard />
+      )}
+
       {isStreaming && streamingText && (
         <div className="flex justify-start message-enter">
-          <div
-            className="px-4 py-2.5 rounded-lg text-xs leading-relaxed max-w-xl streaming-cursor"
-            style={{
-              backgroundColor: 'var(--surface)',
-              color: 'var(--text-secondary)',
-              border: '1px solid var(--border-subtle)',
-              fontFamily: 'Space Mono, monospace',
-              whiteSpace: 'pre-wrap',
-            }}
-          >
+          <div className="px-1 py-2 text-sm leading-relaxed max-w-2xl streaming-cursor text-text-primary whitespace-pre-wrap">
             {streamingText}
           </div>
         </div>
       )}
 
-      {/* Thinking indicator (before text starts streaming) */}
       {isStreaming && !streamingText && (
         <div className="flex justify-start">
-          <div
-            className="px-4 py-2.5 rounded-lg text-xs"
-            style={{
-              backgroundColor: 'var(--surface)',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-muted)',
-              fontFamily: 'Space Mono, monospace',
-            }}
-          >
-            <span className="animate-pulse-slow">thinking...</span>
+          <div className="px-1 py-2 text-sm flex items-center gap-2 text-text-muted">
+            <span className="animate-pulse text-matcha-600">●</span>
+            <span>thinking...</span>
           </div>
         </div>
       )}

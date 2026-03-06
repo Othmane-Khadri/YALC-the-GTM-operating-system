@@ -29,3 +29,26 @@ export const lastMessageAtom = atom((get) => {
   const messages = get(messagesAtom)
   return messages[messages.length - 1] ?? null
 })
+
+// ─── Execution State ─────────────────────────────────────────────────────────
+
+export interface StepStatus {
+  index: number
+  title: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  rowsOut?: number
+}
+
+export interface ExecutionState {
+  status: 'idle' | 'running' | 'complete'
+  workflowId?: string
+  resultSetId?: string
+  steps: StepStatus[]
+  totalRows: number
+}
+
+export const executionStateAtom = atom<ExecutionState>({
+  status: 'idle',
+  steps: [],
+  totalRows: 0,
+})
