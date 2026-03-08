@@ -35,6 +35,18 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ANTHROPIC_API_KEY` | Yes | Claude API key from [console.anthropic.com](https://console.anthropic.com) |
+| `DATABASE_URL` | Yes | SQLite path (default: `file:./gtm-os.db`) or Turso URL for hosted |
+| `ENCRYPTION_KEY` | Yes | AES-256 key for stored API keys. Generate: `openssl rand -hex 32` |
+| `APIFY_TOKEN` | No | Enables real lead search and LinkedIn engagement scraping via Apify |
+| `TURSO_AUTH_TOKEN` | No | Required for Vercel/Turso remote database deployment |
+| `GTM_OS_API_TOKEN` | No | Bearer token protecting `/api/*` routes |
+| `MCP_SERVER_TOKEN` | No | Auth token for the MCP server endpoint |
+
 ---
 
 ## Build Log
@@ -69,12 +81,44 @@ Open [http://localhost:3000](http://localhost:3000).
 - Knowledge → AI pipeline: FTS5 full-text search with sync triggers, knowledge injected into Claude's system prompt, full-text injection for small docs (< 4000 chars)
 - Dual-repo strategy: public MIT repo (all source code) + private fork (production rate limiting, Vercel deployment)
 
-### Day 7+ — Coming next
+### Day 7 — Apify Providers + LinkedIn Engagement Skill
+- **Apify Lead Finder** provider: real lead search by industry, title, location, company size (~$1.50/1K leads)
+- **LinkedIn Post Engagement Scraper** provider: scrape likers/commenters from any LinkedIn post, optional profile enrichment (~$1.20/1K profiles)
+- **LinkedIn Engagement skill**: registered in skill system, auto-surfaced in Claude's planner
+- Turso remote DB wired for Vercel deployment
+- FTS5 full-text search triggers + backfill
+
+### Day 8+ — Coming next
 - Real provider integrations (Apollo, Firecrawl, BuiltWith)
 - Campaign execution with multi-channel orchestration
 - Export to CSV/CRM
 - Collaborative workspaces
 - ...
+
+---
+
+## Deployment
+
+### Local (default)
+
+```bash
+pnpm dev
+```
+
+Uses SQLite at `file:./gtm-os.db` — no external services needed beyond an Anthropic API key.
+
+### Vercel
+
+1. Push to GitHub
+2. Import the repo in [vercel.com](https://vercel.com)
+3. Set environment variables:
+   - `DATABASE_URL` — your Turso database URL (e.g. `libsql://your-db.turso.io`)
+   - `TURSO_AUTH_TOKEN` — Turso auth token
+   - `ANTHROPIC_API_KEY` — Claude API key
+   - `ENCRYPTION_KEY` — generate with `openssl rand -hex 32`
+   - `APIFY_TOKEN` — (optional) for real lead search and LinkedIn scraping
+   - `GTM_OS_API_TOKEN` — (recommended) protects API routes in production
+4. Deploy
 
 ---
 
