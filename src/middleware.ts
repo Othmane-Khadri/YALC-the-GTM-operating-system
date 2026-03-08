@@ -1,61 +1,81 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { timingSafeEqual } from 'crypto'
+import { auth } from '@/lib/auth'
 
 // Routes that handle their own auth (or are public)
-const SELF_AUTHED_ROUTES = [
+const PUBLIC_ROUTES = [
+  '/login',
+  '/api/auth', // NextAuth routes
   '/api/mcp-server', // has its own MCP_SERVER_TOKEN check
 ]
 
-// Static/page routes that should never be blocked
+const isPublic = (pathname: string) =>
+  PUBLIC_ROUTES.some(r => pathname.startsWith(r))
+
 const isApiRoute = (pathname: string) => pathname.startsWith('/api/')
+
+const isStaticAsset = (pathname: string) =>
+  pathname.startsWith('/_next/') ||
+  pathname.startsWith('/favicon') ||
+  pathname.endsWith('.ico') ||
+  pathname.endsWith('.svg')
 
 let authWarningLogged = false
 
 function safeCompare(a: string, b: string): boolean {
   if (a.length !== b.length) return false
+  const { timingSafeEqual } = require('crypto')
   return timingSafeEqual(Buffer.from(a), Buffer.from(b))
 }
 
-export function middleware(request: NextRequest) {
+export default auth((request) => {
   const { pathname } = request.nextUrl
 
-  // Only gate API routes
-  if (!isApiRoute(pathname)) return NextResponse.next()
+  // Static assets — always allow
+  if (isStaticAsset(pathname)) return NextResponse.next()
 
-  // Skip routes that handle their own auth
-  if (SELF_AUTHED_ROUTES.some(r => pathname.startsWith(r))) {
-    return NextResponse.next()
-  }
+  // Public routes — always allow
+  if (isPublic(pathname)) return NextResponse.next()
 
-  const token = process.env.GTM_OS_API_TOKEN
-  if (!token) {
-    // No token configured — allow all requests (local dev without auth).
-    if (!authWarningLogged) {
-      console.warn(
-        '\x1b[33m[security]\x1b[0m GTM_OS_API_TOKEN is not set. ' +
-        'All API routes are unprotected. Set it in .env.local for production use: ' +
-        'GTM_OS_API_TOKEN=$(openssl rand -hex 32)'
-      )
-      authWarningLogged = true
+  // API routes — use existing token-based auth
+  if (isApiRoute(pathname)) {
+    const token = process.env.GTM_OS_API_TOKEN
+    if (!token) {
+      if (!authWarningLogged) {
+        console.warn(
+          '\x1b[33m[security]\x1b[0m GTM_OS_API_TOKEN is not set. ' +
+          'All API routes are unprotected.'
+        )
+        authWarningLogged = true
+      }
+      return NextResponse.next()
     }
-    return NextResponse.next()
+
+    const authHeader = request.headers.get('authorization')
+    if (authHeader && safeCompare(authHeader, `Bearer ${token}`)) {
+      return NextResponse.next()
+    }
+
+    const cookieToken = request.cookies.get('gtm-os-token')?.value
+    if (cookieToken && safeCompare(cookieToken, token)) {
+      return NextResponse.next()
+    }
+
+    // Also allow if user has a valid NextAuth session (browser requests)
+    if (request.auth) return NextResponse.next()
+
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Check Authorization header (constant-time comparison)
-  const authHeader = request.headers.get('authorization')
-  if (authHeader && safeCompare(authHeader, `Bearer ${token}`)) {
-    return NextResponse.next()
+  // Page routes — require NextAuth session
+  if (!request.auth) {
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('callbackUrl', pathname)
+    return NextResponse.redirect(loginUrl)
   }
 
-  // Check cookie fallback (for browser/frontend requests)
-  const cookieToken = request.cookies.get('gtm-os-token')?.value
-  if (cookieToken && safeCompare(cookieToken, token)) {
-    return NextResponse.next()
-  }
-
-  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-}
+  return NextResponse.next()
+})
 
 export const config = {
-  matcher: '/api/:path*',
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }
