@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 
 // Routes that handle their own auth (or are public)
@@ -13,42 +13,29 @@ const isPublic = (pathname: string) =>
 
 const isApiRoute = (pathname: string) => pathname.startsWith('/api/')
 
-const isStaticAsset = (pathname: string) =>
-  pathname.startsWith('/_next/') ||
-  pathname.startsWith('/favicon') ||
-  pathname.endsWith('.ico') ||
-  pathname.endsWith('.svg')
-
-let authWarningLogged = false
-
+// Constant-time string comparison (Edge-compatible, no Node crypto needed)
 function safeCompare(a: string, b: string): boolean {
   if (a.length !== b.length) return false
-  const { timingSafeEqual } = require('crypto')
-  return timingSafeEqual(Buffer.from(a), Buffer.from(b))
+  let result = 0
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  }
+  return result === 0
 }
 
 export default auth((request) => {
   const { pathname } = request.nextUrl
 
-  // Static assets — always allow
-  if (isStaticAsset(pathname)) return NextResponse.next()
-
   // Public routes — always allow
   if (isPublic(pathname)) return NextResponse.next()
 
-  // API routes — use existing token-based auth
+  // Authenticated via NextAuth session — allow everything
+  if (request.auth) return NextResponse.next()
+
+  // API routes — also accept token-based auth (for external clients)
   if (isApiRoute(pathname)) {
     const token = process.env.GTM_OS_API_TOKEN
-    if (!token) {
-      if (!authWarningLogged) {
-        console.warn(
-          '\x1b[33m[security]\x1b[0m GTM_OS_API_TOKEN is not set. ' +
-          'All API routes are unprotected.'
-        )
-        authWarningLogged = true
-      }
-      return NextResponse.next()
-    }
+    if (!token) return NextResponse.next() // no token = open (local dev)
 
     const authHeader = request.headers.get('authorization')
     if (authHeader && safeCompare(authHeader, `Bearer ${token}`)) {
@@ -60,20 +47,13 @@ export default auth((request) => {
       return NextResponse.next()
     }
 
-    // Also allow if user has a valid NextAuth session (browser requests)
-    if (request.auth) return NextResponse.next()
-
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Page routes — require NextAuth session
-  if (!request.auth) {
-    const loginUrl = new URL('/login', request.url)
-    loginUrl.searchParams.set('callbackUrl', pathname)
-    return NextResponse.redirect(loginUrl)
-  }
-
-  return NextResponse.next()
+  // Page routes without session — redirect to login
+  const loginUrl = new URL('/login', request.url)
+  loginUrl.searchParams.set('callbackUrl', pathname)
+  return NextResponse.redirect(loginUrl)
 })
 
 export const config = {
