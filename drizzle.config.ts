@@ -6,5 +6,6 @@ export default {
   dialect: 'turso',
   dbCredentials: {
     url: process.env.DATABASE_URL ?? 'file:./gtm-os.db',
+    authToken: process.env.TURSO_AUTH_TOKEN,
   },
 } satisfies Config
