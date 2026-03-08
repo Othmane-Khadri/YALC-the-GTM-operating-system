@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { timingSafeEqual } from 'crypto'
 import { createGtmOsServer } from '@/lib/mcp/server'
 
 export const runtime = 'nodejs'
@@ -7,7 +8,9 @@ function checkAuth(request: Request): boolean {
   const authHeader = request.headers.get('authorization')
   const expectedToken = process.env.MCP_SERVER_TOKEN
   if (!expectedToken) return false
-  return authHeader === `Bearer ${expectedToken}`
+  const expected = `Bearer ${expectedToken}`
+  if (!authHeader || authHeader.length !== expected.length) return false
+  return timingSafeEqual(Buffer.from(authHeader), Buffer.from(expected))
 }
 
 export async function GET(request: NextRequest) {

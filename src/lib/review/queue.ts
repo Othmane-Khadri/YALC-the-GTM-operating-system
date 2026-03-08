@@ -4,6 +4,7 @@ import { db } from '../db'
 import { reviewQueue } from '../db/schema'
 import type { ReviewRequest, ReviewStatus, ReviewType, ReviewPriority } from './types'
 import { getCollector } from '../signals/collector'
+import { validateUrl } from '../web/url-validator'
 
 type CreateInput = Omit<ReviewRequest, 'id' | 'status' | 'createdAt'>
 
@@ -118,6 +119,8 @@ export class ReviewQueue {
 
     if (entry.action) {
       try {
+        // Validate the action endpoint to prevent stored SSRF
+        await validateUrl(entry.action.endpoint)
         await fetch(entry.action.endpoint, {
           method: entry.action.method,
           headers: { 'Content-Type': 'application/json' },

@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server'
-import { createClient } from '@libsql/client'
-import { db } from '@/lib/db'
+import { db, rawClient } from '@/lib/db'
 import { conversations, messages } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { getAnthropicClient, PLANNER_MODEL } from '@/lib/ai/client'
@@ -14,8 +13,6 @@ import type { StreamEvent, KnowledgeChunk } from '@/lib/ai/types'
 import { buildFrameworkContext } from '@/lib/framework/context'
 import type { GTMFramework } from '@/lib/framework/types'
 import { getCollector } from '@/lib/signals/collector'
-
-const rawClient = createClient({ url: process.env.DATABASE_URL ?? 'file:./gtm-os.db' })
 
 export const runtime = 'nodejs'
 

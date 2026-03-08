@@ -3,6 +3,7 @@ import { eq, and, gt } from 'drizzle-orm'
 import { db } from '../db'
 import { webCache } from '../db/schema'
 import type { CacheContentType } from './types'
+import { validateUrl } from './url-validator'
 
 const TTL_HOURS: Record<CacheContentType, number> = {
   company_page: 168,
@@ -18,6 +19,8 @@ export class WebFetcher {
     url: string,
     contentType: CacheContentType = 'company_page'
   ): Promise<{ content: string; contentType: CacheContentType; fromCache: boolean }> {
+    // Validate URL before any fetch path (Firecrawl or built-in)
+    await validateUrl(url)
     const now = new Date().toISOString()
     const cached = await db
       .select()

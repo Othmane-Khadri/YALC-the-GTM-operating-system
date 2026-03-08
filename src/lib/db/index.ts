@@ -4,8 +4,12 @@ import * as schema from './schema'
 
 const DATABASE_URL = process.env.DATABASE_URL ?? 'file:./gtm-os.db'
 
-const client = createClient({ url: DATABASE_URL })
+const client = createClient({
+  url: DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+})
 
+export { client as rawClient }
 export const db = drizzle(client, { schema })
 
 // Create FTS5 virtual table for knowledge search (idempotent)

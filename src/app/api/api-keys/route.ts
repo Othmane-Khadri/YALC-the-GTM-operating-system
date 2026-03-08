@@ -3,6 +3,9 @@ import { db } from '@/lib/db'
 import { apiConnections } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { encrypt } from '@/lib/crypto'
+import { PROVIDER_LABELS, type ApiProvider } from '@/lib/ai/types'
+
+const VALID_PROVIDERS = new Set(Object.keys(PROVIDER_LABELS))
 
 export async function GET() {
   const connections = await db.select({
@@ -19,6 +22,16 @@ export async function POST(req: NextRequest) {
   const { provider, key } = await req.json() as {
     provider: string
     key: string
+  }
+
+  if (!provider || !VALID_PROVIDERS.has(provider)) {
+    return Response.json(
+      { error: `Invalid provider. Must be one of: ${[...VALID_PROVIDERS].join(', ')}` },
+      { status: 400 }
+    )
+  }
+  if (!key || typeof key !== 'string' || key.length > 500) {
+    return Response.json({ error: 'Invalid API key' }, { status: 400 })
   }
 
   const encryptedKey = encrypt(key)

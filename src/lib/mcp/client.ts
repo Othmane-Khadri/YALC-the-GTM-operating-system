@@ -2,6 +2,21 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import type { McpServerConfig, McpConnection, McpToolDefinition } from './types'
+import { validateUrl } from '../web/url-validator'
+
+// Only these commands are allowed for stdio MCP servers.
+// Extend this list as needed — never allow arbitrary binaries.
+const ALLOWED_COMMANDS = new Set([
+  'npx', 'node', 'uvx', 'uv', 'docker', 'python3', 'python',
+  'deno', 'bun',
+])
+
+// Only these env vars are forwarded to child processes.
+// Server secrets (ANTHROPIC_API_KEY, ENCRYPTION_KEY, etc.) are never leaked.
+const ALLOWED_CHILD_ENV_VARS = new Set([
+  'PATH', 'HOME', 'USER', 'SHELL', 'LANG', 'TERM',
+  'NODE_ENV', 'npm_config_prefix',
+])
 
 class McpConnectionManager {
   private connections = new Map<string, { client: Client; connection: McpConnection }>()
@@ -11,12 +26,38 @@ class McpConnectionManager {
 
     let transport
     if (config.transport === 'stdio') {
+      const cmd = config.command!
+      // Only allow bare command names — reject paths to prevent trojan binaries
+      if (cmd.includes('/') || cmd.includes('\\')) {
+        throw new Error(
+          `Blocked: command "${cmd}" contains path separators. ` +
+          `Only bare command names are allowed (e.g., "npx", "node").`
+        )
+      }
+      if (!ALLOWED_COMMANDS.has(cmd)) {
+        throw new Error(
+          `Blocked: command "${cmd}" is not in the allowlist. ` +
+          `Allowed: ${[...ALLOWED_COMMANDS].join(', ')}`
+        )
+      }
+
+      // Build a minimal env — never spread process.env
+      const childEnv: Record<string, string> = {}
+      for (const key of ALLOWED_CHILD_ENV_VARS) {
+        if (process.env[key]) childEnv[key] = process.env[key]!
+      }
+      // Merge user-supplied env vars (these are stored encrypted in the DB)
+      if (config.env) {
+        Object.assign(childEnv, config.env)
+      }
+
       transport = new StdioClientTransport({
-        command: config.command!,
+        command: cmd,
         args: config.args ?? [],
-        env: { ...process.env, ...(config.env ?? {}) } as Record<string, string>,
+        env: childEnv,
       })
     } else {
+      await validateUrl(config.url!)
       transport = new SSEClientTransport(new URL(config.url!))
     }
 

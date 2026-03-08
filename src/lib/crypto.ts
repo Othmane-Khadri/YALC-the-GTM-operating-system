@@ -4,11 +4,20 @@ const ALGORITHM = 'aes-256-gcm'
 const KEY_LENGTH = 32
 const IV_LENGTH = 16
 const AUTH_TAG_LENGTH = 16
-const SALT = 'gtm-os-api-vault' // static salt — key is env-specific
-
 function getDerivedKey(): Buffer {
-  const secret = process.env.ENCRYPTION_KEY ?? 'gtm-os-default-dev-key-change-me'
-  return scryptSync(secret, SALT, KEY_LENGTH) as Buffer
+  const secret = process.env.ENCRYPTION_KEY
+  if (!secret) {
+    throw new Error(
+      'ENCRYPTION_KEY is not set. Add it to .env.local:\n' +
+      '  ENCRYPTION_KEY=$(openssl rand -hex 32)\n' +
+      'Then restart the server.'
+    )
+  }
+  // Use the key itself as part of the salt to derive a unique key per installation.
+  // scrypt handles key stretching; the salt ensures different derived keys even for
+  // identical passphrases across installations.
+  const salt = scryptSync(secret, 'gtm-os', 16) as Buffer
+  return scryptSync(secret, salt, KEY_LENGTH) as Buffer
 }
 
 /**

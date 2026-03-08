@@ -10,6 +10,11 @@ out
 .env.local
 .env
 
+# Credential files — NEVER commit these
+client_secret*.json
+*.credentials.json
+service-account*.json
+
 # Database
 *.db
 *.db-shm

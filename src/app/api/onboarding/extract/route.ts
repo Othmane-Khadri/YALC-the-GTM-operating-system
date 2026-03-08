@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server'
 import { getAnthropicClient, PLANNER_MODEL } from '@/lib/ai/client'
+import { validateUrl, UrlValidationError } from '@/lib/web/url-validator'
 
 export const runtime = 'nodejs'
 
@@ -39,15 +40,21 @@ export async function POST(req: NextRequest) {
         send({ type: 'status', message: 'Analyzing your website...' })
         if (websiteUrl) {
           try {
-            const res = await fetch(websiteUrl, {
+            const validatedUrl = await validateUrl(websiteUrl)
+            const res = await fetch(validatedUrl.toString(), {
               headers: { 'User-Agent': 'GTM-OS/1.0' },
               signal: AbortSignal.timeout(10000),
             })
             const html = await res.text()
             const text = stripHtml(html)
             if (text) contextParts.push(`## Website Content (${websiteUrl})\n${text}`)
-          } catch {
-            // Website fetch failed — continue with what we have
+          } catch (err) {
+            if (err instanceof UrlValidationError) {
+              send({ type: 'error', message: `URL blocked: ${err.message}` })
+              controller.close()
+              return
+            }
+            // Network/timeout failure — continue with what we have
           }
         }
 

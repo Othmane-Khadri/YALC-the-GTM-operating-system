@@ -4,8 +4,14 @@ import { mcpManager } from './client'
 import type { McpToolDefinition } from './types'
 import type { ColumnDef } from '@/lib/ai/types'
 
+function sanitizeToolName(name: string): string {
+  // Strip characters that could cause ID collisions or path traversal
+  return name.replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 128)
+}
+
 function createMcpExecutor(tool: McpToolDefinition): StepExecutor {
-  const executorId = `mcp:${tool.serverId}:${tool.name}`
+  const safeName = sanitizeToolName(tool.name)
+  const executorId = `mcp:${tool.serverId}:${safeName}`
 
   return {
     id: executorId,
@@ -71,6 +77,12 @@ export function registerMcpTools(tools: McpToolDefinition[]): void {
   const registry = getRegistry()
   for (const tool of tools) {
     const executor = createMcpExecutor(tool)
+    // Prevent MCP tools from shadowing built-in providers
+    const existing = registry.getAll().find(p => p.id === executor.id)
+    if (existing && !existing.id.startsWith('mcp:')) {
+      console.warn(`[MCP] Skipping tool "${tool.name}" — would shadow built-in provider "${existing.id}"`)
+      continue
+    }
     registry.register(executor)
   }
 }
