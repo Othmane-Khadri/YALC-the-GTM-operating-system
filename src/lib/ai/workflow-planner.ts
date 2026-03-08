@@ -129,10 +129,14 @@ export function buildSystemPrompt(
 ## Your Knowledge Base (use this context when planning workflows)
 
 ${knowledgeChunks
-  .map(
-    (chunk) => `### ${chunk.title} (${chunk.type})
-${chunk.snippet}`
-  )
+  .map((chunk) => {
+    // For small docs (< 4000 chars), inject the full text instead of a snippet
+    const content =
+      chunk.extractedText && chunk.textLength && chunk.textLength < 4000
+        ? chunk.extractedText
+        : chunk.snippet
+    return `### ${chunk.title} (${chunk.type})\n${content}`
+  })
   .join('\n\n')}`
       : ''
 

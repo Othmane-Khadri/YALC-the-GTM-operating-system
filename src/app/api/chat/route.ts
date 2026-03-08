@@ -26,12 +26,14 @@ async function searchKnowledge(query: string): Promise<KnowledgeChunk[]> {
   try {
     const results = await rawClient.execute({
       sql: `SELECT ki.id, ki.title, ki.type,
-                   snippet(knowledge_fts, 2, '', '', '...', 25) as snippet
+                   snippet(knowledge_fts, 2, '', '', '...', 64) as snippet,
+                   ki.extracted_text,
+                   LENGTH(ki.extracted_text) as text_length
             FROM knowledge_fts
             JOIN knowledge_items ki ON ki.id = knowledge_fts.item_id
             WHERE knowledge_fts MATCH ?
             ORDER BY rank
-            LIMIT 3`,
+            LIMIT 5`,
       args: [query],
     })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -40,6 +42,8 @@ async function searchKnowledge(query: string): Promise<KnowledgeChunk[]> {
       title: row.title as string,
       type: row.type as KnowledgeChunk['type'],
       snippet: row.snippet as string,
+      extractedText: row.extracted_text as string,
+      textLength: row.text_length as number,
     }))
   } catch {
     // FTS table might be empty on first run — not an error

@@ -12,6 +12,7 @@ interface GenerateLeadsParams {
   batchIndex: number
   totalRequested: number
   frameworkContext?: string
+  knowledgeContext?: string
   provider?: string
 }
 
@@ -40,6 +41,7 @@ export async function generateMockLeads(params: GenerateLeadsParams): Promise<Re
     batchIndex,
     totalRequested,
     frameworkContext,
+    knowledgeContext,
   } = params
 
   // Check if provider has a real API key
@@ -58,6 +60,7 @@ Description: ${workflowDescription}
 Batch: ${batchIndex + 1} (generating ${batchSize} leads, ${totalRequested} total)
 
 ${frameworkContext ? `\n## User's Business Context\n${frameworkContext}\n` : ''}
+${knowledgeContext ? `\n## User's Knowledge Base\nUse this to match leads to their actual ICP and industry:\n${knowledgeContext}\n` : ''}
 
 Generate exactly ${batchSize} realistic leads with these columns:
 ${columnSpec}

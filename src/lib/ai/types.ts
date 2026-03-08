@@ -104,7 +104,9 @@ export interface KnowledgeChunk {
   itemId: string
   title: string
   type: KnowledgeType
-  snippet: string  // Relevant excerpt from extracted text
+  snippet: string           // Relevant excerpt from extracted text
+  extractedText?: string    // Full text (included when doc is small enough)
+  textLength?: number       // Length of full extracted_text
 }
 
 // ─── API Connection Types ─────────────────────────────────────────────────────
