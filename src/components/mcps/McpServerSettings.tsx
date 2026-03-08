@@ -38,7 +38,7 @@ export default function McpServerSettings() {
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-white p-6">
+    <div className="rounded-3xl border border-border bg-white p-6">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-bold text-text-primary">GTM-OS as MCP Server</h3>
@@ -50,7 +50,7 @@ export default function McpServerSettings() {
           onClick={handleToggle}
           className={cn(
             'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
-            enabled ? 'bg-[var(--matcha-600)]' : 'bg-[var(--surface-2)]'
+            enabled ? 'bg-[var(--success)]' : 'bg-[var(--surface-2)]'
           )}
         >
           <span
@@ -102,7 +102,7 @@ export default function McpServerSettings() {
             <div className="space-y-1.5 mt-1">
               {TOOLS.map(tool => (
                 <div key={tool.id} className="flex items-center gap-2 text-xs">
-                  <div className="w-2 h-2 rounded-full bg-[var(--matcha-600)]" />
+                  <div className="w-2 h-2 rounded-full bg-[var(--success)]" />
                   <code className="text-text-primary">{tool.label}</code>
                 </div>
               ))}
@@ -110,7 +110,7 @@ export default function McpServerSettings() {
           </div>
 
           <div className="flex items-center gap-2 text-xs">
-            <span className="h-2 w-2 rounded-full bg-[var(--matcha-600)]" />
+            <span className="h-2 w-2 rounded-full bg-[var(--success)]" />
             <span className="text-text-muted">Server active</span>
           </div>
         </div>

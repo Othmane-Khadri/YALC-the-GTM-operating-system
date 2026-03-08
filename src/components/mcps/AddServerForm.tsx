@@ -49,7 +49,7 @@ export function AddServerForm({ onAdded }: AddServerFormProps) {
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-white p-6">
+    <div className="rounded-3xl border border-border bg-white p-6">
       <h2 className="text-sm font-bold text-text-primary mb-4">Add MCP Server</h2>
 
       <div className="space-y-4">

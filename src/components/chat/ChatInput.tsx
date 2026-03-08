@@ -52,7 +52,7 @@ export function ChatInput({ onSubmit }: ChatInputProps) {
 
   return (
     <div className="border-t px-8 py-5 border-border bg-white">
-      <div className="flex items-end gap-3 rounded-2xl border px-5 py-4 transition-all duration-200 shadow-sm bg-surface-3 border-border focus-within:border-blueberry-600 focus-within:shadow-[0_0_0_3px_rgba(56,89,249,0.06)]">
+      <div className="flex items-end gap-3 rounded-3xl border px-5 py-4 transition-all duration-200 shadow-sm bg-surface-3 border-border focus-within:border-accent focus-within:shadow-[0_0_0_3px_rgba(214,51,132,0.06)]">
         <textarea
           ref={textareaRef}
           value={value}
@@ -61,22 +61,25 @@ export function ChatInput({ onSubmit }: ChatInputProps) {
           placeholder="Describe your GTM goal..."
           disabled={isStreaming}
           rows={1}
-          className="flex-1 resize-none bg-transparent text-sm leading-relaxed outline-none disabled:opacity-50 text-text-primary caret-blueberry-600 min-h-[28px] max-h-[200px]"
+          className="flex-1 resize-none bg-transparent text-sm leading-relaxed outline-none disabled:opacity-50 text-text-primary caret-accent min-h-[28px] max-h-[200px]"
         />
 
         <button
           onClick={handleSubmit}
           disabled={!canSubmit}
           className={cn(
-            "flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-xl text-sm font-bold transition-all duration-150",
+            "flex-shrink-0 flex items-center justify-center w-11 h-11 rounded-xl text-sm font-bold transition-colors duration-150",
             canSubmit
-              ? "bg-text-primary text-background cursor-pointer hover:scale-105"
+              ? "bg-text-primary text-background cursor-pointer hover:bg-text-secondary"
               : "bg-surface-2 text-text-muted cursor-not-allowed"
           )}
           title="Send (Enter)"
         >
           {isStreaming ? (
-            <span className="animate-spin text-sm">◌</span>
+            <svg className="animate-spin" width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" opacity="0.25"/>
+              <path d="M14 8a6 6 0 00-6-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
           ) : (
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M8 13V3M8 3L3 8M8 3L13 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>

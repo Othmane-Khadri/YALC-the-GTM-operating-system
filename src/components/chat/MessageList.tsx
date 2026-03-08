@@ -21,9 +21,9 @@ const ACTION_CARDS = [
         <path d="M10 7v6M7 10h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
       </svg>
     ),
-    iconBg: 'var(--matcha-50)',
-    iconColor: 'var(--matcha-600)',
-    accent: 'var(--matcha-600)',
+    iconBg: 'var(--success-light)',
+    iconColor: 'var(--success)',
+    accent: 'var(--success)',
     title: 'Find companies',
     description: 'Find 50 SaaS companies in France hiring for sales roles',
   },
@@ -34,9 +34,9 @@ const ACTION_CARDS = [
         <path d="M7 8h6M7 11h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
       </svg>
     ),
-    iconBg: 'var(--blueberry-50)',
-    iconColor: 'var(--blueberry-600)',
-    accent: 'var(--blueberry-600)',
+    iconBg: 'var(--accent-light)',
+    iconColor: 'var(--accent)',
+    accent: 'var(--accent)',
     title: 'Enrich your list',
     description: 'Enrich my lead list with tech stack and decision maker emails',
   },
@@ -46,9 +46,9 @@ const ACTION_CARDS = [
         <path d="M10 3l2 4 4.5.7-3.25 3.2.8 4.6L10 13.2 5.95 15.5l.8-4.6L3.5 7.7 8 7z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
       </svg>
     ),
-    iconBg: 'var(--dragonfruit-50)',
-    iconColor: 'var(--dragonfruit-600)',
-    accent: 'var(--dragonfruit-600)',
+    iconBg: 'var(--accent-light)',
+    iconColor: 'var(--accent-dark)',
+    accent: 'var(--accent-dark)',
     title: 'Qualify ICP',
     description: 'Qualify 200 companies against my ICP for enterprise accounts',
   },
@@ -70,7 +70,7 @@ export function MessageList({ onApproveWorkflow }: MessageListProps) {
       <div className="flex-1 flex flex-col items-center justify-center gap-10 px-8 py-16">
         {/* Wordmark */}
         <div className="text-center flex flex-col gap-3">
-          <div className="font-bold text-text-primary tracking-[-0.04em] text-[60px] leading-none">
+          <div className="font-bold font-display text-text-primary tracking-[-0.04em] text-[60px] leading-none">
             Yalc
           </div>
           <div className="text-text-muted text-base italic tracking-wide">
@@ -86,7 +86,7 @@ export function MessageList({ onApproveWorkflow }: MessageListProps) {
           {ACTION_CARDS.map((card) => (
             <button
               key={card.title}
-              className="text-left rounded-2xl border transition-all duration-200 bg-surface-3 border-border p-6 hover:bg-white hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] hover:-translate-y-0.5"
+              className="text-left rounded-3xl border transition-all duration-200 bg-surface-3 border-border p-6 hover:bg-white hover:shadow-[0_4px_16px_rgba(0,0,0,0.06)] hover:-translate-y-0.5"
               style={{ '--accent': card.accent } as React.CSSProperties}
               onClick={() => {
                 const event = new CustomEvent('set-input', { detail: card.description })
@@ -141,7 +141,7 @@ export function MessageList({ onApproveWorkflow }: MessageListProps) {
       {isStreaming && !streamingText && (
         <div className="flex justify-start">
           <div className="px-1 py-2 text-sm flex items-center gap-2 text-text-muted">
-            <span className="animate-pulse text-matcha-600">●</span>
+            <span className="animate-pulse text-success">●</span>
             <span>thinking...</span>
           </div>
         </div>

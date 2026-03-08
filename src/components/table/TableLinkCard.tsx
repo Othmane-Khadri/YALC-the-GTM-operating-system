@@ -12,11 +12,11 @@ interface TableLinkCardProps {
 
 export function TableLinkCard({ resultSetId, tableName, rowCount, columns, previewRows }: TableLinkCardProps) {
   return (
-    <div className="rounded-2xl border overflow-hidden mt-3 animate-slide-up bg-white border-border max-w-2xl shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+    <div className="rounded-3xl border overflow-hidden mt-3 animate-slide-up bg-white border-border max-w-2xl shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
       {/* Header */}
       <div className="px-6 pt-5 pb-4">
         <div className="flex items-center gap-2">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-matcha-600">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-success">
             <rect x="2" y="2" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.5"/>
             <rect x="10" y="2" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.5"/>
             <rect x="2" y="10" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.5"/>

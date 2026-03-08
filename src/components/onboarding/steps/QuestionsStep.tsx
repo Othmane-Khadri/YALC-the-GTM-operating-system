@@ -83,7 +83,7 @@ export function QuestionsStep() {
           A few more questions...
         </h2>
         <div className="flex items-center gap-3 text-sm mt-8 text-text-muted">
-          <span className="animate-pulse text-blueberry-600 text-[10px]">●</span>
+          <span className="animate-pulse text-accent text-[10px]">●</span>
           Generating personalized questions...
         </div>
       </div>
@@ -127,7 +127,7 @@ export function QuestionsStep() {
       </div>
       <div className="mb-8 w-full h-0.5 bg-border rounded-full">
         <div
-          className="h-full bg-blueberry-600 rounded-full transition-[width] duration-300"
+          className="h-full bg-accent rounded-full transition-[width] duration-300"
           style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
         />
       </div>
@@ -153,7 +153,7 @@ export function QuestionsStep() {
                 className={cn(
                   "w-full text-left px-5 py-4 rounded-xl border text-sm transition-all duration-150 text-text-primary",
                   answer === opt
-                    ? "border-blueberry-600 bg-blueberry-50"
+                    ? "border-accent bg-accent-light"
                     : "border-border bg-surface-3"
                 )}
               >

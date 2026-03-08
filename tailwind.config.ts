@@ -9,55 +9,58 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        mono: ['"Space Mono"', 'monospace'],
-        sans: ['"Space Mono"', 'monospace'],
+        sans: ['var(--font-inter)', 'Inter', 'sans-serif'],
+        display: ['var(--font-dm-sans)', 'DM Sans', 'sans-serif'],
+        mono: ['monospace'],
       },
       colors: {
-        background: '#F9F8F6',
-        surface: '#F4F3F0',
-        'surface-2': '#EEE9DF',
-        'surface-3': '#FEFDFB',
-        border: '#E6E8EC',
-        'border-subtle': '#D1CDC7',
-        'text-primary': '#1B1A18',
-        'text-secondary': '#525A69',
-        'text-muted': '#7B7974',
-        blueberry: {
-          50: '#E8EDFE',
-          300: '#7FA0F8',
-          600: '#3859F9',
-          800: '#0053B5',
+        // Backgrounds
+        background: '#f7f7f5',
+        surface: '#f7f7f5',
+        'surface-2': '#f2f0e9',
+        'surface-3': '#ffffff',
+
+        // Borders
+        border: '#eeeeee',
+        'border-subtle': '#e4e4e0',
+
+        // Text
+        'text-primary': '#111111',
+        'text-secondary': '#666666',
+        'text-muted': '#767676',
+
+        // Primary accent
+        accent: {
+          DEFAULT: '#d63384',
+          dark: '#8b1a5c',
+          light: '#fce7f6',
         },
-        matcha: {
-          50: '#E8F5EF',
-          300: '#6ee7b0',
-          600: '#02693E',
+
+        // Success
+        success: {
+          DEFAULT: '#16a34a',
+          light: '#e8f5ef',
         },
-        tangerine: {
-          50: '#FEF3E8',
-          300: '#fed7a0',
-          600: '#FF7614',
-          700: '#C34E1B',
+
+        // Warning
+        warning: {
+          DEFAULT: '#f59e0b',
+          dark: '#b45309',
+          light: '#fef3e8',
         },
-        pomegranate: {
-          300: '#fca5a5',
-          600: '#ef4444',
+
+        // Error
+        error: {
+          DEFAULT: '#ef4444',
+          light: '#fef2f2',
         },
-        dragonfruit: {
-          50: '#FCE7F6',
-          200: '#fce7f6',
-          600: '#8B045C',
-          800: '#8B045C',
-        },
-        lemon: {
-          50: '#FEFCE8',
-          300: '#fef08a',
-          600: '#CBD810',
-        },
-        oat: {
-          100: '#F3F2ED',
-          200: '#EEE9DF',
-        },
+      },
+      borderRadius: {
+        card: '24px',
+      },
+      boxShadow: {
+        card: '0 2px 2px rgba(0, 0, 0, 0.05)',
+        'card-hover': '0 4px 12px rgba(0, 0, 0, 0.08)',
       },
       animation: {
         'pulse-slow': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',

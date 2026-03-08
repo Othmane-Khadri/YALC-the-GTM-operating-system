@@ -67,12 +67,12 @@ export function TableHeader({ onDoneReviewing, isLearning }: TableHeaderProps) {
 
       {/* Quality badge */}
       {qualityIssues.critical > 0 && (
-        <a href="/reviews" className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold bg-pomegranate/15 text-pomegranate">
+        <a href="/reviews" className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold bg-error/15 text-error">
           {qualityIssues.critical} critical
         </a>
       )}
       {qualityIssues.critical === 0 && qualityIssues.warning > 0 && (
-        <a href="/reviews" className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold bg-tangerine/15 text-tangerine">
+        <a href="/reviews" className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold bg-warning/15 text-warning">
           {qualityIssues.warning} warning{qualityIssues.warning !== 1 ? 's' : ''}
         </a>
       )}
@@ -83,19 +83,19 @@ export function TableHeader({ onDoneReviewing, isLearning }: TableHeaderProps) {
           {approvedPct > 0 && (
             <div
               className="h-full transition-all duration-300"
-              style={{ width: `${approvedPct}%`, backgroundColor: 'var(--matcha-600)' }}
+              style={{ width: `${approvedPct}%`, backgroundColor: 'var(--success)' }}
             />
           )}
           {rejectedPct > 0 && (
             <div
               className="h-full transition-all duration-300"
-              style={{ width: `${rejectedPct}%`, backgroundColor: 'var(--pomegranate-600)' }}
+              style={{ width: `${rejectedPct}%`, backgroundColor: 'var(--error)' }}
             />
           )}
           {flaggedPct > 0 && (
             <div
               className="h-full transition-all duration-300"
-              style={{ width: `${flaggedPct}%`, backgroundColor: 'var(--tangerine-600)' }}
+              style={{ width: `${flaggedPct}%`, backgroundColor: 'var(--warning)' }}
             />
           )}
         </div>
@@ -117,7 +117,10 @@ export function TableHeader({ onDoneReviewing, isLearning }: TableHeaderProps) {
       >
         {isLearning ? (
           <span className="flex items-center gap-2">
-            <span className="animate-spin text-xs">◌</span>
+            <svg className="animate-spin" width="12" height="12" viewBox="0 0 14 14" fill="none">
+              <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.5" opacity="0.25"/>
+              <path d="M12.5 7a5.5 5.5 0 00-5.5-5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
             Analyzing...
           </span>
         ) : (

@@ -1,8 +1,75 @@
 'use client'
 
 import type { WorkflowDefinition, WorkflowStepType } from '@/lib/ai/types'
-import { STEP_TYPE_ICONS } from '@/lib/ai/types'
 import { cn } from '@/lib/utils'
+
+function IconSearch() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <circle cx="6" cy="6" r="4" stroke="currentColor" strokeWidth="1.5"/>
+      <path d="M9 9l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+function IconBolt() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M7.5 1.5L3 8h4l-.5 4.5L11 6H7l.5-4.5z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+function IconBrain() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M7 12V7.5M5 7.5C3.5 7.5 2 6.5 2 5s1.5-3 3-3c.4 0 .8.1 1.1.2A2.5 2.5 0 019 2c1.5 0 3 1.5 3 3s-1.5 2.5-3 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M4.5 9.5L7 7.5l2.5 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+function IconFunnel() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M2 3h10L8.5 7.5V11L5.5 12V7.5L2 3z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+function IconExport() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <path d="M7 9V2M7 2L4 5M7 2l3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M2 9v2.5h10V9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+function Spinner({ className }: { className?: string }) {
+  return (
+    <svg className={cn("animate-spin", className)} width="14" height="14" viewBox="0 0 14 14" fill="none">
+      <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.5" opacity="0.25"/>
+      <path d="M12.5 7a5.5 5.5 0 00-5.5-5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  )
+}
+
+function IconPlay() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <path d="M3 1.5l7 4.5-7 4.5V1.5z" fill="currentColor"/>
+    </svg>
+  )
+}
+
+const STEP_ICONS: Record<WorkflowStepType, React.ReactNode> = {
+  search: <IconSearch />,
+  enrich: <IconBolt />,
+  qualify: <IconBrain />,
+  filter: <IconFunnel />,
+  export: <IconExport />,
+}
 
 interface WorkflowPreviewCardProps {
   workflow: WorkflowDefinition
@@ -12,11 +79,11 @@ interface WorkflowPreviewCardProps {
 }
 
 const STEP_TYPE_STYLES: Record<WorkflowStepType, { bg: string; color: string; label: string }> = {
-  search:  { bg: 'var(--blueberry-50)',   color: 'var(--blueberry-800)', label: 'SEARCH' },
-  enrich:  { bg: 'var(--matcha-50)',      color: 'var(--matcha-600)',    label: 'ENRICH' },
-  qualify: { bg: 'var(--dragonfruit-50)', color: 'var(--dragonfruit-600)', label: 'QUALIFY' },
-  filter:  { bg: 'var(--tangerine-50)',   color: 'var(--tangerine-700)', label: 'FILTER' },
-  export:  { bg: 'var(--lemon-50)',       color: 'var(--lemon-600)',     label: 'EXPORT' },
+  search:  { bg: 'var(--accent-light)',   color: 'var(--accent-dark)', label: 'SEARCH' },
+  enrich:  { bg: 'var(--success-light)',      color: 'var(--success)',    label: 'ENRICH' },
+  qualify: { bg: 'var(--accent-light)', color: 'var(--accent-dark)', label: 'QUALIFY' },
+  filter:  { bg: 'var(--warning-light)',   color: 'var(--warning-dark)', label: 'FILTER' },
+  export:  { bg: 'var(--warning-light)',       color: 'var(--warning-dark)',     label: 'EXPORT' },
 }
 
 const PROVIDER_COLORS: Record<string, string> = {
@@ -38,7 +105,7 @@ export function WorkflowPreviewCard({
   isRunning = false,
 }: WorkflowPreviewCardProps) {
   return (
-    <div className="rounded-2xl border overflow-hidden mt-3 animate-slide-up bg-white border-border max-w-2xl shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+    <div className="rounded-3xl border overflow-hidden mt-3 animate-slide-up bg-white border-border max-w-2xl shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
       {/* Header */}
       <div className="px-6 pt-6 pb-4 border-b border-border-subtle">
         <div className="flex items-start justify-between gap-4">
@@ -63,7 +130,7 @@ export function WorkflowPreviewCard({
             {workflow.requiredApiKeys.map((key) => (
               <span
                 key={key}
-                className="font-bold rounded-lg bg-blueberry-50 text-[var(--blueberry-800)] text-[11px] px-2.5 py-[3px] tracking-wide"
+                className="font-bold rounded-lg bg-accent-light text-[var(--accent-dark)] text-[11px] px-2.5 py-[3px] tracking-wide"
               >
                 {key}
               </span>
@@ -95,8 +162,8 @@ export function WorkflowPreviewCard({
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm">
-                    {STEP_TYPE_ICONS[step.stepType]}
+                  <span className="text-sm flex items-center" style={{ color: typeStyle.color }}>
+                    {STEP_ICONS[step.stepType]}
                   </span>
                   <span className="text-sm font-bold text-text-primary">
                     {step.title}
@@ -142,11 +209,14 @@ export function WorkflowPreviewCard({
         >
           {isRunning ? (
             <>
-              <span className="animate-spin">◌</span>
+              <Spinner />
               Running...
             </>
           ) : (
-            <>▶ Run this workflow</>
+            <>
+              <IconPlay />
+              Run this workflow
+            </>
           )}
         </button>
 

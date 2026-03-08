@@ -41,10 +41,10 @@ export function FeedbackActions({ feedback, onFeedback }: FeedbackActionsProps) 
       <button
         onClick={() => handleClick('approved')}
         className={cn(
-          "flex items-center justify-center w-6 h-6 rounded-md transition-all duration-150",
+          "flex items-center justify-center w-8 h-8 rounded-md transition-all duration-150",
           feedback === 'approved'
-            ? "bg-matcha-50 text-matcha-600"
-            : "text-text-muted hover:text-matcha-600 hover:bg-matcha-50"
+            ? "bg-success-light text-success"
+            : "text-text-muted hover:text-success hover:bg-success-light"
         )}
         title="Approve"
       >
@@ -53,10 +53,10 @@ export function FeedbackActions({ feedback, onFeedback }: FeedbackActionsProps) 
       <button
         onClick={() => handleClick('rejected')}
         className={cn(
-          "flex items-center justify-center w-6 h-6 rounded-md transition-all duration-150",
+          "flex items-center justify-center w-8 h-8 rounded-md transition-all duration-150",
           feedback === 'rejected'
-            ? "bg-red-50 text-pomegranate-600"
-            : "text-text-muted hover:text-pomegranate-600 hover:bg-red-50"
+            ? "bg-error-light text-error"
+            : "text-text-muted hover:text-error hover:bg-error-light"
         )}
         title="Reject"
       >
@@ -65,10 +65,10 @@ export function FeedbackActions({ feedback, onFeedback }: FeedbackActionsProps) 
       <button
         onClick={() => handleClick('flagged')}
         className={cn(
-          "flex items-center justify-center w-6 h-6 rounded-md transition-all duration-150",
+          "flex items-center justify-center w-8 h-8 rounded-md transition-all duration-150",
           feedback === 'flagged'
-            ? "bg-tangerine-50 text-tangerine-600"
-            : "text-text-muted hover:text-tangerine-600 hover:bg-tangerine-50"
+            ? "bg-warning-light text-warning"
+            : "text-text-muted hover:text-warning hover:bg-warning-light"
         )}
         title="Flag for review"
       >

@@ -57,14 +57,14 @@ export function CampaignPreviewCard({ proposal, conversationId, onCreated }: Cam
   }
 
   return (
-    <div className="border rounded-lg p-4 bg-card my-2">
+    <div className="border rounded-lg p-4 bg-white my-2">
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-xs font-medium uppercase tracking-wider text-blueberry">Campaign Proposal</span>
+        <span className="text-xs font-medium uppercase tracking-wider text-accent">Campaign Proposal</span>
       </div>
       <h3 className="font-medium text-sm">{proposal.title}</h3>
-      <p className="text-xs text-muted-foreground mt-1 italic">{proposal.hypothesis}</p>
+      <p className="text-xs text-text-muted mt-1 italic">{proposal.hypothesis}</p>
 
-      <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+      <div className="flex items-center gap-3 mt-2 text-xs text-text-muted">
         <span>Segment: {proposal.targetSegment}</span>
         <span>Channels: {proposal.channels.join(', ')}</span>
       </div>
@@ -72,7 +72,7 @@ export function CampaignPreviewCard({ proposal, conversationId, onCreated }: Cam
       <div className="mt-3 space-y-1">
         <p className="text-xs font-medium">Success Metrics:</p>
         {proposal.successMetrics.map((m, i) => (
-          <div key={i} className="text-xs text-muted-foreground flex items-center gap-2">
+          <div key={i} className="text-xs text-text-muted flex items-center gap-2">
             <span>{m.metric}</span>
             <span className="font-mono">target: {m.target}</span>
           </div>
@@ -82,11 +82,11 @@ export function CampaignPreviewCard({ proposal, conversationId, onCreated }: Cam
       <div className="mt-3 space-y-1">
         <p className="text-xs font-medium">Steps:</p>
         {proposal.steps.map((s, i) => (
-          <div key={i} className="text-xs text-muted-foreground flex items-center gap-2">
+          <div key={i} className="text-xs text-text-muted flex items-center gap-2">
             <span className="w-4 text-right font-mono">{i + 1}.</span>
             <span className="font-mono">{s.skillId}</span>
-            {s.channel && <span className="text-blueberry">[{s.channel}]</span>}
-            {s.approvalRequired !== false && <span className="text-tangerine">(approval)</span>}
+            {s.channel && <span className="text-accent">[{s.channel}]</span>}
+            {s.approvalRequired !== false && <span className="text-warning">(approval)</span>}
           </div>
         ))}
       </div>
@@ -95,7 +95,7 @@ export function CampaignPreviewCard({ proposal, conversationId, onCreated }: Cam
         {created ? (
           <a
             href={`/campaigns/${campaignId}`}
-            className="inline-block px-4 py-2 text-sm font-medium rounded bg-matcha text-white hover:bg-matcha/90"
+            className="inline-block px-4 py-2 text-sm font-medium rounded bg-success text-white hover:bg-success/90"
           >
             View Campaign
           </a>
@@ -103,7 +103,7 @@ export function CampaignPreviewCard({ proposal, conversationId, onCreated }: Cam
           <button
             onClick={handleStart}
             disabled={creating}
-            className="px-4 py-2 text-sm font-medium rounded bg-blueberry text-white hover:bg-blueberry/90 disabled:opacity-50"
+            className="px-4 py-2 text-sm font-medium rounded bg-accent text-white hover:bg-accent/90 disabled:opacity-50"
           >
             {creating ? 'Creating...' : 'Start Campaign'}
           </button>

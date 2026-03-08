@@ -35,13 +35,13 @@ export function TableRowComponent({ row, columns, onFeedback }: TableRowProps) {
     <tr
       className={cn(
         "group transition-all duration-150 border-b border-border-subtle",
-        row.feedback === 'approved' && "border-l-[3px] border-l-matcha-600",
-        row.feedback === 'rejected' && "border-l-[3px] border-l-pomegranate-600 opacity-60",
-        row.feedback === 'flagged' && "border-l-[3px] border-l-tangerine-600",
+        row.feedback === 'approved' && "border-l-[3px] border-l-success",
+        row.feedback === 'rejected' && "border-l-[3px] border-l-error opacity-60",
+        row.feedback === 'flagged' && "border-l-[3px] border-l-warning",
         !row.feedback && "border-l-[3px] border-l-transparent",
-        isSelected && "bg-blueberry-50",
+        isSelected && "bg-accent-light",
         !isSelected && "hover:bg-surface",
-        isFocused && "ring-2 ring-inset ring-blueberry-600",
+        isFocused && "ring-2 ring-inset ring-accent",
       )}
     >
       {/* Checkbox */}
@@ -50,7 +50,7 @@ export function TableRowComponent({ row, columns, onFeedback }: TableRowProps) {
           type="checkbox"
           checked={isSelected}
           onChange={toggleSelect}
-          className="w-3.5 h-3.5 rounded border-border accent-blueberry-600"
+          className="w-3.5 h-3.5 rounded border-border accent-accent"
         />
       </td>
 
@@ -68,7 +68,7 @@ export function TableRowComponent({ row, columns, onFeedback }: TableRowProps) {
 
       {/* Feedback actions — sticky right */}
       <td className="px-3 py-2.5 sticky right-0 bg-white group-hover:bg-surface border-l border-border-subtle"
-        style={isSelected ? { backgroundColor: 'var(--blueberry-50)' } : undefined}
+        style={isSelected ? { backgroundColor: 'var(--accent-light)' } : undefined}
       >
         <FeedbackActions
           feedback={row.feedback}

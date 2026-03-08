@@ -22,15 +22,15 @@ export function McpServerCard({ server, onReconnect, onRemove }: McpServerCardPr
   const [reconnecting, setReconnecting] = useState(false)
 
   const statusColor = server.status === 'connected'
-    ? 'var(--matcha-600)'
+    ? 'var(--success)'
     : server.status === 'error'
-      ? 'var(--pomegranate-600, #dc2626)'
+      ? 'var(--error)'
       : 'var(--text-muted)'
 
   const statusBg = server.status === 'connected'
-    ? 'var(--matcha-50)'
+    ? 'var(--success-light)'
     : server.status === 'error'
-      ? 'var(--pomegranate-50, #fef2f2)'
+      ? 'var(--error-light)'
       : 'var(--surface-2)'
 
   async function handleReconnect() {
@@ -40,7 +40,7 @@ export function McpServerCard({ server, onReconnect, onRemove }: McpServerCardPr
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-white overflow-hidden transition-all duration-200">
+    <div className="rounded-3xl border border-border bg-white overflow-hidden transition-all duration-200 shadow-card hover:shadow-card-hover">
       <div
         className="flex items-center gap-4 px-6 py-5 cursor-pointer hover:bg-surface/50 transition-colors"
         onClick={() => setExpanded(!expanded)}
@@ -112,7 +112,7 @@ export function McpServerCard({ server, onReconnect, onRemove }: McpServerCardPr
                   <span className="text-xs text-text-muted">Remove this server?</span>
                   <button
                     onClick={(e) => { e.stopPropagation(); onRemove(server.id) }}
-                    className="px-3 py-1.5 rounded-lg text-xs font-bold text-[var(--pomegranate-600,#dc2626)] bg-red-50 hover:bg-red-100 transition-colors"
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold text-error bg-error-light hover:bg-error-light/80 transition-colors"
                   >
                     Confirm
                   </button>
@@ -126,7 +126,7 @@ export function McpServerCard({ server, onReconnect, onRemove }: McpServerCardPr
               ) : (
                 <button
                   onClick={(e) => { e.stopPropagation(); setConfirmDelete(true) }}
-                  className="ml-auto px-3 py-1.5 rounded-lg text-xs text-[var(--pomegranate-600,#dc2626)] hover:bg-red-50 transition-colors"
+                  className="ml-auto px-3 py-1.5 rounded-lg text-xs text-error hover:bg-error-light transition-colors"
                 >
                   Remove
                 </button>

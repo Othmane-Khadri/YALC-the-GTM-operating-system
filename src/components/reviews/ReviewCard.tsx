@@ -5,9 +5,9 @@ import type { ReviewRequest } from '@/lib/review/types'
 import { cn } from '@/lib/utils'
 
 const PRIORITY_COLORS: Record<string, { border: string; bg: string; text: string }> = {
-  urgent: { border: 'var(--pomegranate-600, #dc2626)', bg: 'var(--pomegranate-50, #fef2f2)', text: 'var(--pomegranate-600, #dc2626)' },
-  high: { border: 'var(--tangerine-600)', bg: 'var(--tangerine-50)', text: 'var(--tangerine-700)' },
-  normal: { border: 'var(--blueberry-600)', bg: 'var(--blueberry-50)', text: 'var(--blueberry-600)' },
+  urgent: { border: 'var(--error)', bg: 'var(--error-light)', text: 'var(--error)' },
+  high: { border: 'var(--warning)', bg: 'var(--warning-light)', text: 'var(--warning-dark)' },
+  normal: { border: 'var(--accent)', bg: 'var(--accent-light)', text: 'var(--accent)' },
   low: { border: 'var(--border)', bg: 'var(--surface-2)', text: 'var(--text-muted)' },
 }
 
@@ -41,7 +41,7 @@ export function ReviewCard({ review, onUpdate }: ReviewCardProps) {
 
   return (
     <div
-      className="rounded-2xl border border-border bg-white overflow-hidden"
+      className="rounded-3xl border border-border bg-white overflow-hidden"
       style={{ borderLeftWidth: '4px', borderLeftColor: colors.border }}
     >
       <div className="px-6 py-5">
@@ -70,8 +70,8 @@ export function ReviewCard({ review, onUpdate }: ReviewCardProps) {
             <span
               className="font-bold rounded-lg text-[11px] px-2.5 py-[3px]"
               style={{
-                backgroundColor: review.status === 'approved' ? 'var(--matcha-50)' : review.status === 'rejected' ? 'var(--pomegranate-50, #fef2f2)' : 'var(--surface-2)',
-                color: review.status === 'approved' ? 'var(--matcha-600)' : review.status === 'rejected' ? 'var(--pomegranate-600, #dc2626)' : 'var(--text-muted)',
+                backgroundColor: review.status === 'approved' ? 'var(--success-light)' : review.status === 'rejected' ? 'var(--error-light)' : 'var(--surface-2)',
+                color: review.status === 'approved' ? 'var(--success)' : review.status === 'rejected' ? 'var(--error)' : 'var(--text-muted)',
               }}
             >
               {review.status.charAt(0).toUpperCase() + review.status.slice(1)}
@@ -88,7 +88,7 @@ export function ReviewCard({ review, onUpdate }: ReviewCardProps) {
             <button
               onClick={() => setExpanded(!expanded)}
               className="text-xs mt-1 hover:underline"
-              style={{ color: 'var(--blueberry-600)' }}
+              style={{ color: 'var(--accent)' }}
             >
               {expanded ? 'Show less' : 'Show more'}
             </button>
@@ -105,7 +105,7 @@ export function ReviewCard({ review, onUpdate }: ReviewCardProps) {
                   <span className="font-bold text-text-primary">{m.name}:</span>
                   <span className="text-text-secondary">{m.current}</span>
                   <span className="text-text-muted">→</span>
-                  <span style={{ color: m.projected > m.current ? 'var(--matcha-600)' : 'var(--pomegranate-600, #dc2626)' }}>
+                  <span style={{ color: m.projected > m.current ? 'var(--success)' : 'var(--error)' }}>
                     {m.projected}
                   </span>
                 </div>
@@ -132,7 +132,7 @@ export function ReviewCard({ review, onUpdate }: ReviewCardProps) {
                 onClick={() => handleAction('approved')}
                 disabled={acting}
                 className="px-4 py-2 rounded-xl text-xs font-bold transition-colors text-white disabled:opacity-50"
-                style={{ backgroundColor: 'var(--matcha-600)' }}
+                style={{ backgroundColor: 'var(--success)' }}
               >
                 {acting ? '...' : 'Approve'}
               </button>
@@ -140,7 +140,7 @@ export function ReviewCard({ review, onUpdate }: ReviewCardProps) {
                 onClick={() => handleAction('rejected')}
                 disabled={acting}
                 className="px-4 py-2 rounded-xl text-xs font-bold transition-colors text-white disabled:opacity-50"
-                style={{ backgroundColor: 'var(--pomegranate-600, #dc2626)' }}
+                style={{ backgroundColor: 'var(--error)' }}
               >
                 Reject
               </button>
@@ -155,7 +155,7 @@ export function ReviewCard({ review, onUpdate }: ReviewCardProps) {
                 <button
                   onClick={() => setExpanded(true)}
                   className="ml-auto text-xs hover:underline"
-                  style={{ color: 'var(--blueberry-600)' }}
+                  style={{ color: 'var(--accent)' }}
                 >
                   Add notes
                 </button>

@@ -4,44 +4,37 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Clay color system — light mode (warm oat canvas, black type, fruit accents) */
+/* Kiln color system — light mode */
 :root {
-  --background: #F9F8F6;
-  --surface: #F4F3F0;
-  --surface-2: #EEE9DF;
-  --surface-3: #FEFDFB;
-  --border: #E6E8EC;
-  --border-subtle: #D1CDC7;
-  --text-primary: #1B1A18;
-  --text-secondary: #525A69;
-  --text-muted: #7B7974;
-  --blueberry-50: #E8EDFE;
-  --blueberry-300: #7FA0F8;
-  --blueberry-600: #3859F9;
-  --blueberry-800: #0053B5;
-  --matcha-50: #E8F5EF;
-  --matcha-300: #6ee7b0;
-  --matcha-600: #02693E;
-  --tangerine-50: #FEF3E8;
-  --tangerine-600: #FF7614;
-  --tangerine-700: #C34E1B;
-  --pomegranate-600: #ef4444;
-  --dragonfruit-50: #FCE7F6;
-  --dragonfruit-600: #8B045C;
-  --lemon-50: #FEFCE8;
-  --lemon-600: #6B7F00;
-  --oat-100: #F3F2ED;
-  --oat-200: #EEE9DF;
+  --background: #f7f7f5;
+  --surface: #f7f7f5;
+  --surface-2: #f2f0e9;
+  --surface-3: #ffffff;
+  --border: #eeeeee;
+  --border-subtle: #e4e4e0;
+  --text-primary: #111111;
+  --text-secondary: #666666;
+  --text-muted: #767676;
+  --accent: #d63384;
+  --accent-dark: #8b1a5c;
+  --accent-light: #fce7f6;
+  --success: #16a34a;
+  --success-light: #e8f5ef;
+  --warning: #f59e0b;
+  --warning-dark: #b45309;
+  --warning-light: #fef3e8;
+  --error: #ef4444;
+  --error-light: #fef2f2;
 }
 
-/* Ensure Space Mono applies everywhere */
+/* Ensure Inter applies everywhere */
 *,
 *::before,
 *::after {
   box-sizing: border-box;
   padding: 0;
   margin: 0;
-  font-family: var(--font-space-mono), 'Space Mono', monospace;
+  font-family: var(--font-inter), 'Inter', sans-serif;
 }
 
 html {
@@ -61,9 +54,9 @@ body {
   letter-spacing: -0.01em;
 }
 
-/* Selection highlight — blueberry tint */
+/* Selection highlight — accent tint */
 ::selection {
-  background: var(--blueberry-50);
+  background: var(--accent-light);
   color: var(--text-primary);
 }
 
@@ -89,10 +82,10 @@ body {
 }
 
 .streaming-cursor::after {
-  content: '▋';
+  content: '\25CB';
   display: inline;
   animation: blink 1s step-end infinite;
-  color: var(--blueberry-600);
+  color: var(--accent);
 }
 
 /* Message entrance — smooth, confident */
@@ -145,12 +138,12 @@ body {
 
 /* Shared input focus ring */
 .input-focus {
-  @apply focus:border-blueberry-600 focus:ring-[3px] focus:ring-blueberry-600/[0.06] focus:outline-none;
+  @apply focus:border-accent focus:ring-[3px] focus:ring-accent/[0.06] focus:outline-none;
 }
 
 /* Focus styles */
 *:focus-visible {
-  outline: 2px solid var(--blueberry-600);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -170,4 +163,16 @@ body {
 .row-rejected {
   opacity: 0.6;
   transition: opacity 0.3s ease-out;
+}
+
+/* Accessibility: disable animations for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

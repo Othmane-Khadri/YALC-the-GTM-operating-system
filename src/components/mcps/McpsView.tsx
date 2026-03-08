@@ -55,7 +55,7 @@ export function McpsView() {
   return (
     <div className="flex-1 overflow-y-auto p-8" style={{ backgroundColor: 'var(--background)' }}>
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-xl font-bold text-text-primary mb-1">MCP Servers</h1>
+        <h1 className="text-xl font-bold font-display text-text-primary mb-1">MCP Servers</h1>
         <p className="text-sm text-text-secondary mb-8">
           Connect external tools and data sources via the Model Context Protocol.
         </p>
@@ -72,7 +72,7 @@ export function McpsView() {
             ))}
           </div>
         ) : (
-          <div className="rounded-2xl border border-border bg-white p-8 text-center mb-8">
+          <div className="rounded-3xl border border-border bg-white p-8 text-center mb-8">
             <div className="text-sm text-text-secondary max-w-md mx-auto">
               MCP (Model Context Protocol) lets GTM-OS connect to external tools and data sources.
               Add an MCP server to unlock new providers for your workflows.

@@ -9,11 +9,11 @@ interface TableCellProps {
 }
 
 const BADGE_COLORS = [
-  { bg: 'var(--blueberry-50)', color: 'var(--blueberry-800)' },
-  { bg: 'var(--matcha-50)', color: 'var(--matcha-600)' },
-  { bg: 'var(--tangerine-50)', color: 'var(--tangerine-700)' },
-  { bg: 'var(--dragonfruit-50)', color: 'var(--dragonfruit-600)' },
-  { bg: 'var(--lemon-50)', color: 'var(--lemon-600)' },
+  { bg: 'var(--accent-light)', color: 'var(--accent-dark)' },
+  { bg: 'var(--success-light)', color: 'var(--success)' },
+  { bg: 'var(--warning-light)', color: 'var(--warning-dark)' },
+  { bg: 'var(--accent-light)', color: 'var(--accent-dark)' },
+  { bg: 'var(--warning-light)', color: 'var(--warning-dark)' },
 ]
 
 function hashString(str: string): number {
@@ -61,7 +61,7 @@ export function TableCell({ value, type }: TableCellProps) {
           href={strValue}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1 text-blueberry-600 hover:underline truncate max-w-[200px]"
+          className="flex items-center gap-1 text-accent hover:underline truncate max-w-[200px]"
         >
           <span className="truncate">{extractDomain(strValue)}</span>
           <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="flex-shrink-0">
@@ -88,10 +88,10 @@ export function TableCell({ value, type }: TableCellProps) {
       const numVal = typeof value === 'number' ? value : parseInt(strValue, 10) || 0
       const clamped = Math.max(0, Math.min(100, numVal))
       const barColor = clamped > 70
-        ? 'var(--matcha-600)'
+        ? 'var(--success)'
         : clamped >= 40
-          ? 'var(--tangerine-600)'
-          : 'var(--pomegranate-600)'
+          ? 'var(--warning)'
+          : 'var(--error)'
 
       return (
         <div className="flex items-center gap-2">
@@ -103,7 +103,7 @@ export function TableCell({ value, type }: TableCellProps) {
           </div>
           <span className={cn(
             "text-xs font-bold tabular-nums",
-            clamped > 70 ? "text-matcha-600" : clamped >= 40 ? "text-tangerine-600" : "text-pomegranate-600"
+            clamped > 70 ? "text-success" : clamped >= 40 ? "text-warning" : "text-error"
           )}>
             {clamped}
           </span>

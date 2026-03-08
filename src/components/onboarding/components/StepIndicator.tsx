@@ -17,9 +17,9 @@ export function StepIndicator({ currentStep, totalSteps }: StepIndicatorProps) {
             height: '8px',
             backgroundColor:
               i < currentStep
-                ? 'var(--matcha-600)'
+                ? 'var(--success)'
                 : i === currentStep
-                ? 'var(--blueberry-600)'
+                ? 'var(--accent)'
                 : 'var(--border)',
           }}
         />

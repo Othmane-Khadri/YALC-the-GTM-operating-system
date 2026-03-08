@@ -27,9 +27,9 @@ const FILTERS: { value: FeedbackFilter; label: string }[] = [
 const FILTER_COLORS: Record<FeedbackFilter, string> = {
   all: 'var(--text-primary)',
   pending: 'var(--text-muted)',
-  approved: 'var(--matcha-600)',
-  rejected: 'var(--pomegranate-600)',
-  flagged: 'var(--tangerine-600)',
+  approved: 'var(--success)',
+  rejected: 'var(--error)',
+  flagged: 'var(--warning)',
 }
 
 export function TableToolbar({ onBulkFeedback }: TableToolbarProps) {
@@ -96,7 +96,7 @@ export function TableToolbar({ onBulkFeedback }: TableToolbarProps) {
                 onBulkFeedback(Array.from(selectedIds), 'approved')
                 setSelectedIds(new Set())
               }}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold text-matcha-600 bg-matcha-50 hover:bg-matcha-50/80 transition-colors"
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-success bg-success-light hover:bg-success-light/80 transition-colors"
             >
               Approve {selectedIds.size}
             </button>
@@ -105,7 +105,7 @@ export function TableToolbar({ onBulkFeedback }: TableToolbarProps) {
                 onBulkFeedback(Array.from(selectedIds), 'rejected')
                 setSelectedIds(new Set())
               }}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold text-pomegranate-600 bg-red-50 hover:bg-red-50/80 transition-colors"
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-error bg-error-light hover:bg-error-light/80 transition-colors"
             >
               Reject {selectedIds.size}
             </button>

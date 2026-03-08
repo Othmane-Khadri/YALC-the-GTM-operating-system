@@ -128,10 +128,4 @@ export const PROVIDER_LABELS: Record<ApiProvider, string> = {
   openai: 'OpenAI',
 }
 
-export const STEP_TYPE_ICONS: Record<WorkflowStepType, string> = {
-  search: '🔍',
-  enrich: '⚡',
-  qualify: '🧠',
-  filter: '🎯',
-  export: '📤',
-}
+// Step type icons moved to WorkflowPreviewCard as SVG components

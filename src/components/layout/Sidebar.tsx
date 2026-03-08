@@ -86,14 +86,14 @@ function IconCampaigns() {
 }
 
 const NAV_ITEMS = [
-  { id: 'dashboard', label: 'Dashboard', icon: <IconDashboard />, href: '/dashboard', comingSoon: true, accentColor: 'var(--text-muted)', accentBg: 'var(--blueberry-50)' },
-  { id: 'chat', label: 'Chat', icon: <IconChat />, href: '/chat', comingSoon: false, accentColor: 'var(--blueberry-600)', accentBg: 'var(--blueberry-50)' },
-  { id: 'campaigns', label: 'Campaigns', icon: <IconCampaigns />, href: '/campaigns', comingSoon: false, accentColor: 'var(--dragonfruit-600)', accentBg: 'var(--dragonfruit-50)' },
-  { id: 'tables', label: 'Tables', icon: <IconTable />, href: '/tables', comingSoon: false, accentColor: 'var(--matcha-600)', accentBg: 'var(--matcha-50)' },
-  { id: 'reviews', label: 'Reviews', icon: <IconReviews />, href: '/reviews', comingSoon: false, accentColor: 'var(--tangerine-600)', accentBg: 'var(--tangerine-50)' },
-  { id: 'knowledge', label: 'Knowledge Base', icon: <IconKnowledge />, href: '/knowledge', comingSoon: true, accentColor: 'var(--matcha-600)', accentBg: 'var(--matcha-50)' },
-  { id: 'api-keys', label: 'API Keys', icon: <IconKey />, href: '/api-keys', comingSoon: false, accentColor: 'var(--dragonfruit-600)', accentBg: 'var(--dragonfruit-50)' },
-  { id: 'mcps', label: 'MCPs', icon: <IconMcp />, href: '/mcps', comingSoon: false, accentColor: 'var(--tangerine-700)', accentBg: 'var(--tangerine-50)' },
+  { id: 'dashboard', label: 'Dashboard', icon: <IconDashboard />, href: '/dashboard', comingSoon: true, accentColor: 'var(--text-muted)', accentBg: 'var(--accent-light)' },
+  { id: 'chat', label: 'Chat', icon: <IconChat />, href: '/chat', comingSoon: false, accentColor: 'var(--accent)', accentBg: 'var(--accent-light)' },
+  { id: 'campaigns', label: 'Campaigns', icon: <IconCampaigns />, href: '/campaigns', comingSoon: false, accentColor: 'var(--accent-dark)', accentBg: 'var(--accent-light)' },
+  { id: 'tables', label: 'Tables', icon: <IconTable />, href: '/tables', comingSoon: false, accentColor: 'var(--success)', accentBg: 'var(--success-light)' },
+  { id: 'reviews', label: 'Reviews', icon: <IconReviews />, href: '/reviews', comingSoon: false, accentColor: 'var(--warning)', accentBg: 'var(--warning-light)' },
+  { id: 'knowledge', label: 'Knowledge Base', icon: <IconKnowledge />, href: '/knowledge', comingSoon: false, accentColor: 'var(--success)', accentBg: 'var(--success-light)' },
+  { id: 'api-keys', label: 'API Keys', icon: <IconKey />, href: '/api-keys', comingSoon: false, accentColor: 'var(--accent-dark)', accentBg: 'var(--accent-light)' },
+  { id: 'mcps', label: 'MCPs', icon: <IconMcp />, href: '/mcps', comingSoon: false, accentColor: 'var(--warning-dark)', accentBg: 'var(--warning-light)' },
   { id: 'settings', label: 'Settings', icon: <IconSettings />, href: '/settings', comingSoon: true, accentColor: 'var(--text-muted)', accentBg: 'var(--surface-2)' },
 ]
 
@@ -110,7 +110,7 @@ function ReviewsBadge() {
   if (count === 0) return null
 
   return (
-    <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-tangerine text-white text-[10px] font-bold px-1">
+    <span className="flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-warning text-white text-[10px] font-bold px-1">
       {count}
     </span>
   )
@@ -131,7 +131,7 @@ export function Sidebar({ activeItem = 'chat' }: { activeItem?: string }) {
         {!collapsed && (
           <div>
             <div className="font-bold uppercase text-text-primary tracking-[0.15em] text-[11px]">Yalc</div>
-            <div className="text-text-muted text-[10px] mt-0.5">Day 4 of 30</div>
+            <div className="text-text-muted text-[10px] mt-0.5">Day 5 of 30</div>
           </div>
         )}
       </div>
@@ -170,7 +170,7 @@ export function Sidebar({ activeItem = 'chat' }: { activeItem?: string }) {
                   <span className="flex-1 truncate text-sm">{item.label}</span>
                   {item.id === 'reviews' && <ReviewsBadge />}
                   {item.comingSoon && (
-                    <span className="font-bold rounded-md bg-oat-200 text-text-muted text-[9px] px-2 py-0.5 tracking-wide">SOON</span>
+                    <span className="font-bold rounded-md bg-surface-2 text-text-muted text-[9px] px-2 py-0.5 tracking-wide">SOON</span>
                   )}
                 </>
               )}

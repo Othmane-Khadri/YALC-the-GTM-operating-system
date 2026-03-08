@@ -66,7 +66,7 @@ function TagField({ label, values, onChange }: {
         {values.map((tag, i) => (
           <span
             key={i}
-            className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-bold bg-blueberry-50 text-[var(--blueberry-800)]"
+            className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-bold bg-accent-light text-[var(--accent-dark)]"
           >
             {tag}
             <button

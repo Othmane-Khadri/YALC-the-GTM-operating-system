@@ -42,7 +42,7 @@ export function ReviewsView() {
   return (
     <div className="flex-1 overflow-y-auto p-8" style={{ backgroundColor: 'var(--background)' }}>
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-xl font-bold text-text-primary mb-1">Reviews</h1>
+        <h1 className="text-xl font-bold font-display text-text-primary mb-1">Reviews</h1>
         <p className="text-sm text-text-secondary mb-8">
           Human-in-the-loop review queue for approvals, nudges, and escalations.
         </p>
@@ -62,7 +62,7 @@ export function ReviewsView() {
             >
               {tab.label}
               {tab.value === 'pending' && pendingCount > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 text-[10px] rounded-full" style={{ backgroundColor: 'var(--tangerine-600)', color: 'white' }}>
+                <span className="ml-1.5 px-1.5 py-0.5 text-[10px] rounded-full" style={{ backgroundColor: 'var(--warning)', color: 'white' }}>
                   {pendingCount}
                 </span>
               )}
@@ -74,7 +74,7 @@ export function ReviewsView() {
         {loading ? (
           <div className="text-text-muted text-sm animate-pulse">Loading reviews...</div>
         ) : reviews.length === 0 ? (
-          <div className="rounded-2xl border border-border bg-white p-8 text-center">
+          <div className="rounded-3xl border border-border bg-white p-8 text-center">
             <div className="text-sm text-text-secondary max-w-md mx-auto">
               Nothing to review right now. Review items from campaigns, intelligence, and data quality checks will appear here.
             </div>

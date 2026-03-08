@@ -85,9 +85,9 @@ const PROVIDERS: ProviderConfig[] = [
 ]
 
 const STATUS_STYLES = {
-  active: { bg: 'var(--matcha-50)', color: 'var(--matcha-600)', label: 'Connected' },
-  invalid: { bg: 'var(--pomegranate-50, #fef2f2)', color: 'var(--pomegranate-600)', label: 'Invalid' },
-  expired: { bg: 'var(--pomegranate-50, #fef2f2)', color: 'var(--pomegranate-600)', label: 'Expired' },
+  active: { bg: 'var(--success-light)', color: 'var(--success)', label: 'Connected' },
+  invalid: { bg: 'var(--error-light)', color: 'var(--error)', label: 'Invalid' },
+  expired: { bg: 'var(--error-light)', color: 'var(--error)', label: 'Expired' },
   none: { bg: 'var(--surface-2)', color: 'var(--text-muted)', label: 'Not Connected' },
 }
 
@@ -165,7 +165,7 @@ export function ApiKeysView() {
   return (
     <div className="flex-1 overflow-y-auto p-8" style={{ backgroundColor: 'var(--background)' }}>
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-xl font-bold text-text-primary mb-1">API Keys</h1>
+        <h1 className="text-xl font-bold font-display text-text-primary mb-1">API Keys</h1>
         <p className="text-sm text-text-secondary mb-8">
           Connect your data providers. Keys are encrypted with AES-256-GCM.
         </p>
@@ -180,7 +180,7 @@ export function ApiKeysView() {
             return (
               <div
                 key={provider.id}
-                className="rounded-2xl border border-border bg-white overflow-hidden transition-all duration-200"
+                className="rounded-3xl border border-border bg-white overflow-hidden transition-all duration-200 shadow-card hover:shadow-card-hover"
               >
                 {/* Provider card header */}
                 <div
@@ -193,7 +193,7 @@ export function ApiKeysView() {
                 >
                   <div
                     className="flex items-center justify-center w-10 h-10 rounded-xl"
-                    style={{ backgroundColor: status === 'active' ? 'var(--matcha-50)' : 'var(--surface-2)', color: status === 'active' ? 'var(--matcha-600)' : 'var(--text-muted)' }}
+                    style={{ backgroundColor: status === 'active' ? 'var(--success-light)' : 'var(--surface-2)', color: status === 'active' ? 'var(--success)' : 'var(--text-muted)' }}
                   >
                     {provider.icon}
                   </div>
@@ -270,7 +270,7 @@ export function ApiKeysView() {
                                 <span className="text-xs text-text-muted">Remove this key?</span>
                                 <button
                                   onClick={() => handleDelete(provider.id)}
-                                  className="px-3 py-1.5 rounded-lg text-xs font-bold text-pomegranate-600 bg-red-50 hover:bg-red-100 transition-colors"
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold text-error bg-error-light hover:bg-error-light/80 transition-colors"
                                 >
                                   Confirm
                                 </button>
@@ -284,7 +284,7 @@ export function ApiKeysView() {
                             ) : (
                               <button
                                 onClick={() => setConfirmDelete(provider.id)}
-                                className="ml-auto px-3 py-1.5 rounded-lg text-xs text-pomegranate-600 hover:bg-red-50 transition-colors"
+                                className="ml-auto px-3 py-1.5 rounded-lg text-xs text-error hover:bg-error-light transition-colors"
                               >
                                 Remove
                               </button>

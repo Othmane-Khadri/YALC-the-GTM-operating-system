@@ -92,14 +92,14 @@ export function ProcessingStep() {
             key={i}
             className={cn(
               "flex items-center gap-3 text-sm fade-in-up",
-              status.done ? "text-matcha-600" : "text-text-primary"
+              status.done ? "text-success" : "text-text-primary"
             )}
             style={{ animationDelay: `${i * 0.15}s`, animationFillMode: 'backwards' }}
           >
             {status.done ? (
               <span className="text-base leading-none">✓</span>
             ) : (
-              <span className="animate-pulse text-blueberry-600 text-[10px]">●</span>
+              <span className="animate-pulse text-accent text-[10px]">●</span>
             )}
             <span style={{ fontWeight: status.done ? 400 : 500 }}>{status.message}</span>
           </div>
@@ -107,15 +107,15 @@ export function ProcessingStep() {
 
         {statuses.length === 0 && !error && (
           <div className="flex items-center gap-3 text-sm text-text-muted">
-            <span className="animate-pulse text-blueberry-600 text-[10px]">●</span>
+            <span className="animate-pulse text-accent text-[10px]">●</span>
             Starting extraction...
           </div>
         )}
       </div>
 
       {error && (
-        <div className="mt-8 p-5 rounded-2xl bg-pomegranate-600/[0.08] border border-pomegranate-600/[0.15]">
-          <div className="text-sm font-bold mb-1 text-pomegranate-600">Something went wrong</div>
+        <div className="mt-8 p-5 rounded-3xl bg-error/[0.08] border border-error/[0.15]">
+          <div className="text-sm font-bold mb-1 text-error">Something went wrong</div>
           <div className="text-xs text-text-secondary">{error}</div>
           <button
             onClick={() => setStep(3)}

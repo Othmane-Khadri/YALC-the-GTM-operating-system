@@ -1,12 +1,18 @@
 import type { Metadata } from 'next'
-import { Space_Mono } from 'next/font/google'
+import { DM_Sans, Inter } from 'next/font/google'
 import './globals.css'
 
-const spaceMono = Space_Mono({
+const dmSans = DM_Sans({
   subsets: ['latin'],
-  weight: ['400', '700'],
-  style: ['normal', 'italic'],
-  variable: '--font-space-mono',
+  weight: ['400', '500', '700', '800', '900'],
+  variable: '--font-dm-sans',
+  display: 'swap',
+})
+
+const inter = Inter({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-inter',
   display: 'swap',
 })
 
@@ -22,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={spaceMono.variable}>
+    <html lang="en" className={`${dmSans.variable} ${inter.variable}`}>
       <body className="bg-background text-text-primary antialiased">
         {children}
       </body>

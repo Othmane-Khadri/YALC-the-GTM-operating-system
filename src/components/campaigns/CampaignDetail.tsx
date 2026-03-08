@@ -61,26 +61,26 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
   }
 
   if (loading) {
-    return <div className="p-6 text-sm text-muted-foreground animate-pulse">Loading campaign...</div>
+    return <div className="p-6 text-sm text-text-muted animate-pulse">Loading campaign...</div>
   }
 
   if (!campaign) {
-    return <div className="p-6 text-sm text-pomegranate">Campaign not found</div>
+    return <div className="p-6 text-sm text-error">Campaign not found</div>
   }
 
   const nextStep = campaign.steps.find(s => s.status === 'pending' || s.status === 'approved')
 
   return (
     <div className="flex flex-col h-full p-6 space-y-6 overflow-y-auto">
-      <div className="border rounded-lg p-5 bg-card">
+      <div className="border rounded-lg p-5 bg-white">
         <div className="flex items-center justify-between mb-2">
-          <h1 className="text-xl font-bold font-mono">{campaign.title}</h1>
+          <h1 className="text-xl font-bold font-display">{campaign.title}</h1>
           <div className="flex items-center gap-2">
             {(campaign.status === 'active' || campaign.status === 'paused') && (
               <button
                 onClick={handleAnalyze}
                 disabled={analyzing}
-                className="px-3 py-1.5 text-sm rounded bg-blueberry text-white hover:bg-blueberry/90 disabled:opacity-50"
+                className="px-3 py-1.5 text-sm rounded bg-accent text-white hover:bg-accent/90 disabled:opacity-50"
               >
                 {analyzing ? 'Analyzing...' : 'Analyze Campaign'}
               </button>
@@ -88,7 +88,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
             {nudgeCount !== null && nudgeCount > 0 && (
               <a
                 href="/reviews"
-                className="px-2 py-1 text-xs rounded-full bg-dragonfruit/20 text-dragonfruit"
+                className="px-2 py-1 text-xs rounded-full bg-accent/20 text-accent-dark"
               >
                 {nudgeCount} nudge{nudgeCount !== 1 ? 's' : ''}
               </a>
@@ -96,7 +96,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
             {campaign.status === 'active' && (
               <button
                 onClick={() => handleAction('pause')}
-                className="px-3 py-1.5 text-sm rounded bg-tangerine text-white hover:bg-tangerine/90"
+                className="px-3 py-1.5 text-sm rounded bg-warning text-white hover:bg-warning/90"
               >
                 Pause
               </button>
@@ -104,33 +104,33 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
             {campaign.status === 'paused' && (
               <button
                 onClick={() => handleAction('resume')}
-                className="px-3 py-1.5 text-sm rounded bg-matcha text-white hover:bg-matcha/90"
+                className="px-3 py-1.5 text-sm rounded bg-success text-white hover:bg-success/90"
               >
                 Resume
               </button>
             )}
           </div>
         </div>
-        <p className="text-sm text-muted-foreground italic">Hypothesis: {campaign.hypothesis}</p>
-        <div className="flex items-center gap-3 mt-3 text-xs text-muted-foreground">
+        <p className="text-sm text-text-muted italic">Hypothesis: {campaign.hypothesis}</p>
+        <div className="flex items-center gap-3 mt-3 text-xs text-text-muted">
           {campaign.targetSegment && <span>Segment: {campaign.targetSegment}</span>}
           {campaign.channels.length > 0 && <span>Channels: {campaign.channels.join(', ')}</span>}
         </div>
       </div>
 
       {campaign.successMetrics.length > 0 && (
-        <div className="border rounded-lg p-4 bg-card">
-          <h2 className="text-sm font-medium font-mono mb-3">Success Metrics</h2>
+        <div className="border rounded-lg p-4 bg-white">
+          <h2 className="text-sm font-medium font-display mb-3">Success Metrics</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {campaign.successMetrics.map((m: SuccessMetric, i: number) => (
-              <div key={i} className="flex items-center justify-between p-2 rounded bg-muted/50">
+              <div key={i} className="flex items-center justify-between p-2 rounded bg-surface-2/50">
                 <span className="text-sm">{m.metric}</span>
                 <div className="text-right">
                   <span className="text-sm font-mono">
                     {m.actual ?? '---'} / {m.target}
                   </span>
                   {m.baseline !== null && (
-                    <span className="text-xs text-muted-foreground ml-2">(baseline: {m.baseline})</span>
+                    <span className="text-xs text-text-muted ml-2">(baseline: {m.baseline})</span>
                   )}
                 </div>
               </div>
@@ -141,11 +141,11 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
 
       <div>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-medium font-mono">Steps</h2>
+          <h2 className="text-sm font-medium font-display">Steps</h2>
           {nextStep && (
             <button
               onClick={() => handleExecuteStep(nextStep.id)}
-              className="px-3 py-1.5 text-sm font-medium rounded bg-blueberry text-white hover:bg-blueberry/90"
+              className="px-3 py-1.5 text-sm font-medium rounded bg-accent text-white hover:bg-accent/90"
             >
               Execute Next Step
             </button>
@@ -166,14 +166,14 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
       {campaign.verdict && (
         <div className={cn(
           'border rounded-lg p-4',
-          campaign.verdict.result === 'confirmed' && 'border-matcha bg-matcha/5',
-          campaign.verdict.result === 'disproven' && 'border-pomegranate bg-pomegranate/5',
-          campaign.verdict.result === 'inconclusive' && 'border-tangerine bg-tangerine/5',
+          campaign.verdict.result === 'confirmed' && 'border-success bg-success/5',
+          campaign.verdict.result === 'disproven' && 'border-error bg-error/5',
+          campaign.verdict.result === 'inconclusive' && 'border-warning bg-warning/5',
         )}>
-          <h2 className="text-sm font-medium font-mono mb-1">
+          <h2 className="text-sm font-medium font-display mb-1">
             Verdict: {campaign.verdict.result.toUpperCase()}
           </h2>
-          <p className="text-sm text-muted-foreground">{campaign.verdict.evidence}</p>
+          <p className="text-sm text-text-muted">{campaign.verdict.evidence}</p>
         </div>
       )}
     </div>

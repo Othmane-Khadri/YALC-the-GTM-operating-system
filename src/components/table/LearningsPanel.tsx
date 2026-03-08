@@ -21,9 +21,9 @@ interface LearningsPanelProps {
 }
 
 const CONFIDENCE_STYLES: Record<string, { bg: string; color: string; label: string }> = {
-  hypothesis: { bg: 'var(--blueberry-50)', color: 'var(--blueberry-800)', label: 'Hypothesis' },
-  validated: { bg: 'var(--matcha-50)', color: 'var(--matcha-600)', label: 'Validated' },
-  proven: { bg: 'var(--matcha-50)', color: 'var(--matcha-600)', label: 'Proven' },
+  hypothesis: { bg: 'var(--accent-light)', color: 'var(--accent-dark)', label: 'Hypothesis' },
+  validated: { bg: 'var(--success-light)', color: 'var(--success)', label: 'Validated' },
+  proven: { bg: 'var(--success-light)', color: 'var(--success)', label: 'Proven' },
 }
 
 export function LearningsPanel({ patterns, stats, onSave, onDismiss, onUpdatePatterns }: LearningsPanelProps) {
@@ -53,7 +53,7 @@ export function LearningsPanel({ patterns, stats, onSave, onDismiss, onUpdatePat
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-4 max-h-[85vh] flex flex-col modal-enter">
+      <div className="bg-white rounded-3xl shadow-xl max-w-2xl w-full mx-4 max-h-[85vh] flex flex-col modal-enter">
         {/* Header */}
         <div className="px-8 pt-8 pb-5 border-b border-border-subtle">
           <h2 className="text-lg font-bold text-text-primary">
@@ -63,16 +63,16 @@ export function LearningsPanel({ patterns, stats, onSave, onDismiss, onUpdatePat
           {/* Stats bar */}
           <div className="flex items-center gap-4 mt-3">
             <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'var(--matcha-600)' }} />
+              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'var(--success)' }} />
               <span className="text-xs text-text-secondary tabular-nums">{stats.approved} approved</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'var(--pomegranate-600)' }} />
+              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'var(--error)' }} />
               <span className="text-xs text-text-secondary tabular-nums">{stats.rejected} rejected</span>
             </div>
             {stats.flagged > 0 && (
               <div className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'var(--tangerine-600)' }} />
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: 'var(--warning)' }} />
                 <span className="text-xs text-text-secondary tabular-nums">{stats.flagged} flagged</span>
               </div>
             )}
@@ -149,21 +149,21 @@ export function LearningsPanel({ patterns, stats, onSave, onDismiss, onUpdatePat
                       className={cn(
                         "px-3 py-1.5 rounded-lg text-xs font-bold transition-colors",
                         pattern.confirmed
-                          ? "bg-matcha-50 text-matcha-600"
-                          : "bg-surface text-text-muted hover:bg-matcha-50 hover:text-matcha-600"
+                          ? "bg-success-light text-success"
+                          : "bg-surface text-text-muted hover:bg-success-light hover:text-success"
                       )}
                     >
                       {pattern.confirmed ? '✓ Confirmed' : 'Confirm'}
                     </button>
                     <button
                       onClick={() => handleConfirmToggle(index)}
-                      className="px-3 py-1.5 rounded-lg text-xs text-text-muted hover:text-pomegranate-600 transition-colors"
+                      className="px-3 py-1.5 rounded-lg text-xs text-text-muted hover:text-error transition-colors"
                     >
                       Not quite
                     </button>
                     <button
                       onClick={() => startEdit(index)}
-                      className="px-3 py-1.5 rounded-lg text-xs text-text-muted hover:text-blueberry-600 transition-colors"
+                      className="px-3 py-1.5 rounded-lg text-xs text-text-muted hover:text-accent transition-colors"
                     >
                       Edit
                     </button>

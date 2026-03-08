@@ -65,9 +65,9 @@ export function FileDropZone({ files, onFilesChange }: FileDropZoneProps) {
           input.click()
         }}
         className={cn(
-          "rounded-2xl border-2 border-dashed cursor-pointer transition-all duration-200 p-12 text-center",
+          "rounded-3xl border-2 border-dashed cursor-pointer transition-all duration-200 p-12 text-center",
           isDragOver
-            ? "border-blueberry-600 bg-blueberry-600/[0.04]"
+            ? "border-accent bg-accent/[0.04]"
             : "border-border-subtle bg-surface"
         )}
       >
@@ -94,7 +94,7 @@ export function FileDropZone({ files, onFilesChange }: FileDropZoneProps) {
               </span>
               <button
                 onClick={(e) => { e.stopPropagation(); removeFile(i) }}
-                className="text-xs px-2.5 py-1 rounded-lg transition-colors duration-150 text-pomegranate-600 hover:bg-pomegranate-600/[0.08]"
+                className="text-xs px-2.5 py-1 rounded-lg transition-colors duration-150 text-error hover:bg-error/[0.08]"
               >
                 Remove
               </button>

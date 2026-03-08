@@ -15,12 +15,12 @@ const STATUS_TABS: { label: string; value: CampaignStatus | 'all' }[] = [
 ]
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: 'bg-muted text-muted-foreground',
-  planning: 'bg-blueberry/20 text-blueberry',
-  active: 'bg-matcha/20 text-matcha',
-  paused: 'bg-tangerine/20 text-tangerine',
-  completed: 'bg-muted text-muted-foreground',
-  failed: 'bg-pomegranate/20 text-pomegranate',
+  draft: 'bg-surface-2 text-text-muted',
+  planning: 'bg-accent/20 text-accent',
+  active: 'bg-success/20 text-success',
+  paused: 'bg-warning/20 text-warning',
+  completed: 'bg-surface-2 text-text-muted',
+  failed: 'bg-error/20 text-error',
 }
 
 export function CampaignsView() {
@@ -48,14 +48,14 @@ export function CampaignsView() {
     <div className="flex flex-col h-full p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-mono">Campaigns</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1 className="text-2xl font-bold font-display">Campaigns</h1>
+          <p className="text-sm text-text-muted mt-1">
             Hypothesis-driven campaigns that compose skills into multi-step execution.
           </p>
         </div>
         <Link
           href="/"
-          className="px-4 py-2 text-sm font-medium rounded-md bg-blueberry text-white hover:bg-blueberry/90"
+          className="px-4 py-2 text-sm font-medium rounded-md bg-text-primary text-white hover:bg-accent/90"
         >
           New Campaign
         </Link>
@@ -69,8 +69,8 @@ export function CampaignsView() {
             className={cn(
               'px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
               filter === tab.value
-                ? 'bg-blueberry text-white'
-                : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                ? 'bg-text-primary text-white'
+                : 'bg-surface-2 text-text-muted hover:bg-surface-2/80'
             )}
           >
             {tab.label}
@@ -80,10 +80,10 @@ export function CampaignsView() {
 
       <div className="flex-1 overflow-y-auto space-y-3">
         {loading ? (
-          <div className="text-sm text-muted-foreground animate-pulse">Loading campaigns...</div>
+          <div className="text-sm text-text-muted animate-pulse">Loading campaigns...</div>
         ) : campaignsList.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-            <p className="text-lg font-mono">No campaigns yet</p>
+          <div className="flex flex-col items-center justify-center h-64 text-text-muted">
+            <p className="text-lg font-display">No campaigns yet</p>
             <p className="text-sm mt-1">Start a chat and describe a multi-step outreach effort to create your first campaign.</p>
           </div>
         ) : (
@@ -97,7 +97,7 @@ export function CampaignsView() {
               <Link
                 key={campaign.id}
                 href={`/campaigns/${campaign.id}`}
-                className="block border rounded-lg p-4 hover:border-blueberry/50 transition-colors bg-card"
+                className="block border rounded-lg p-4 hover:border-accent/50 transition-colors bg-white"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
@@ -107,24 +107,24 @@ export function CampaignsView() {
                         {campaign.status}
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                    <p className="text-xs text-text-muted mt-1 line-clamp-1">
                       {campaign.hypothesis}
                     </p>
                   </div>
-                  <div className="text-right text-xs text-muted-foreground whitespace-nowrap">
+                  <div className="text-right text-xs text-text-muted whitespace-nowrap">
                     {campaign.channels?.join(', ')}
                   </div>
                 </div>
 
                 {totalSteps > 0 && (
                   <div className="mt-3">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                    <div className="flex items-center justify-between text-xs text-text-muted mb-1">
                       <span>{completedSteps}/{totalSteps} steps</span>
                       <span>{progressPct}%</span>
                     </div>
-                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-surface-2 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-matcha rounded-full transition-all"
+                        className="h-full bg-success rounded-full transition-all"
                         style={{ width: `${progressPct}%` }}
                       />
                     </div>
@@ -132,7 +132,7 @@ export function CampaignsView() {
                 )}
 
                 {campaign.metrics && (campaign.metrics.sent > 0 || campaign.metrics.totalLeads > 0) && (
-                  <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
+                  <div className="mt-2 flex items-center gap-4 text-xs text-text-muted">
                     <span>{campaign.metrics.totalLeads} leads</span>
                     <span>{campaign.metrics.sent} sent</span>
                     <span>{campaign.metrics.replied} replied</span>
