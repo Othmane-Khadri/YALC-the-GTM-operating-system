@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils'
 interface FrameworkEditorProps {
   framework: Partial<GTMFramework>
   onChange: (updated: Partial<GTMFramework>) => void
+  className?: string
 }
 
 function Section({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
@@ -95,7 +96,7 @@ function TagField({ label, values, onChange }: {
   )
 }
 
-export function FrameworkEditor({ framework, onChange }: FrameworkEditorProps) {
+export function FrameworkEditor({ framework, onChange, className }: FrameworkEditorProps) {
   const company = framework.company || {} as GTMFramework['company']
   const positioning = framework.positioning || {} as GTMFramework['positioning']
   const segments = framework.segments || []
@@ -110,7 +111,7 @@ export function FrameworkEditor({ framework, onChange }: FrameworkEditorProps) {
   }
 
   return (
-    <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+    <div className={cn("space-y-3 pr-1", className ?? "max-h-[60vh] overflow-y-auto")}>
       <Section title="Company Overview" defaultOpen={true}>
         <Field label="Company Name" value={company.name || ''} onChange={(v) => updateCompany('name', v)} />
         <Field label="Industry" value={company.industry || ''} onChange={(v) => updateCompany('industry', v)} />

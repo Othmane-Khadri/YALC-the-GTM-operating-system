@@ -94,7 +94,7 @@ const NAV_ITEMS = [
   { id: 'knowledge', label: 'Knowledge Base', icon: <IconKnowledge />, href: '/knowledge', comingSoon: false, accentColor: 'var(--success)', accentBg: 'var(--success-light)' },
   { id: 'api-keys', label: 'API Keys', icon: <IconKey />, href: '/api-keys', comingSoon: false, accentColor: 'var(--accent-dark)', accentBg: 'var(--accent-light)' },
   { id: 'mcps', label: 'MCPs', icon: <IconMcp />, href: '/mcps', comingSoon: false, accentColor: 'var(--warning-dark)', accentBg: 'var(--warning-light)' },
-  { id: 'settings', label: 'Settings', icon: <IconSettings />, href: '/settings', comingSoon: true, accentColor: 'var(--text-muted)', accentBg: 'var(--surface-2)' },
+  { id: 'settings', label: 'Settings', icon: <IconSettings />, href: '/settings', comingSoon: false, accentColor: 'var(--text-secondary)', accentBg: 'var(--surface-2)' },
 ]
 
 function ReviewsBadge() {
