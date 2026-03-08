@@ -11,6 +11,20 @@ export const SEARCH_COLUMNS: ColumnDef[] = [
   { key: 'description', label: 'Description', type: 'text' },
 ]
 
+// Provider-specific search columns (falls back to SEARCH_COLUMNS if not mapped)
+export const SEARCH_COLUMNS_BY_PROVIDER: Record<string, ColumnDef[]> = {
+  'apify-leads': [
+    { key: 'name', label: 'Name', type: 'text' },
+    { key: 'email', label: 'Email', type: 'text' },
+    { key: 'title', label: 'Job Title', type: 'text' },
+    { key: 'company', label: 'Company', type: 'text' },
+    { key: 'linkedin_url', label: 'LinkedIn', type: 'url' },
+    { key: 'industry', label: 'Industry', type: 'badge' },
+    { key: 'location', label: 'Location', type: 'text' },
+    { key: 'company_size', label: 'Company Size', type: 'text' },
+  ],
+}
+
 // Enrichment columns by provider
 export const ENRICH_COLUMNS: Record<string, ColumnDef[]> = {
   apollo: [
@@ -30,6 +44,16 @@ export const ENRICH_COLUMNS: Record<string, ColumnDef[]> = {
   hunter: [
     { key: 'email_verified', label: 'Email Verified', type: 'badge' },
     { key: 'confidence', label: 'Confidence', type: 'score' },
+  ],
+  'apify-leads': [
+    { key: 'email', label: 'Email', type: 'text' as ColumnType },
+    { key: 'linkedin_url', label: 'LinkedIn', type: 'url' as ColumnType },
+    { key: 'title', label: 'Job Title', type: 'text' as ColumnType },
+  ],
+  'apify-linkedin-engagement': [
+    { key: 'headline', label: 'Headline', type: 'text' as ColumnType },
+    { key: 'reaction_type', label: 'Reaction', type: 'badge' as ColumnType },
+    { key: 'comment_text', label: 'Comment', type: 'text' as ColumnType },
   ],
 }
 
@@ -55,7 +79,7 @@ export function buildColumnsFromSteps(steps: ProposedStep[]): ColumnDef[] {
   for (const step of steps) {
     switch (step.stepType) {
       case 'search':
-        addColumns(SEARCH_COLUMNS)
+        addColumns(SEARCH_COLUMNS_BY_PROVIDER[step.provider] ?? SEARCH_COLUMNS)
         break
       case 'enrich':
         addColumns(ENRICH_COLUMNS[step.provider] ?? [])

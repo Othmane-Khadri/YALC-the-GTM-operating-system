@@ -114,6 +114,7 @@ export interface KnowledgeChunk {
 export type ApiProvider =
   | 'apollo'
   | 'anthropic'
+  | 'apify'
   | 'firecrawl'
   | 'builtwith'
   | 'clay'
@@ -123,6 +124,7 @@ export type ApiProvider =
 export const PROVIDER_LABELS: Record<ApiProvider, string> = {
   apollo: 'Apollo.io',
   anthropic: 'Anthropic (Claude)',
+  apify: 'Apify',
   firecrawl: 'Firecrawl',
   builtwith: 'BuiltWith',
   clay: 'Clay',
