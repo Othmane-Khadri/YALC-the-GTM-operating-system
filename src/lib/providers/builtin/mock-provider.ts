@@ -10,6 +10,10 @@ export class MockProvider implements StepExecutor {
   type = 'mock' as const
   capabilities: ProviderCapability[] = ['search', 'enrich', 'qualify', 'filter', 'export', 'custom']
 
+  isAvailable(): boolean {
+    return true // always available
+  }
+
   canExecute(_step: WorkflowStepInput): boolean {
     return true // fallback — can handle anything
   }
@@ -32,6 +36,7 @@ export class MockProvider implements StepExecutor {
         batchIndex: i,
         totalRequested: targetRows,
         frameworkContext: context.frameworkContext,
+        knowledgeContext: context.knowledgeContext,
         provider: step.provider,
       })
 

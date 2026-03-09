@@ -86,9 +86,10 @@ class ProviderRegistry {
    * the workflow planner's system prompt.
    */
   getAvailableForPlanner(): string {
-    const providers = this.getAll()
-    if (providers.length === 0) return 'No providers available.'
-    return providers
+    // Only show providers whose credentials are actually available
+    const available = Array.from(this.providers.values()).filter(p => p.isAvailable())
+    if (available.length === 0) return 'No providers available.'
+    return available
       .map(p => `- ${p.name} (${p.id}): ${p.description} [capabilities: ${p.capabilities.join(', ')}]`)
       .join('\n')
   }

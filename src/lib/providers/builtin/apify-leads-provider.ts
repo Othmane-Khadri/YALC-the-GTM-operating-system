@@ -1,5 +1,6 @@
 import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability } from '../types'
 import type { ColumnDef } from '@/lib/ai/types'
+import { getApifyToken } from './apify-token'
 
 const APIFY_LEADS_ACTOR = 'code_crafter/leads-finder'
 const POLL_INTERVAL_MS = 3000
@@ -23,16 +24,17 @@ export class ApifyLeadsProvider implements StepExecutor {
   type = 'builtin' as const
   capabilities: ProviderCapability[] = ['search']
 
+  isAvailable(): boolean {
+    return !!process.env.APIFY_TOKEN
+  }
+
   canExecute(step: WorkflowStepInput): boolean {
     return step.provider === this.id ||
       (step.stepType === 'search' && step.provider === 'apify')
   }
 
   async *execute(step: WorkflowStepInput, context: ExecutionContext): AsyncIterable<RowBatch> {
-    const apiToken = process.env.APIFY_TOKEN
-    if (!apiToken) {
-      throw new Error('APIFY_TOKEN environment variable is required for real lead search. Set it in .env.local')
-    }
+    const apiToken = await getApifyToken()
 
     // Map workflow step config to Apify actor input
     const config = step.config ?? {}

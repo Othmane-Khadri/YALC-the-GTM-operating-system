@@ -13,6 +13,7 @@ export interface RowBatch {
 // ExecutionContext — passed into every execute() call
 export interface ExecutionContext {
   frameworkContext: string
+  knowledgeContext?: string
   apiKey?: string
   mcpClient?: unknown
   batchSize: number
@@ -50,6 +51,8 @@ export interface StepExecutor {
   type: 'builtin' | 'mcp' | 'mock'
   capabilities: ProviderCapability[]
 
+  /** Whether this provider's credentials are available (default: true) */
+  isAvailable(): boolean
   canExecute(step: WorkflowStepInput): boolean
   execute(step: WorkflowStepInput, context: ExecutionContext): AsyncIterable<RowBatch>
   getColumnDefinitions(step: WorkflowStepInput): ColumnDef[]

@@ -20,6 +20,10 @@ function createMcpExecutor(tool: McpToolDefinition): StepExecutor {
     type: 'mcp',
     capabilities: inferCapabilities(tool),
 
+    isAvailable(): boolean {
+      return true // MCP servers are always available once registered
+    },
+
     canExecute(step: WorkflowStepInput): boolean {
       return step.provider === executorId || step.provider === tool.name
     },

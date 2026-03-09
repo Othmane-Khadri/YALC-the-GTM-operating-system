@@ -1,5 +1,6 @@
 import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability } from '../types'
 import type { ColumnDef } from '@/lib/ai/types'
+import { getApifyToken } from './apify-token'
 
 const ENGAGERS_ACTOR = 'scraping_solutions/linkedin-posts-engagers-likers-and-commenters-no-cookies'
 const PROFILE_ACTOR = 'harvestapi/linkedin-profile-scraper'
@@ -24,15 +25,16 @@ export class ApifyLinkedInEngagementProvider implements StepExecutor {
   type = 'builtin' as const
   capabilities: ProviderCapability[] = ['search', 'enrich']
 
+  isAvailable(): boolean {
+    return !!process.env.APIFY_TOKEN
+  }
+
   canExecute(step: WorkflowStepInput): boolean {
     return step.provider === this.id || step.provider === 'linkedin-engagement'
   }
 
   async *execute(step: WorkflowStepInput, context: ExecutionContext): AsyncIterable<RowBatch> {
-    const token = process.env.APIFY_TOKEN
-    if (!token) {
-      throw new Error('APIFY_TOKEN environment variable is required for LinkedIn engagement scraping. Set it in .env.local')
-    }
+    const token = await getApifyToken()
 
     const config = step.config ?? {}
     const postUrl = (config.postUrl ?? config.url ?? config.linkedinUrl) as string | undefined

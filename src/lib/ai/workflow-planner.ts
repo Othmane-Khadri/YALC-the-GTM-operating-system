@@ -35,7 +35,7 @@ export const proposeWorkflowTool: Anthropic.Tool = {
             },
             provider: {
               type: 'string',
-              description: 'Data provider or tool. E.g.: apollo, firecrawl, anthropic, builtwith, hunter, clay, internal',
+              description: 'Data provider ID from the registry. Use the exact ID from Available Providers in the system prompt. Never use names not listed there.',
             },
             description: {
               type: 'string',
