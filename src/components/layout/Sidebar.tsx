@@ -131,7 +131,7 @@ export function Sidebar({ activeItem = 'chat' }: { activeItem?: string }) {
         {!collapsed && (
           <div>
             <div className="font-bold uppercase text-text-primary tracking-[0.15em] text-[11px]">Yalc</div>
-            <div className="text-text-muted text-[10px] mt-0.5">Day 5 of 30</div>
+            <div className="text-text-muted text-[10px] mt-0.5">Day 7 of 30</div>
           </div>
         )}
       </div>

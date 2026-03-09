@@ -87,6 +87,11 @@ const STEP_TYPE_STYLES: Record<WorkflowStepType, { bg: string; color: string; la
 }
 
 const PROVIDER_COLORS: Record<string, string> = {
+  // Registered providers (actual IDs in the registry)
+  'mock':                       '#525A69',
+  'apify-leads':                '#FF6B35',
+  'apify-linkedin-engagement':  '#0077B5',
+  // Legacy names (kept for graceful degradation)
   apollo:     '#C34E1B',
   firecrawl:  '#02693E',
   anthropic:  '#3859F9',
