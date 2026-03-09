@@ -49,6 +49,10 @@ export const proposeWorkflowTool: Anthropic.Tool = {
               type: 'string',
               description: 'Provider key needed (omit if not required)',
             },
+            config: {
+              type: 'object',
+              description: 'Provider-specific configuration object. Pass the keys documented in each provider\'s description (e.g. query, location, urls, postUrl). Required for most Apify providers.',
+            },
           },
           required: ['stepIndex', 'title', 'stepType', 'provider', 'description'],
         },

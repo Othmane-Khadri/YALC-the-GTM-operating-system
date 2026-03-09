@@ -1,7 +1,7 @@
 import type { StepExecutor, ProviderMetadata } from './types'
 import { MockProvider } from './builtin/mock-provider'
-import { ApifyLeadsProvider } from './builtin/apify-leads-provider'
-import { ApifyLinkedInEngagementProvider } from './builtin/apify-linkedin-engagement-provider'
+import { APIFY_CATALOG } from './builtin/apify-catalog'
+import { createApifyProvider } from './builtin/apify-factory'
 
 class ProviderRegistry {
   private providers = new Map<string, StepExecutor>()
@@ -100,8 +100,9 @@ const registry = new ProviderRegistry()
 
 // Auto-register providers
 registry.register(new MockProvider())
-registry.register(new ApifyLeadsProvider())
-registry.register(new ApifyLinkedInEngagementProvider())
+for (const entry of APIFY_CATALOG) {
+  registry.register(createApifyProvider(entry))
+}
 
 export function getRegistry(): ProviderRegistry {
   return registry

@@ -1,5 +1,6 @@
 import type { ColumnDef, ColumnType } from '@/lib/ai/types'
 import type { ProposedStep } from '@/lib/ai/types'
+import { APIFY_CATALOG } from '@/lib/providers/builtin/apify-catalog'
 
 // Default columns for search steps
 export const SEARCH_COLUMNS: ColumnDef[] = [
@@ -11,18 +12,21 @@ export const SEARCH_COLUMNS: ColumnDef[] = [
   { key: 'description', label: 'Description', type: 'text' },
 ]
 
+// Build provider-specific columns from Apify catalog
+const catalogSearchColumns: Record<string, ColumnDef[]> = {}
+const catalogEnrichColumns: Record<string, ColumnDef[]> = {}
+for (const entry of APIFY_CATALOG) {
+  if (entry.capabilities.includes('search')) {
+    catalogSearchColumns[entry.id] = entry.columns
+  }
+  if (entry.capabilities.includes('enrich')) {
+    catalogEnrichColumns[entry.id] = entry.columns
+  }
+}
+
 // Provider-specific search columns (falls back to SEARCH_COLUMNS if not mapped)
 export const SEARCH_COLUMNS_BY_PROVIDER: Record<string, ColumnDef[]> = {
-  'apify-leads': [
-    { key: 'name', label: 'Name', type: 'text' },
-    { key: 'email', label: 'Email', type: 'text' },
-    { key: 'title', label: 'Job Title', type: 'text' },
-    { key: 'company', label: 'Company', type: 'text' },
-    { key: 'linkedin_url', label: 'LinkedIn', type: 'url' },
-    { key: 'industry', label: 'Industry', type: 'badge' },
-    { key: 'location', label: 'Location', type: 'text' },
-    { key: 'company_size', label: 'Company Size', type: 'text' },
-  ],
+  ...catalogSearchColumns,
 }
 
 // Enrichment columns by provider
@@ -45,16 +49,7 @@ export const ENRICH_COLUMNS: Record<string, ColumnDef[]> = {
     { key: 'email_verified', label: 'Email Verified', type: 'badge' },
     { key: 'confidence', label: 'Confidence', type: 'score' },
   ],
-  'apify-leads': [
-    { key: 'email', label: 'Email', type: 'text' as ColumnType },
-    { key: 'linkedin_url', label: 'LinkedIn', type: 'url' as ColumnType },
-    { key: 'title', label: 'Job Title', type: 'text' as ColumnType },
-  ],
-  'apify-linkedin-engagement': [
-    { key: 'headline', label: 'Headline', type: 'text' as ColumnType },
-    { key: 'reaction_type', label: 'Reaction', type: 'badge' as ColumnType },
-    { key: 'comment_text', label: 'Comment', type: 'text' as ColumnType },
-  ],
+  ...catalogEnrichColumns,
 }
 
 // Qualify columns
