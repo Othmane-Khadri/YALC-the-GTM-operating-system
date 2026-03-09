@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { workflows, workflowSteps, resultSets, resultRows } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
+import { workflows, workflowSteps, resultSets, resultRows, knowledgeItems } from '@/lib/db/schema'
+import { eq, sql } from 'drizzle-orm'
 import { buildColumnsFromSteps } from '@/lib/execution/columns'
 import { buildFrameworkContext } from '@/lib/framework/context'
 import { frameworks } from '@/lib/db/schema'
@@ -88,6 +88,26 @@ export async function POST(req: NextRequest) {
           // No framework — proceed without context
         }
 
+        // Fetch knowledge context for mock generation
+        let knowledgeContext = ''
+        try {
+          const knowledgeRows = await db.select({
+            title: knowledgeItems.title,
+            extractedText: knowledgeItems.extractedText,
+          })
+          .from(knowledgeItems)
+          .orderBy(sql`${knowledgeItems.createdAt} DESC`)
+          .limit(3)
+
+          if (knowledgeRows.length > 0) {
+            knowledgeContext = knowledgeRows
+              .map(k => `### ${k.title}\n${k.extractedText?.slice(0, 2000) ?? ''}`)
+              .join('\n\n')
+          }
+        } catch {
+          // No knowledge items — proceed without context
+        }
+
         let totalSoFar = 0
         const registry = getRegistry()
         const providerIntelligence = new ProviderIntelligence()
@@ -111,11 +131,23 @@ export async function POST(req: NextRequest) {
           }
 
           // Resolve provider via registry (async version uses intelligence)
-          const executor = await registry.resolveAsync({ stepType: step.stepType, provider: step.provider })
+          let executor = await registry.resolveAsync({ stepType: step.stepType, provider: step.provider })
           console.log(`Resolved provider: ${executor.id} for step ${step.stepType}`)
 
-          // For search/enrich/qualify steps, execute via provider
-          if (step.stepType === 'search' || step.stepType === 'enrich' || step.stepType === 'qualify') {
+          // Filter/export steps: passthrough (no provider execution needed)
+          if (step.stepType === 'filter') {
+            send({
+              type: 'step_note',
+              stepIndex: step.stepIndex,
+              message: 'Filter step: rule-based filtering runs client-side on the result table.',
+            })
+          } else if (step.stepType === 'export') {
+            send({
+              type: 'step_note',
+              stepIndex: step.stepIndex,
+              message: 'Export step: CSV/CRM export coming soon. Results are available in the table.',
+            })
+          } else if (step.stepType === 'search' || step.stepType === 'enrich' || step.stepType === 'qualify') {
             const stepInput: WorkflowStepInput = {
               stepIndex: step.stepIndex,
               title: step.title,
@@ -128,39 +160,74 @@ export async function POST(req: NextRequest) {
 
             const context = {
               frameworkContext,
+              knowledgeContext,
               batchSize: 10,
               totalRequested: Math.min(step.estimatedRows || totalRequested, totalRequested - totalSoFar),
             }
 
             const stepStartTime = Date.now()
             let stepRowCount = 0
+            let usedExecutor = executor
 
-            for await (const batch of executor.execute(stepInput, context)) {
-              // Insert rows into DB
-              const rowsToInsert = batch.rows.map((lead, idx) => ({
-                resultSetId,
-                rowIndex: totalSoFar + idx,
-                data: JSON.stringify(lead),
-              }))
+            // Graceful fallback: if provider throws, fall back to mock
+            try {
+              for await (const batch of executor.execute(stepInput, context)) {
+                const rowsToInsert = batch.rows.map((lead, idx) => ({
+                  resultSetId,
+                  rowIndex: totalSoFar + idx,
+                  data: JSON.stringify(lead),
+                }))
 
-              if (rowsToInsert.length > 0) {
-                await db.insert(resultRows).values(rowsToInsert)
+                if (rowsToInsert.length > 0) {
+                  await db.insert(resultRows).values(rowsToInsert)
+                }
+
+                totalSoFar += batch.rows.length
+                stepRowCount += batch.rows.length
+
+                send({
+                  type: 'row_batch',
+                  rows: batch.rows,
+                  totalSoFar,
+                })
               }
-
-              totalSoFar += batch.rows.length
-              stepRowCount += batch.rows.length
-
+            } catch (providerErr) {
+              const errMsg = providerErr instanceof Error ? providerErr.message : 'Provider failed'
+              console.warn(`Provider ${executor.id} failed: ${errMsg}. Falling back to mock.`)
               send({
-                type: 'row_batch',
-                rows: batch.rows,
-                totalSoFar,
+                type: 'step_warning',
+                stepIndex: step.stepIndex,
+                message: `Provider "${executor.id}" failed — falling back to mock data.`,
               })
+
+              // Resolve mock provider and re-execute
+              usedExecutor = registry.resolve({ stepType: step.stepType, provider: 'mock' })
+              for await (const batch of usedExecutor.execute(stepInput, context)) {
+                const rowsToInsert = batch.rows.map((lead, idx) => ({
+                  resultSetId,
+                  rowIndex: totalSoFar + idx,
+                  data: JSON.stringify(lead),
+                }))
+
+                if (rowsToInsert.length > 0) {
+                  await db.insert(resultRows).values(rowsToInsert)
+                }
+
+                totalSoFar += batch.rows.length
+                stepRowCount += batch.rows.length
+
+                send({
+                  type: 'row_batch',
+                  rows: batch.rows,
+                  totalSoFar,
+                })
+              }
             }
 
             // Record provider performance
             const latencyMs = Date.now() - stepStartTime
             await providerIntelligence.recordExecution(
-              executor.id,
+              usedExecutor.id,
               { stepType: step.stepType },
               { rowCount: stepRowCount, latencyMs, costEstimate: currentStep?.costEstimate ?? 0 },
             )
@@ -170,7 +237,7 @@ export async function POST(req: NextRequest) {
               type: 'provider_performance',
               category: 'provider',
               data: {
-                providerId: executor.id,
+                providerId: usedExecutor.id,
                 stepType: step.stepType,
                 metrics: { rowCount: stepRowCount, latencyMs, costEstimate: currentStep?.costEstimate ?? 0 },
               },
