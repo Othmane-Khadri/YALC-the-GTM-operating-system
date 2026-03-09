@@ -76,17 +76,24 @@ Open [http://localhost:3000](http://localhost:3000).
 - `/tables` list page (card grid with feedback progress bars) and `/knowledge` page (drag-drop upload, type filtering, 100k char cap, PDF support)
 - Accessibility: SVG icons replacing emoji, 44px touch targets, prefers-reduced-motion support
 
-### Day 6 — Security Audit + Knowledge AI Pipeline
+### Day 6 — Security Audit + Knowledge AI Pipeline + Apify Providers
 - Pre-public security audit: zero hardcoded secrets, AES-256-GCM encryption, SSRF protection, MCP env isolation, timing-safe auth. Fixed 3 vulnerabilities before release.
 - Knowledge → AI pipeline: FTS5 full-text search with sync triggers, knowledge injected into Claude's system prompt, full-text injection for small docs (< 4000 chars)
 - Dual-repo strategy: public MIT repo (all source code) + private fork (production rate limiting, Vercel deployment)
-
-### Day 7 — Apify Providers + LinkedIn Engagement Skill
 - **Apify Lead Finder** provider: real lead search by industry, title, location, company size (~$1.50/1K leads)
 - **LinkedIn Post Engagement Scraper** provider: scrape likers/commenters from any LinkedIn post, optional profile enrichment (~$1.20/1K profiles)
 - **LinkedIn Engagement skill**: registered in skill system, auto-surfaced in Claude's planner
 - Turso remote DB wired for Vercel deployment
-- FTS5 full-text search triggers + backfill
+- Google OAuth with email allowlist, settings page, edge-compatible middleware
+
+### Day 7 — Smart Provider Selection + Pipeline Fixes
+- Credential-aware provider registry: Apify providers only surface in Claude's planner when `APIFY_TOKEN` exists, preventing impossible proposals
+- Graceful provider fallback: if any provider fails mid-workflow, execution auto-falls back to mock data instead of crashing
+- Fixed workflow planner tool description: Claude now uses actual registry IDs instead of legacy provider names
+- Filter/export step passthrough: steps complete cleanly instead of silently zeroing out row counts
+- Apify vault fallback: providers check encrypted DB vault when env var is absent
+- Knowledge context wired into mock data generation for more relevant results
+- Brand docs + CLAUDE.md updated from Clay-era references to current Kiln design language
 
 ### Day 8+ — Coming next
 - Real provider integrations (Apollo, Firecrawl, BuiltWith)
