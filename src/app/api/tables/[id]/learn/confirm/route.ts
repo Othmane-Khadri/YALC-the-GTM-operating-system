@@ -7,8 +7,12 @@ import type { Learning } from '@/lib/framework/types'
 import { IntelligenceStore } from '@/lib/intelligence/store'
 import type { IntelligenceCategory, Evidence } from '@/lib/intelligence/types'
 
-export async function POST(req: NextRequest) {
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const { id: tableId } = await params
     const { patterns } = await req.json() as {
       patterns: Array<{
         insight: string
@@ -91,6 +95,7 @@ export async function POST(req: NextRequest) {
       intelligenceCreated: patterns.length - intelligenceErrors,
       intelligenceErrors,
       frameworkUpdated: true,
+      tableId,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to confirm learnings'

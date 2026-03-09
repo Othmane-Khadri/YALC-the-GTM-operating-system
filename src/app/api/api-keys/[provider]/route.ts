@@ -33,8 +33,14 @@ export async function POST(
       return Response.json({ valid: false, error: 'No key found for this provider' }, { status: 404 })
     }
 
-    // Basic format validation (real health checks come later)
-    const isValid = connection.encryptedKey && connection.encryptedKey.includes(':')
+    let isValid = false
+    if (provider === 'apify') {
+      const { apifyHealthCheck } = await import('@/lib/providers/builtin/apify-base')
+      const health = await apifyHealthCheck()
+      isValid = health.ok
+    } else {
+      isValid = !!(connection.encryptedKey && connection.encryptedKey.includes(':'))
+    }
 
     await db.update(apiConnections)
       .set({ lastTestedAt: new Date(), status: isValid ? 'active' : 'invalid' })

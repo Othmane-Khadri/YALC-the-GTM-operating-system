@@ -11,6 +11,7 @@ const client = createClient({
 
 // Enable foreign key enforcement before any queries
 client.execute('PRAGMA foreign_keys = ON')
+client.execute('PRAGMA journal_mode = WAL')
 
 export { client as rawClient }
 export const db = drizzle(client, { schema })

@@ -38,6 +38,9 @@ export async function runApifyActor(
     const pollRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}`, {
       headers: authHeaders,
     })
+    if (!pollRes.ok) {
+      throw new Error(`Apify poll failed (${pollRes.status}): ${await pollRes.text()}`)
+    }
     const pollData = await pollRes.json()
     status = pollData.data?.status
   }

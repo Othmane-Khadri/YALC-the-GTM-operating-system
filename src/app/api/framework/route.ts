@@ -30,6 +30,11 @@ export async function GET() {
 export async function PUT(req: NextRequest) {
   try {
     const { framework } = await req.json() as { framework: Partial<GTMFramework> }
+
+    if (!framework || typeof framework !== 'object' || Array.isArray(framework)) {
+      return Response.json({ error: 'Invalid framework data' }, { status: 400 })
+    }
+
     framework.lastUpdated = new Date().toISOString()
 
     const existing = await db.query.frameworks.findFirst({

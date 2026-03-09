@@ -55,7 +55,7 @@ export class MockProvider implements StepExecutor {
       case 'search':
         return SEARCH_COLUMNS
       case 'enrich':
-        return ENRICH_COLUMNS[step.provider] ?? []
+        return ENRICH_COLUMNS[step.provider] ?? SEARCH_COLUMNS
       case 'qualify':
         return QUALIFY_COLUMNS
       case 'filter':

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { CampaignManager } from '@/lib/campaign/manager'
+import { db } from '@/lib/db'
 
 const manager = new CampaignManager()
 
@@ -29,6 +30,10 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
 
+    if (!body.title) {
+      return NextResponse.json({ error: 'title is required' }, { status: 400 })
+    }
+
     const campaign = await manager.create({
       conversationId: body.conversationId,
       title: body.title,
@@ -39,17 +44,19 @@ export async function POST(req: NextRequest) {
     })
 
     if (body.steps && Array.isArray(body.steps)) {
-      for (let i = 0; i < body.steps.length; i++) {
-        const stepDef = body.steps[i]
-        await manager.addStep(campaign.id, {
-          stepIndex: i,
-          skillId: stepDef.skillId,
-          skillInput: stepDef.skillInput ?? {},
-          channel: stepDef.channel ?? null,
-          dependsOn: stepDef.dependsOn ?? [],
-          approvalRequired: stepDef.approvalRequired ?? true,
-        })
-      }
+      await db.transaction(async (_tx) => {
+        for (let i = 0; i < body.steps.length; i++) {
+          const stepDef = body.steps[i]
+          await manager.addStep(campaign.id, {
+            stepIndex: i,
+            skillId: stepDef.skillId,
+            skillInput: stepDef.skillInput ?? {},
+            channel: stepDef.channel ?? null,
+            dependsOn: stepDef.dependsOn ?? [],
+            approvalRequired: stepDef.approvalRequired ?? true,
+          })
+        }
+      })
     }
 
     const full = await manager.get(campaign.id)

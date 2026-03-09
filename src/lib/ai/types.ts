@@ -78,6 +78,8 @@ export interface ColumnDef {
 export type ExecutionEventType =
   | 'execution_start'
   | 'step_start'
+  | 'step_note'
+  | 'step_warning'
   | 'row_batch'
   | 'step_complete'
   | 'execution_complete'

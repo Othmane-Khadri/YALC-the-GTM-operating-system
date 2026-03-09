@@ -16,7 +16,8 @@ export function createApifyProvider(entry: ApifyActorEntry): StepExecutor {
     },
 
     canExecute(step: WorkflowStepInput): boolean {
-      return step.provider === entry.id
+      if (step.provider === entry.id) return true
+      return step.provider.startsWith(entry.id) || entry.id.startsWith(step.provider)
     },
 
     async *execute(step: WorkflowStepInput, context: ExecutionContext): AsyncIterable<RowBatch> {

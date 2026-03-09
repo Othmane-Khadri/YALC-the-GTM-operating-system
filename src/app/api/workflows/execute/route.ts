@@ -24,9 +24,17 @@ export async function POST(req: NextRequest) {
     workflow: WorkflowDefinition
   }
 
+  if (!workflow?.steps || !Array.isArray(workflow.steps) || workflow.steps.length === 0) {
+    return Response.json(
+      { error: 'Invalid workflow: steps must be a non-empty array' },
+      { status: 400 },
+    )
+  }
+
   const encoder = new TextEncoder()
 
   let cancelled = false
+  let workflowId = ''
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -40,7 +48,7 @@ export async function POST(req: NextRequest) {
         const totalRequested = workflow.estimatedResultCount || 50
 
         // Create workflow row
-        const workflowId = crypto.randomUUID()
+        workflowId = crypto.randomUUID()
         await db.insert(workflows).values({
           id: workflowId,
           conversationId,
@@ -300,6 +308,12 @@ export async function POST(req: NextRequest) {
     },
     cancel() {
       cancelled = true
+      if (workflowId) {
+        db.update(workflows)
+          .set({ status: 'cancelled', completedAt: new Date() })
+          .where(eq(workflows.id, workflowId))
+          .catch(err => console.error('Failed to cancel workflow in DB:', err))
+      }
     },
   })
 

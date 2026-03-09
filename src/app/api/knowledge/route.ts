@@ -30,14 +30,22 @@ export async function POST(request: Request) {
     return Response.json({ error: 'No file provided' }, { status: 400 })
   }
 
+  if (file.size > 10_000_000) {
+    return Response.json({ error: 'File too large. Maximum 10MB.' }, { status: 413 })
+  }
+
   let extractedText = ''
   const ext = file.name.split('.').pop()?.toLowerCase()
 
   if (ext === 'md' || ext === 'txt' || ext === 'csv') {
     extractedText = await file.text()
   } else if (ext === 'pdf') {
-    // Basic PDF support — store filename as marker
-    extractedText = `[PDF file: ${file.name}]`
+    const { PDFParse } = await import('pdf-parse')
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const parser = new PDFParse({ data: buffer })
+    const result = await parser.getText()
+    extractedText = result.text
+    await parser.destroy()
   } else {
     extractedText = await file.text()
   }

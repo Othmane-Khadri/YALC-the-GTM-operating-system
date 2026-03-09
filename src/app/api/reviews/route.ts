@@ -28,6 +28,14 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
+
+    if (!body.type || !body.title || !body.description) {
+      return NextResponse.json(
+        { error: 'type, title, and description are required' },
+        { status: 400 },
+      )
+    }
+
     const review = await queue.create(body)
     return NextResponse.json(review, { status: 201 })
   } catch (err) {
