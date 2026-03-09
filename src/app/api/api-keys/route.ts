@@ -8,14 +8,19 @@ import { PROVIDER_LABELS, type ApiProvider } from '@/lib/ai/types'
 const VALID_PROVIDERS = new Set(Object.keys(PROVIDER_LABELS))
 
 export async function GET() {
-  const connections = await db.select({
-    provider: apiConnections.provider,
-    status: apiConnections.status,
-    lastTestedAt: apiConnections.lastTestedAt,
-    createdAt: apiConnections.createdAt,
-  }).from(apiConnections)
+  try {
+    const connections = await db.select({
+      provider: apiConnections.provider,
+      status: apiConnections.status,
+      lastTestedAt: apiConnections.lastTestedAt,
+      createdAt: apiConnections.createdAt,
+    }).from(apiConnections)
 
-  return Response.json({ connections })
+    return Response.json({ connections })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to fetch API keys'
+    return Response.json({ error: message }, { status: 500 })
+  }
 }
 
 export async function POST(req: NextRequest) {

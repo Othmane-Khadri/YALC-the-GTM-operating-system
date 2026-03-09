@@ -7,11 +7,14 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ provider: string }> }
 ) {
-  const { provider } = await params
-
-  await db.delete(apiConnections).where(eq(apiConnections.provider, provider))
-
-  return Response.json({ deleted: true })
+  try {
+    const { provider } = await params
+    await db.delete(apiConnections).where(eq(apiConnections.provider, provider))
+    return Response.json({ deleted: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to delete API key'
+    return Response.json({ error: message }, { status: 500 })
+  }
 }
 
 // POST = test connection (validate key format for now)
@@ -19,22 +22,27 @@ export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ provider: string }> }
 ) {
-  const { provider } = await params
+  try {
+    const { provider } = await params
 
-  const [connection] = await db.select().from(apiConnections)
-    .where(eq(apiConnections.provider, provider))
-    .limit(1)
+    const [connection] = await db.select().from(apiConnections)
+      .where(eq(apiConnections.provider, provider))
+      .limit(1)
 
-  if (!connection) {
-    return Response.json({ valid: false, error: 'No key found for this provider' }, { status: 404 })
+    if (!connection) {
+      return Response.json({ valid: false, error: 'No key found for this provider' }, { status: 404 })
+    }
+
+    // Basic format validation (real health checks come later)
+    const isValid = connection.encryptedKey && connection.encryptedKey.includes(':')
+
+    await db.update(apiConnections)
+      .set({ lastTestedAt: new Date(), status: isValid ? 'active' : 'invalid' })
+      .where(eq(apiConnections.provider, provider))
+
+    return Response.json({ valid: isValid, provider, status: isValid ? 'active' : 'invalid' })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to test connection'
+    return Response.json({ error: message }, { status: 500 })
   }
-
-  // Basic format validation (real health checks come later)
-  const isValid = connection.encryptedKey && connection.encryptedKey.includes(':')
-
-  await db.update(apiConnections)
-    .set({ lastTestedAt: new Date(), status: isValid ? 'active' : 'invalid' })
-    .where(eq(apiConnections.provider, provider))
-
-  return Response.json({ valid: isValid, provider, status: isValid ? 'active' : 'invalid' })
 }

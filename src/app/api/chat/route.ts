@@ -21,9 +21,22 @@ function sseEvent(event: StreamEvent & { conversationId?: string }): string {
   return `data: ${JSON.stringify(event)}\n\n`
 }
 
+// Sanitize user input for FTS5 MATCH — strip operators and quote each term
+function sanitizeFtsQuery(query: string): string {
+  return query
+    .replace(/['"*]/g, '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(term => `"${term}"`)
+    .join(' ')
+}
+
 // Search knowledge base using SQLite FTS5
 async function searchKnowledge(query: string): Promise<KnowledgeChunk[]> {
   try {
+    const sanitized = sanitizeFtsQuery(query)
+    if (!sanitized) return []
+
     const results = await rawClient.execute({
       sql: `SELECT ki.id, ki.title, ki.type,
                    snippet(knowledge_fts, 2, '', '', '...', 64) as snippet,
@@ -34,7 +47,7 @@ async function searchKnowledge(query: string): Promise<KnowledgeChunk[]> {
             WHERE knowledge_fts MATCH ?
             ORDER BY rank
             LIMIT 5`,
-      args: [query],
+      args: [sanitized],
     })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return results.rows.map((row: any) => ({
@@ -123,10 +136,12 @@ export async function POST(req: NextRequest) {
         })
 
         const anthropicMessages: { role: 'user' | 'assistant'; content: string }[] =
-          history.map((m) => ({
-            role: m.role as 'user' | 'assistant',
-            content: m.content,
-          }))
+          history
+            .filter((m) => m.role !== 'system')
+            .map((m) => ({
+              role: m.role as 'user' | 'assistant',
+              content: m.content,
+            }))
 
         // ── 5. Stream from Claude ─────────────────────────────────────────
         const anthropic = getAnthropicClient()

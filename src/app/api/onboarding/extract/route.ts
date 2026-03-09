@@ -25,6 +25,13 @@ export async function POST(req: NextRequest) {
     documents?: Array<{ name: string; content: string }>
   }
 
+  if (!websiteUrl && !linkedinUrl && (!documents || documents.length === 0)) {
+    return Response.json(
+      { error: 'Provide at least one input: website URL, LinkedIn URL, or documents' },
+      { status: 400 }
+    )
+  }
+
   const encoder = new TextEncoder()
 
   const stream = new ReadableStream({

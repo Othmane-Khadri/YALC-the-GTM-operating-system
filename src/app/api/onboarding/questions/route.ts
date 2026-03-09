@@ -7,6 +7,10 @@ export const runtime = 'nodejs'
 export async function POST(req: NextRequest) {
   const { framework } = await req.json() as { framework: Partial<GTMFramework> }
 
+  if (!framework) {
+    return Response.json({ questions: [] })
+  }
+
   try {
     const anthropic = getAnthropicClient()
 

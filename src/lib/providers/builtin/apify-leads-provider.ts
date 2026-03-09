@@ -47,12 +47,14 @@ export class ApifyLeadsProvider implements StepExecutor {
     if (config.title) actorInput.jobTitle = config.title
     if (config.companySize) actorInput.companySize = config.companySize
 
+    const authHeaders = { Authorization: `Bearer ${apiToken}` }
+
     // 1. Start actor run
     const startRes = await fetch(
-      `https://api.apify.com/v2/acts/${APIFY_LEADS_ACTOR}/runs?token=${apiToken}`,
+      `https://api.apify.com/v2/acts/${APIFY_LEADS_ACTOR}/runs`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify(actorInput),
       }
     )
@@ -73,7 +75,8 @@ export class ApifyLeadsProvider implements StepExecutor {
       }
       await new Promise(r => setTimeout(r, POLL_INTERVAL_MS))
       const pollRes = await fetch(
-        `https://api.apify.com/v2/actor-runs/${runId}?token=${apiToken}`
+        `https://api.apify.com/v2/actor-runs/${runId}`,
+        { headers: authHeaders }
       )
       const pollData = await pollRes.json()
       status = pollData.data?.status
@@ -85,7 +88,8 @@ export class ApifyLeadsProvider implements StepExecutor {
 
     // 3. Fetch results from default dataset
     const datasetRes = await fetch(
-      `https://api.apify.com/v2/actor-runs/${runId}/dataset/items?token=${apiToken}&format=json`
+      `https://api.apify.com/v2/actor-runs/${runId}/dataset/items?format=json`,
+      { headers: authHeaders }
     )
     if (!datasetRes.ok) {
       throw new Error(`Failed to fetch Apify dataset: ${datasetRes.status}`)
@@ -113,7 +117,9 @@ export class ApifyLeadsProvider implements StepExecutor {
     const token = process.env.APIFY_TOKEN
     if (!token) return { ok: false, message: 'APIFY_TOKEN not set' }
     try {
-      const res = await fetch(`https://api.apify.com/v2/users/me?token=${token}`)
+      const res = await fetch('https://api.apify.com/v2/users/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
       return res.ok
         ? { ok: true, message: 'Apify connection OK' }
         : { ok: false, message: `Apify auth failed: ${res.status}` }

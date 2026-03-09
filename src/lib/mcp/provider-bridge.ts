@@ -21,7 +21,8 @@ function createMcpExecutor(tool: McpToolDefinition): StepExecutor {
     capabilities: inferCapabilities(tool),
 
     isAvailable(): boolean {
-      return true // MCP servers are always available once registered
+      const conn = mcpManager.getConnection(tool.serverId)
+      return conn?.status === 'connected'
     },
 
     canExecute(step: WorkflowStepInput): boolean {

@@ -9,18 +9,19 @@ const client = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN,
 })
 
+// Enable foreign key enforcement before any queries
+client.execute('PRAGMA foreign_keys = ON')
+
 export { client as rawClient }
 export const db = drizzle(client, { schema })
 
-// Create FTS5 virtual table + sync triggers for knowledge search (idempotent)
+// Create standalone FTS5 virtual table + sync triggers for knowledge search (idempotent)
 async function initFts() {
   await client.execute(`
     CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
       item_id UNINDEXED,
       title,
-      extracted_text,
-      content='knowledge_items',
-      content_rowid='rowid'
+      extracted_text
     )
   `)
 
@@ -49,16 +50,17 @@ async function initFts() {
     END
   `)
 
-  // Backfill: index any docs uploaded before triggers existed
+  // Backfill: index any docs not yet in FTS
   await client.execute(`
     INSERT OR IGNORE INTO knowledge_fts(item_id, title, extracted_text)
     SELECT id, title, extracted_text FROM knowledge_items
+    WHERE id NOT IN (SELECT item_id FROM knowledge_fts)
   `)
 }
 
 // Initialize FTS (non-blocking, fire-and-forget at module load)
-initFts().catch(() => {
-  // Table may already exist or knowledge_items not yet created — safe to ignore
+initFts().catch((err) => {
+  console.error('FTS initialization failed:', err)
 })
 
 export type DB = typeof db

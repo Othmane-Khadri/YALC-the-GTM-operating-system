@@ -26,6 +26,8 @@ export async function POST(req: NextRequest) {
 
   const encoder = new TextEncoder()
 
+  let cancelled = false
+
   const stream = new ReadableStream({
     async start(controller) {
       const send = (obj: Record<string, unknown>) => {
@@ -114,6 +116,7 @@ export async function POST(req: NextRequest) {
 
         // Execute each step
         for (const step of workflow.steps) {
+          if (cancelled) break
           send({
             type: 'step_start',
             stepIndex: step.stepIndex,
@@ -294,6 +297,9 @@ export async function POST(req: NextRequest) {
       } finally {
         controller.close()
       }
+    },
+    cancel() {
+      cancelled = true
     },
   })
 

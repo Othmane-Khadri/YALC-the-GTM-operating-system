@@ -14,6 +14,22 @@ interface Question {
   options?: string[]
 }
 
+// Set a value at a dotted/bracket path like "segments[0].painPoints"
+function setPath(obj: Record<string, unknown>, path: string, value: unknown): Record<string, unknown> {
+  const result = structuredClone(obj)
+  const keys = path.replace(/\[(\d+)\]/g, '.$1').split('.')
+  let current: Record<string, unknown> = result
+  for (let i = 0; i < keys.length - 1; i++) {
+    const key = keys[i]
+    if (current[key] === undefined || current[key] === null) {
+      current[key] = /^\d+$/.test(keys[i + 1]) ? [] : {}
+    }
+    current = current[key] as Record<string, unknown>
+  }
+  current[keys[keys.length - 1]] = value
+  return result
+}
+
 export function QuestionsStep() {
   const [data, setData] = useAtom(onboardingDataAtom)
   const setOpen = useSetAtom(onboardingOpenAtom)
@@ -22,6 +38,7 @@ export function QuestionsStep() {
   const [answer, setAnswer] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     async function fetchQuestions() {
@@ -46,16 +63,25 @@ export function QuestionsStep() {
 
   const completeOnboarding = async () => {
     setSaving(true)
+    setError(null)
     try {
-      const framework = data.extractedFramework as GTMFramework
-      await fetch('/api/onboarding/complete', {
+      let framework = data.extractedFramework as Record<string, unknown>
+      // Merge follow-up answers into framework using field paths
+      if (data.followUpAnswers) {
+        for (const [path, value] of Object.entries(data.followUpAnswers)) {
+          framework = setPath(framework, path, value)
+        }
+      }
+      const res = await fetch('/api/onboarding/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ framework }),
       })
+      if (!res.ok) throw new Error('Failed to save framework')
       setOpen(false)
-    } catch {
-      setOpen(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save. Please try again.')
+      setSaving(false)
     }
   }
 
@@ -99,6 +125,9 @@ export function QuestionsStep() {
         <p className="text-sm leading-relaxed mb-10 text-text-secondary">
           Your GTM context is ready. Every workflow will now be personalized to your business.
         </p>
+        {error && (
+          <p className="text-sm text-red-500 mb-4">{error}</p>
+        )}
         <button
           onClick={completeOnboarding}
           disabled={saving}
@@ -174,6 +203,10 @@ export function QuestionsStep() {
           />
         )}
       </div>
+
+      {error && (
+        <p className="text-sm text-red-500 mb-4">{error}</p>
+      )}
 
       <div className="flex items-center gap-4">
         <button

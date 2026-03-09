@@ -3,17 +3,22 @@ import { knowledgeItems } from '@/lib/db/schema'
 import { eq, sql } from 'drizzle-orm'
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const type = searchParams.get('type')
+  try {
+    const { searchParams } = new URL(request.url)
+    const type = searchParams.get('type')
 
-  const items = type
-    ? await db.select().from(knowledgeItems)
-        .where(eq(knowledgeItems.type, type))
-        .orderBy(sql`${knowledgeItems.createdAt} DESC`)
-    : await db.select().from(knowledgeItems)
-        .orderBy(sql`${knowledgeItems.createdAt} DESC`)
+    const items = type
+      ? await db.select().from(knowledgeItems)
+          .where(eq(knowledgeItems.type, type))
+          .orderBy(sql`${knowledgeItems.createdAt} DESC`)
+      : await db.select().from(knowledgeItems)
+          .orderBy(sql`${knowledgeItems.createdAt} DESC`)
 
-  return Response.json({ items })
+    return Response.json({ items })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to fetch knowledge items'
+    return Response.json({ error: message }, { status: 500 })
+  }
 }
 
 export async function POST(request: Request) {

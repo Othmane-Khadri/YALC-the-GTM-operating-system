@@ -4,43 +4,54 @@ import { resultRows } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { getCollector } from '@/lib/signals/collector'
 
+const VALID_FEEDBACK = new Set(['approved', 'rejected', 'flagged', null])
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; rowId: string }> }
 ) {
-  const { id: resultSetId, rowId } = await params
-  const { feedback, annotation, tags } = await req.json() as {
-    feedback: 'approved' | 'rejected' | 'flagged' | null
-    annotation?: string
-    tags?: string[]
+  try {
+    const { id: resultSetId, rowId } = await params
+    const { feedback, annotation, tags } = await req.json() as {
+      feedback: 'approved' | 'rejected' | 'flagged' | null
+      annotation?: string
+      tags?: string[]
+    }
+
+    if (!VALID_FEEDBACK.has(feedback)) {
+      return Response.json({ error: 'Invalid feedback value. Must be approved, rejected, flagged, or null' }, { status: 400 })
+    }
+
+    const updateData: Record<string, unknown> = {
+      feedback,
+      updatedAt: new Date(),
+    }
+
+    if (annotation !== undefined) {
+      updateData.annotation = annotation
+    }
+
+    if (tags !== undefined) {
+      updateData.tags = tags
+    }
+
+    await db.update(resultRows)
+      .set(updateData)
+      .where(eq(resultRows.id, rowId))
+
+    // Emit RLHF feedback signal
+    if (feedback) {
+      await getCollector().emit({
+        type: 'rlhf_feedback',
+        category: 'qualification',
+        data: { rowId, feedback, annotation, tags },
+        resultSetId,
+      })
+    }
+
+    return Response.json({ updated: true })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to update feedback'
+    return Response.json({ error: message }, { status: 500 })
   }
-
-  const updateData: Record<string, unknown> = {
-    feedback,
-    updatedAt: new Date(),
-  }
-
-  if (annotation !== undefined) {
-    updateData.annotation = annotation
-  }
-
-  if (tags !== undefined) {
-    updateData.tags = tags
-  }
-
-  await db.update(resultRows)
-    .set(updateData)
-    .where(eq(resultRows.id, rowId))
-
-  // Emit RLHF feedback signal
-  if (feedback) {
-    await getCollector().emit({
-      type: 'rlhf_feedback',
-      category: 'qualification',
-      data: { rowId, feedback, annotation, tags },
-      resultSetId,
-    })
-  }
-
-  return Response.json({ updated: true })
 }
