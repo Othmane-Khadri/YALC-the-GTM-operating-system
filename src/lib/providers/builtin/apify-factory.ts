@@ -25,13 +25,14 @@ export function createApifyProvider(entry: ApifyActorEntry): StepExecutor {
       const input = entry.buildInput(config, step)
 
       const rawResults = await runApifyActor(entry.actorId, input)
+      const flatResults = entry.extractRows ? entry.extractRows(rawResults) : rawResults
 
       const batchSize = context.batchSize || 10
       let totalSoFar = 0
-      const batches = Math.ceil(rawResults.length / batchSize)
+      const batches = Math.ceil(flatResults.length / batchSize)
 
       for (let i = 0; i < batches; i++) {
-        const slice = rawResults.slice(i * batchSize, (i + 1) * batchSize)
+        const slice = flatResults.slice(i * batchSize, (i + 1) * batchSize)
         const rows = slice.map((raw) => entry.normalizeRow(raw))
         totalSoFar += rows.length
         yield { rows, batchIndex: i, totalSoFar }

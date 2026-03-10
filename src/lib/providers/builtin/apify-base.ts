@@ -11,8 +11,10 @@ export async function runApifyActor(
   const authHeaders = { Authorization: `Bearer ${token}` }
 
   // 1. Start actor run
+  // Apify REST API uses tilde (~) not slash (/) between username and actor name
+  const apiActorId = actorId.replace('/', '~')
   const startRes = await fetch(
-    `https://api.apify.com/v2/acts/${actorId}/runs`,
+    `https://api.apify.com/v2/acts/${apiActorId}/runs`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders },

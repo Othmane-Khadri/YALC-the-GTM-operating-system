@@ -10,6 +10,8 @@ export interface ApifyActorEntry {
   columns: ColumnDef[]
   costPer1k: number // estimated cost per 1000 results in USD
   buildInput(config: Record<string, unknown>, step: WorkflowStepInput): Record<string, unknown>
+  /** Flatten nested results (e.g. Google Search organicResults). Defaults to identity. */
+  extractRows?(rawItems: Record<string, unknown>[]): Record<string, unknown>[]
   normalizeRow(raw: Record<string, unknown>): Record<string, unknown>
 }
 
@@ -253,6 +255,14 @@ export const APIFY_CATALOG: ApifyActorEntry[] = [
         languageCode: (config.language as string) ?? '',
         countryCode: (config.country as string) ?? '',
       }
+    },
+    extractRows(rawItems) {
+      // Google Search returns 1 item per query with nested organicResults
+      return rawItems.flatMap(item => {
+        const organic = item.organicResults
+        if (Array.isArray(organic)) return organic as Record<string, unknown>[]
+        return [item]
+      })
     },
     normalizeRow(raw) {
       const urlStr = (raw.url ?? raw.link ?? raw.displayedUrl ?? '') as string
