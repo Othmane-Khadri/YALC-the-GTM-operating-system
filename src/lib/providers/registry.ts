@@ -44,9 +44,14 @@ class ProviderRegistry {
 
   /**
    * Async resolve that uses Provider Intelligence to pick the best provider.
-   * Falls back to synchronous resolve() if no intelligence exists.
+   * Always prefers an exact match over intelligence recommendations.
    */
   async resolveAsync(step: { stepType: string; provider: string }, segment?: string): Promise<StepExecutor> {
+    // 1. Exact match always wins — never let intelligence override an explicit provider
+    const exact = this.providers.get(step.provider)
+    if (exact && exact.isAvailable()) return exact
+
+    // 2. Consult intelligence only when no exact match
     try {
       const { ProviderIntelligence } = await import('./intelligence')
       const pi = new ProviderIntelligence()
