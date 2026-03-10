@@ -1,9 +1,15 @@
 import { getRegistry } from '@/lib/providers/registry'
+import { runApifyActor } from '@/lib/providers/builtin/apify-base'
+import type { ExecutionContext } from '@/lib/providers/types'
 
 export const runtime = 'nodejs'
+export const maxDuration = 120
 
 // Public GET diagnostic — no auth needed
-export async function GET() {
+export async function GET(req: Request) {
+  const url = new URL(req.url)
+  const runTest = url.searchParams.get('run') === '1'
+
   const registry = getRegistry()
   const allProviders = registry.getAll()
 
@@ -33,7 +39,7 @@ export async function GET() {
     }
   }
 
-  // Try starting a tiny actor (dry run — just checks if the API accepts the request)
+  // Try resolving the actor via tilde URL
   let actorStartResult = 'skipped'
   if (hasApifyToken) {
     try {
@@ -43,6 +49,66 @@ export async function GET() {
       actorStartResult = res.ok ? `Actor exists (${res.status})` : `Actor NOT FOUND (${res.status})`
     } catch (err) {
       actorStartResult = `ERROR: ${err instanceof Error ? err.message : err}`
+    }
+  }
+
+  // If ?run=1, actually execute the full provider pipeline
+  let executionResult: Record<string, unknown> = { skipped: true }
+  if (runTest && hasApifyToken) {
+    try {
+      // Test 1: Direct runApifyActor call
+      const startTime = Date.now()
+      const rawResults = await runApifyActor('apify/google-search-scraper', {
+        queries: 'SaaS companies France',
+        maxPagesPerQuery: 1,
+        resultsPerPage: 3,
+      })
+      const directMs = Date.now() - startTime
+
+      // Test 2: Full provider pipeline via registry
+      const executor = await registry.resolveAsync({ stepType: 'search', provider: 'apify-google-search' })
+      const context: ExecutionContext = {
+        frameworkContext: '',
+        batchSize: 5,
+        totalRequested: 3,
+      }
+      const stepInput = {
+        stepIndex: 0,
+        title: 'Diagnostic Test',
+        stepType: 'search',
+        provider: 'apify-google-search',
+        description: 'SaaS companies France',
+        estimatedRows: 3,
+        config: { query: 'SaaS companies France' },
+      }
+
+      const pipelineStart = Date.now()
+      const allRows: Record<string, unknown>[] = []
+      for await (const batch of executor.execute(stepInput, context)) {
+        allRows.push(...batch.rows)
+      }
+      const pipelineMs = Date.now() - pipelineStart
+
+      executionResult = {
+        directCall: {
+          rawResultCount: rawResults.length,
+          hasOrganicResults: rawResults.some(r => Array.isArray(r.organicResults)),
+          firstResultKeys: rawResults[0] ? Object.keys(rawResults[0]).slice(0, 10) : [],
+          latencyMs: directMs,
+        },
+        pipeline: {
+          resolvedTo: executor.id,
+          resolvedType: executor.type,
+          rowCount: allRows.length,
+          sampleRow: allRows[0] ?? null,
+          latencyMs: pipelineMs,
+        },
+      }
+    } catch (err) {
+      executionResult = {
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack?.split('\n').slice(0, 5) : undefined,
+      }
     }
   }
 
@@ -61,5 +127,6 @@ export async function GET() {
     resolveTest: resolveResult,
     apifyHealth: healthResult,
     actorCheck: actorStartResult,
+    execution: executionResult,
   })
 }
