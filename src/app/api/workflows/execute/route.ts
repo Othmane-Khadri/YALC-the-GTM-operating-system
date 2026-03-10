@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
           title: workflow.title,
           description: workflow.description,
           status: 'running',
-          stepsDefinition: JSON.stringify(workflow.steps),
+          stepsDefinition: workflow.steps,
           startedAt: new Date(),
         })
 
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
           id: resultSetId,
           workflowId,
           name: workflow.title,
-          columnsDefinition: JSON.stringify(columns),
+          columnsDefinition: columns,
           rowCount: 0,
         })
 
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
             stepIndex: step.stepIndex,
             stepType: step.stepType,
             provider: step.provider,
-            config: JSON.stringify(step.config ?? {}),
+            config: step.config ?? {},
             status: 'pending',
           })
         }
@@ -221,7 +221,7 @@ export async function POST(req: NextRequest) {
                     const existing = existingRows[rowIndex]
                     if (existing) {
                       await db.update(resultRows)
-                        .set({ data: JSON.stringify(row), updatedAt: new Date() })
+                        .set({ data: row, updatedAt: new Date() })
                         .where(eq(resultRows.id, existing.id))
                     }
                   }
@@ -231,7 +231,7 @@ export async function POST(req: NextRequest) {
                   const rowsToInsert = batch.rows.map((lead, idx) => ({
                     resultSetId,
                     rowIndex: totalSoFar + idx,
-                    data: JSON.stringify(lead),
+                    data: lead,
                   }))
 
                   if (rowsToInsert.length > 0) {
@@ -263,7 +263,7 @@ export async function POST(req: NextRequest) {
                 const rowsToInsert = batch.rows.map((lead, idx) => ({
                   resultSetId,
                   rowIndex: totalSoFar + idx,
-                  data: JSON.stringify(lead),
+                  data: lead,
                 }))
 
                 if (rowsToInsert.length > 0) {
@@ -286,14 +286,27 @@ export async function POST(req: NextRequest) {
               const stepResultRows = await db.select({ data: resultRows.data })
                 .from(resultRows)
                 .where(eq(resultRows.resultSetId, resultSetId))
-              previousStepRows = stepResultRows.map(r => r.data as Record<string, unknown>)
+              previousStepRows = stepResultRows.map(r => {
+                // Handle both parsed (new) and double-encoded string (old) data
+                const d = r.data
+                if (typeof d === 'string') {
+                  try { return JSON.parse(d) as Record<string, unknown> } catch { return {} }
+                }
+                return d as Record<string, unknown>
+              })
             }
 
             // After qualify step, merge qualify columns into result set
             if (step.stepType === 'qualify') {
               const currentColsRow = await db.select({ c: resultSets.columnsDefinition })
                 .from(resultSets).where(eq(resultSets.id, resultSetId))
-              const currentCols = JSON.parse(currentColsRow[0]?.c as string || '[]') as ColumnDef[]
+              const rawCols = currentColsRow[0]?.c
+              // Handle both parsed (new) and double-encoded string (old) formats
+              const currentCols: ColumnDef[] = Array.isArray(rawCols)
+                ? rawCols
+                : typeof rawCols === 'string'
+                  ? JSON.parse(rawCols)
+                  : []
               const qualifyCols: ColumnDef[] = [
                 { key: 'icp_score', label: 'ICP Score', type: 'score' },
                 { key: 'icp_fit_level', label: 'Fit Level', type: 'badge' },
@@ -307,7 +320,7 @@ export async function POST(req: NextRequest) {
                 }
               }
               await db.update(resultSets)
-                .set({ columnsDefinition: JSON.stringify(mergedCols) })
+                .set({ columnsDefinition: mergedCols })
                 .where(eq(resultSets.id, resultSetId))
 
               send({

@@ -195,9 +195,13 @@ export function ChatPanel() {
                   s.index === event.stepIndex ? { ...s, status: 'completed' as const, rowsOut: event.rowsOut } : s
                 ),
               }))
+            } else if (event.type === 'columns_updated') {
+              if (event.columns) finalColumns = event.columns
             } else if (event.type === 'execution_complete') {
               finalResultSetId = event.resultSetId
               finalTotalRows = event.totalRows ?? 0
+            } else if (event.type === 'error') {
+              console.error('Workflow error:', event.error)
             }
           } catch {
             // Ignore parse errors

@@ -20,21 +20,30 @@ export async function GET(
       .where(eq(resultRows.resultSetId, id))
       .orderBy(asc(resultRows.rowIndex))
 
+    // Normalize mode:'json' columns — handles both parsed (new) and double-encoded string (old) data
+    const parseSafe = (val: unknown) => {
+      if (typeof val === 'string') { try { return JSON.parse(val) } catch { return val } }
+      return val
+    }
+    const columns = Array.isArray(table.columnsDefinition)
+      ? table.columnsDefinition
+      : parseSafe(table.columnsDefinition) || []
+
     return Response.json({
       table: {
         id: table.id,
         name: table.name,
         workflowId: table.workflowId,
-        columns: table.columnsDefinition,
+        columns,
         rowCount: table.rowCount,
         createdAt: table.createdAt,
       },
       rows: rows.map(r => ({
         id: r.id,
         rowIndex: r.rowIndex,
-        data: r.data as Record<string, unknown>,
+        data: (typeof r.data === 'string' ? parseSafe(r.data) : r.data) as Record<string, unknown>,
         feedback: r.feedback,
-        tags: (r.tags as string[]) || [],
+        tags: (Array.isArray(r.tags) ? r.tags : parseSafe(r.tags) || []) as string[],
         annotation: r.annotation,
       })),
     })

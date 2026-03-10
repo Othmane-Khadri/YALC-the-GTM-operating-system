@@ -96,6 +96,8 @@ export interface ExecutionEvent {
   totalSoFar?: number
   rowsOut?: number
   totalRows?: number
+  columns?: ColumnDef[]
+  message?: string
   error?: string
 }
 
