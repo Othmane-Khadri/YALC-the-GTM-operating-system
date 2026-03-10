@@ -8,6 +8,7 @@ export interface ApifyActorEntry {
   description: string
   capabilities: ProviderCapability[]
   columns: ColumnDef[]
+  costPer1k: number // estimated cost per 1000 results in USD
   buildInput(config: Record<string, unknown>, step: WorkflowStepInput): Record<string, unknown>
   normalizeRow(raw: Record<string, unknown>): Record<string, unknown>
 }
@@ -21,6 +22,7 @@ export const APIFY_CATALOG: ApifyActorEntry[] = [
     description:
       'Search for people/companies by criteria (industry, title, location, company size). Returns emails, LinkedIn URLs, company data. Config keys: query, industry, location, title, companySize. Cost ~$1.50/1K leads.',
     capabilities: ['search'],
+    costPer1k: 1.50,
     columns: [
       { key: 'name', label: 'Name', type: 'text' },
       { key: 'email', label: 'Email', type: 'text' },
@@ -64,6 +66,7 @@ export const APIFY_CATALOG: ApifyActorEntry[] = [
     description:
       'Search LinkedIn for people by name, company, or title. Returns verified emails, work history, education, skills. No cookies needed. Config keys: searchTerms (array of names/titles/companies), urls (array of LinkedIn profile URLs). Cost ~$1.50/1K profiles.',
     capabilities: ['search', 'enrich'],
+    costPer1k: 1.50,
     columns: [
       { key: 'name', label: 'Name', type: 'text' },
       { key: 'headline', label: 'Headline', type: 'text' },
@@ -104,6 +107,7 @@ export const APIFY_CATALOG: ApifyActorEntry[] = [
     description:
       'Scrape people who liked or commented on a LinkedIn post. Returns names, headlines, LinkedIn URLs, reaction types. No cookies needed. Config keys: postUrl (required LinkedIn post URL), type ("all", "likes", "comments"). Cost ~$1.20/1K profiles.',
     capabilities: ['search'],
+    costPer1k: 1.20,
     columns: [
       { key: 'name', label: 'Name', type: 'text' },
       { key: 'headline', label: 'Headline', type: 'text' },
@@ -146,6 +150,7 @@ export const APIFY_CATALOG: ApifyActorEntry[] = [
     description:
       'Find businesses on Google Maps by keyword + location. Returns name, address, phone, website, rating, reviews count. Config keys: query (e.g. "restaurants in Paris"), location (optional, e.g. "Paris, France"), maxResults. Cost ~$4/1K results.',
     capabilities: ['search'],
+    costPer1k: 4.00,
     columns: [
       { key: 'name', label: 'Business Name', type: 'text' },
       { key: 'address', label: 'Address', type: 'text' },
@@ -188,6 +193,7 @@ export const APIFY_CATALOG: ApifyActorEntry[] = [
     description:
       'Extract emails, phone numbers, and social media links from website URLs. Use this to enrich company records with contact details. Config keys: urls (array of website URLs to scrape). Cost ~$0.50/100 websites.',
     capabilities: ['enrich'],
+    costPer1k: 0.50,
     columns: [
       { key: 'url', label: 'Website', type: 'url' },
       { key: 'email', label: 'Email', type: 'text' },
@@ -230,6 +236,7 @@ export const APIFY_CATALOG: ApifyActorEntry[] = [
     description:
       'Scrape Google search results for any query. Returns titles, URLs, snippets, positions. Useful for finding companies, articles, or competitor analysis. Config keys: query (search query string), maxResults. Cost ~$2/1K results.',
     capabilities: ['search'],
+    costPer1k: 2.00,
     columns: [
       { key: 'title', label: 'Title', type: 'text' },
       { key: 'url', label: 'URL', type: 'url' },
@@ -273,6 +280,7 @@ export const APIFY_CATALOG: ApifyActorEntry[] = [
     description:
       'Scrape LinkedIn job postings to identify companies that are hiring (buying signal). Returns job title, company, location, posted date. Config keys: query (job title/keyword), location (city/country). Cost ~$1/1K jobs.',
     capabilities: ['search'],
+    costPer1k: 1.00,
     columns: [
       { key: 'job_title', label: 'Job Title', type: 'text' },
       { key: 'company', label: 'Company', type: 'text' },
@@ -311,6 +319,7 @@ export const APIFY_CATALOG: ApifyActorEntry[] = [
     description:
       'Crawl websites to extract page content, metadata, and text. Useful for competitive analysis, tech stack detection, or content research. Config keys: urls (array of website URLs), maxPages (max pages to crawl per site). Cost ~$1/1K pages.',
     capabilities: ['enrich'],
+    costPer1k: 1.00,
     columns: [
       { key: 'url', label: 'URL', type: 'url' },
       { key: 'title', label: 'Page Title', type: 'text' },
