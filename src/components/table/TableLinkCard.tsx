@@ -8,14 +8,27 @@ interface TableLinkCardProps {
   rowCount: number
   columns: ColumnDef[]
   previewRows?: Array<Record<string, unknown>>
+  usedMock?: boolean
+  warnings?: string[]
 }
 
-export function TableLinkCard({ resultSetId, tableName, rowCount, columns: rawColumns, previewRows }: TableLinkCardProps) {
+export function TableLinkCard({ resultSetId, tableName, rowCount, columns: rawColumns, previewRows, usedMock, warnings }: TableLinkCardProps) {
   // Defensive: ensure columns is always an array of ColumnDef objects
   const columns = Array.isArray(rawColumns) ? rawColumns.filter(c => c && typeof c.key === 'string') : []
 
   return (
     <div className="rounded-3xl border overflow-hidden mt-3 animate-slide-up bg-white border-border max-w-2xl shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+      {/* Mock data warning */}
+      {usedMock && (
+        <div className="px-6 py-3 flex items-center gap-2 text-xs font-bold" style={{ backgroundColor: 'var(--warning-light)', color: 'var(--warning-dark)' }}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M7 1L13 12H1L7 1Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+            <path d="M7 5.5V8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+            <circle cx="7" cy="10" r="0.5" fill="currentColor"/>
+          </svg>
+          Contains simulated data — a provider fell back to mock results
+        </div>
+      )}
       {/* Header */}
       <div className="px-6 pt-5 pb-4">
         <div className="flex items-center gap-2">

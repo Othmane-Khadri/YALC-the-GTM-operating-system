@@ -149,6 +149,22 @@ export async function POST(req: NextRequest) {
         // Ensure Apify MCP server is connected for dynamic actor discovery
         await ensureApifyMcp()
 
+        // Pre-flight: verify all providers are resolvable before starting execution
+        for (const step of workflow.steps) {
+          if (step.stepType === 'filter' || step.stepType === 'export') continue
+          try {
+            await registry.resolveAsync({ stepType: step.stepType, provider: step.provider })
+          } catch (resolveErr) {
+            const msg = resolveErr instanceof Error ? resolveErr.message : 'Unknown'
+            send({
+              type: 'error',
+              error: `Pre-flight check failed: provider "${step.provider}" for step "${step.title}" is not available (${msg}). Fix provider configuration before running.`,
+            })
+            controller.close()
+            return
+          }
+        }
+
         // Execute each step
         for (const step of workflow.steps) {
           if (cancelled) break
@@ -216,9 +232,22 @@ export async function POST(req: NextRequest) {
                   // Qualify: update existing rows in-place with scored data
                   const existingRows = await db.select().from(resultRows)
                     .where(eq(resultRows.resultSetId, resultSetId))
-                  for (const row of batch.rows) {
-                    const rowIndex = batch.rows.indexOf(row) + (batch.batchIndex * context.batchSize)
-                    const existing = existingRows[rowIndex]
+                  for (let ri = 0; ri < batch.rows.length; ri++) {
+                    const row = batch.rows[ri]
+                    // Match by stable key (name, linkedin_url, email, url) instead of array index
+                    const rowData = row as Record<string, unknown>
+                    let existing = existingRows.find(e => {
+                      const d = (typeof e.data === 'string' ? (() => { try { return JSON.parse(e.data) } catch { return {} } })() : e.data) as Record<string, unknown>
+                      for (const key of ['linkedin_url', 'email', 'url', 'name']) {
+                        if (rowData[key] && d[key] && String(rowData[key]) === String(d[key])) return true
+                      }
+                      return false
+                    })
+                    // Fallback to index-based matching if no key match found
+                    if (!existing) {
+                      const fallbackIndex = ri + (batch.batchIndex * context.batchSize)
+                      existing = existingRows[fallbackIndex]
+                    }
                     if (existing) {
                       await db.update(resultRows)
                         .set({ data: row, updatedAt: new Date() })

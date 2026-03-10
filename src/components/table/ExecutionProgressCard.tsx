@@ -73,6 +73,11 @@ export function ExecutionProgressCard() {
             )}>
               {String(step.title ?? '')}
             </span>
+            {step.warning && (
+              <span className="text-[10px] font-bold rounded px-1.5 py-0.5 ml-1" style={{ backgroundColor: 'var(--warning-light)', color: 'var(--warning-dark)' }}>
+                SIMULATED
+              </span>
+            )}
             {step.rowsOut != null && step.status === 'completed' && (
               <span className="text-xs text-text-muted tabular-nums ml-auto">
                 {step.rowsOut} rows

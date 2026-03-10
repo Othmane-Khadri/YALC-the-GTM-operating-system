@@ -37,6 +37,7 @@ export interface StepStatus {
   title: string
   status: 'pending' | 'running' | 'completed' | 'failed'
   rowsOut?: number
+  warning?: string
 }
 
 export interface ExecutionState {

@@ -156,6 +156,8 @@ export function ChatPanel() {
       let finalTotalRows = 0
       let finalColumns: ColumnDef[] = []
       const allRows: Record<string, unknown>[] = []
+      let usedMock = false
+      const warnings: string[] = []
 
       while (true) {
         const { done, value } = await reader.read()
@@ -202,6 +204,14 @@ export function ChatPanel() {
               finalTotalRows = event.totalRows ?? 0
             } else if (event.type === 'step_warning') {
               console.warn(`[step ${event.stepIndex}]`, event.message)
+              if (String(event.message ?? '').includes('mock')) usedMock = true
+              warnings.push(String(event.message ?? ''))
+              setExecutionState(prev => ({
+                ...prev,
+                steps: prev.steps.map(s =>
+                  s.index === event.stepIndex ? { ...s, warning: String(event.message ?? '') } : s
+                ),
+              }))
             } else if (event.type === 'error') {
               console.error('Workflow error:', event.error)
             }
@@ -239,6 +249,8 @@ export function ChatPanel() {
           rowCount: finalTotalRows,
           columns: finalColumns,
           previewRows: allRows.slice(0, 3),
+          usedMock,
+          warnings,
         }),
         type: 'table',
         resultSetId: finalResultSetId,

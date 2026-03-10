@@ -52,7 +52,7 @@ export function MessageBubble({ message, onApproveWorkflow }: MessageBubbleProps
   }
 
   if (isTable && message.resultSetId) {
-    let tableData = { tableName: 'Results', rowCount: 0, columns: [] as ColumnDef[], previewRows: [] as Record<string, unknown>[] }
+    let tableData = { tableName: 'Results', rowCount: 0, columns: [] as ColumnDef[], previewRows: [] as Record<string, unknown>[], usedMock: false, warnings: [] as string[] }
     try {
       const parsed = JSON.parse(message.content)
       tableData = {
@@ -60,6 +60,8 @@ export function MessageBubble({ message, onApproveWorkflow }: MessageBubbleProps
         rowCount: typeof parsed.rowCount === 'number' ? parsed.rowCount : 0,
         columns: Array.isArray(parsed.columns) ? parsed.columns : [],
         previewRows: Array.isArray(parsed.previewRows) ? parsed.previewRows : [],
+        usedMock: !!parsed.usedMock,
+        warnings: Array.isArray(parsed.warnings) ? parsed.warnings : [],
       }
     } catch {
       // content isn't JSON — use defaults
@@ -75,6 +77,8 @@ export function MessageBubble({ message, onApproveWorkflow }: MessageBubbleProps
           rowCount={tableData.rowCount}
           columns={tableData.columns}
           previewRows={tableData.previewRows}
+          usedMock={tableData.usedMock}
+          warnings={tableData.warnings}
         />
       </div>
     )
