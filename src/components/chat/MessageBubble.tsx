@@ -24,7 +24,7 @@ export function MessageBubble({ message, onApproveWorkflow }: MessageBubbleProps
       <div className="flex flex-col gap-3 message-enter">
         {message.content && (
           <div className="text-sm leading-relaxed text-text-secondary max-w-2xl">
-            {message.content}
+            {String(message.content)}
           </div>
         )}
         <CampaignPreviewCard
@@ -40,7 +40,7 @@ export function MessageBubble({ message, onApproveWorkflow }: MessageBubbleProps
       <div className="flex flex-col gap-3 message-enter">
         {message.content && (
           <div className="text-sm leading-relaxed text-text-secondary max-w-2xl">
-            {message.content}
+            {String(message.content)}
           </div>
         )}
         <WorkflowPreviewCard
