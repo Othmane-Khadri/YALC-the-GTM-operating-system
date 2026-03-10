@@ -54,7 +54,13 @@ export function MessageBubble({ message, onApproveWorkflow }: MessageBubbleProps
   if (isTable && message.resultSetId) {
     let tableData = { tableName: 'Results', rowCount: 0, columns: [] as ColumnDef[], previewRows: [] as Record<string, unknown>[] }
     try {
-      tableData = JSON.parse(message.content)
+      const parsed = JSON.parse(message.content)
+      tableData = {
+        tableName: parsed.tableName ?? 'Results',
+        rowCount: typeof parsed.rowCount === 'number' ? parsed.rowCount : 0,
+        columns: Array.isArray(parsed.columns) ? parsed.columns : [],
+        previewRows: Array.isArray(parsed.previewRows) ? parsed.previewRows : [],
+      }
     } catch {
       // content isn't JSON — use defaults
     }

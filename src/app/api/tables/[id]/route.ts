@@ -20,14 +20,16 @@ export async function GET(
       .where(eq(resultRows.resultSetId, id))
       .orderBy(asc(resultRows.rowIndex))
 
-    // Normalize mode:'json' columns — handles both parsed (new) and double-encoded string (old) data
-    const parseSafe = (val: unknown) => {
-      if (typeof val === 'string') { try { return JSON.parse(val) } catch { return val } }
-      return val
+    // Recursively unwrap any level of string-encoding (handles double/triple-encoded legacy data)
+    const parseSafe = (val: unknown): unknown => {
+      let result = val
+      while (typeof result === 'string') {
+        try { result = JSON.parse(result) } catch { break }
+      }
+      return result
     }
-    const columns = Array.isArray(table.columnsDefinition)
-      ? table.columnsDefinition
-      : parseSafe(table.columnsDefinition) || []
+    const rawCols = parseSafe(table.columnsDefinition)
+    const columns = Array.isArray(rawCols) ? rawCols : []
 
     return Response.json({
       table: {

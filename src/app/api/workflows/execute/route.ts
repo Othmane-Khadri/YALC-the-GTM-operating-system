@@ -300,13 +300,12 @@ export async function POST(req: NextRequest) {
             if (step.stepType === 'qualify') {
               const currentColsRow = await db.select({ c: resultSets.columnsDefinition })
                 .from(resultSets).where(eq(resultSets.id, resultSetId))
-              const rawCols = currentColsRow[0]?.c
-              // Handle both parsed (new) and double-encoded string (old) formats
-              const currentCols: ColumnDef[] = Array.isArray(rawCols)
-                ? rawCols
-                : typeof rawCols === 'string'
-                  ? JSON.parse(rawCols)
-                  : []
+              // Recursively unwrap any level of string-encoding
+              let rawCols: unknown = currentColsRow[0]?.c
+              while (typeof rawCols === 'string') {
+                try { rawCols = JSON.parse(rawCols) } catch { break }
+              }
+              const currentCols: ColumnDef[] = Array.isArray(rawCols) ? rawCols : []
               const qualifyCols: ColumnDef[] = [
                 { key: 'icp_score', label: 'ICP Score', type: 'score' },
                 { key: 'icp_fit_level', label: 'Fit Level', type: 'badge' },

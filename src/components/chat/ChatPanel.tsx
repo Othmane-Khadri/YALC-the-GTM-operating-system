@@ -200,6 +200,8 @@ export function ChatPanel() {
             } else if (event.type === 'execution_complete') {
               finalResultSetId = event.resultSetId
               finalTotalRows = event.totalRows ?? 0
+            } else if (event.type === 'step_warning') {
+              console.warn(`[step ${event.stepIndex}]`, event.message)
             } else if (event.type === 'error') {
               console.error('Workflow error:', event.error)
             }

@@ -10,7 +10,10 @@ interface TableLinkCardProps {
   previewRows?: Array<Record<string, unknown>>
 }
 
-export function TableLinkCard({ resultSetId, tableName, rowCount, columns, previewRows }: TableLinkCardProps) {
+export function TableLinkCard({ resultSetId, tableName, rowCount, columns: rawColumns, previewRows }: TableLinkCardProps) {
+  // Defensive: ensure columns is always an array of ColumnDef objects
+  const columns = Array.isArray(rawColumns) ? rawColumns.filter(c => c && typeof c.key === 'string') : []
+
   return (
     <div className="rounded-3xl border overflow-hidden mt-3 animate-slide-up bg-white border-border max-w-2xl shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
       {/* Header */}

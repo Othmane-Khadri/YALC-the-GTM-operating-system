@@ -12,6 +12,8 @@ let initialized = false
 export async function ensureApifyMcp(): Promise<void> {
   if (initialized) return
   if (!process.env.APIFY_TOKEN) return
+  // Stdio transport cannot work in serverless (Vercel) — skip MCP, use direct HTTP via catalog
+  if (process.env.VERCEL) { initialized = true; return }
 
   const existing = mcpManager.getConnection(APIFY_MCP_ID)
   if (existing?.status === 'connected') {

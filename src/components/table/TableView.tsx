@@ -53,7 +53,7 @@ export function TableView({ tableId }: TableViewProps) {
           id: data.table.id,
           name: data.table.name,
           workflowId: data.table.workflowId,
-          columns: data.table.columns,
+          columns: Array.isArray(data.table.columns) ? data.table.columns : [],
           rowCount: data.table.rowCount,
           createdAt: data.table.createdAt,
         } as TableMeta)
