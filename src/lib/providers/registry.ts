@@ -1,5 +1,6 @@
 import type { StepExecutor, ProviderMetadata } from './types'
 import { MockProvider } from './builtin/mock-provider'
+import { QualifyProvider } from './builtin/qualify-provider'
 import { APIFY_CATALOG } from './builtin/apify-catalog'
 import { createApifyProvider } from './builtin/apify-factory'
 
@@ -100,6 +101,7 @@ const registry = new ProviderRegistry()
 
 // Auto-register providers
 registry.register(new MockProvider())
+registry.register(new QualifyProvider())
 for (const entry of APIFY_CATALOG) {
   registry.register(createApifyProvider(entry))
 }

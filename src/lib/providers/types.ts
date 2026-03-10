@@ -14,6 +14,8 @@ export interface RowBatch {
 export interface ExecutionContext {
   frameworkContext: string
   knowledgeContext?: string
+  learningsContext?: string
+  previousStepRows?: Record<string, unknown>[]
   apiKey?: string
   mcpClient?: unknown
   batchSize: number

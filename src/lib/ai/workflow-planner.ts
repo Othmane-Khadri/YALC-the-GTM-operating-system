@@ -171,7 +171,7 @@ ${getSkillRegistry().getForPlanner()}
 ## Workflow Step Types
 - **search**: Find companies or contacts matching criteria
 - **enrich**: Add data to existing records (email, phone, tech stack, etc.)
-- **qualify**: Use AI to judge fit against ICP or criteria
+- **qualify**: AI-powered ICP scoring. Evaluates rows from previous steps against the user's framework. Produces icp_score (0-100), fit level, reasoning, and signals. Always place AFTER search/enrich steps — it needs upstream data to score. Provider: "qualify".
 - **filter**: Apply rule-based filters (headcount, funding, etc.)
 - **export**: Output to CSV, CRM, or trigger outreach
 ${frameworkContext ? '\n' + frameworkContext : ''}

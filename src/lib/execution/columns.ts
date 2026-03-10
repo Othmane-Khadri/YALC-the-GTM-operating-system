@@ -55,7 +55,9 @@ export const ENRICH_COLUMNS: Record<string, ColumnDef[]> = {
 // Qualify columns
 export const QUALIFY_COLUMNS: ColumnDef[] = [
   { key: 'icp_score', label: 'ICP Score', type: 'score' },
+  { key: 'icp_fit_level', label: 'Fit Level', type: 'badge' },
   { key: 'qualification_reason', label: 'Qualification Reason', type: 'text' },
+  { key: 'qualification_signals', label: 'Signals', type: 'text' },
 ]
 
 export function buildColumnsFromSteps(steps: ProposedStep[]): ColumnDef[] {

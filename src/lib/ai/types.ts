@@ -82,6 +82,7 @@ export type ExecutionEventType =
   | 'step_warning'
   | 'row_batch'
   | 'step_complete'
+  | 'columns_updated'
   | 'execution_complete'
   | 'error'
 

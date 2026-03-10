@@ -10,7 +10,10 @@ import { ProviderIntelligence } from '@/lib/providers/intelligence'
 import { getCollector } from '@/lib/signals/collector'
 import type { WorkflowDefinition } from '@/lib/ai/types'
 import type { GTMFramework } from '@/lib/framework/types'
-import type { WorkflowStepInput } from '@/lib/providers/types'
+import type { WorkflowStepInput, ExecutionContext } from '@/lib/providers/types'
+import type { ColumnDef } from '@/lib/ai/types'
+import { APIFY_CATALOG } from '@/lib/providers/builtin/apify-catalog'
+import { ensureApifyMcp } from '@/lib/mcp/apify-auto-connect'
 
 export const runtime = 'nodejs'
 
@@ -118,9 +121,33 @@ export async function POST(req: NextRequest) {
           // No knowledge items — proceed without context
         }
 
+        // Fetch learnings for qualification context
+        let learningsContext = ''
+        try {
+          const [fw] = await db.select().from(frameworks).where(eq(frameworks.userId, 'default')).limit(1)
+          if (fw?.data) {
+            const framework = fw.data as GTMFramework
+            const validated = (framework.learnings || []).filter(
+              (l: { confidence: string }) => l.confidence === 'validated' || l.confidence === 'proven'
+            )
+            if (validated.length > 0) {
+              learningsContext = validated
+                .slice(-10)
+                .map((l: { insight: string; confidence: string }) => `- [${l.confidence}] ${l.insight}`)
+                .join('\n')
+            }
+          }
+        } catch {
+          // No learnings — proceed without
+        }
+
         let totalSoFar = 0
+        let previousStepRows: Record<string, unknown>[] = []
         const registry = getRegistry()
         const providerIntelligence = new ProviderIntelligence()
+
+        // Ensure Apify MCP server is connected for dynamic actor discovery
+        await ensureApifyMcp()
 
         // Execute each step
         for (const step of workflow.steps) {
@@ -169,9 +196,11 @@ export async function POST(req: NextRequest) {
               config: step.config,
             }
 
-            const context = {
+            const context: ExecutionContext = {
               frameworkContext,
               knowledgeContext,
+              learningsContext,
+              previousStepRows: previousStepRows.length > 0 ? previousStepRows : undefined,
               batchSize: 10,
               totalRequested: Math.min(step.estimatedRows || totalRequested, totalRequested - totalSoFar),
             }
@@ -183,18 +212,35 @@ export async function POST(req: NextRequest) {
             // Graceful fallback: if provider throws, fall back to mock
             try {
               for await (const batch of executor.execute(stepInput, context)) {
-                const rowsToInsert = batch.rows.map((lead, idx) => ({
-                  resultSetId,
-                  rowIndex: totalSoFar + idx,
-                  data: JSON.stringify(lead),
-                }))
+                if (step.stepType === 'qualify' && previousStepRows.length > 0) {
+                  // Qualify: update existing rows in-place with scored data
+                  const existingRows = await db.select().from(resultRows)
+                    .where(eq(resultRows.resultSetId, resultSetId))
+                  for (const row of batch.rows) {
+                    const rowIndex = batch.rows.indexOf(row) + (batch.batchIndex * context.batchSize)
+                    const existing = existingRows[rowIndex]
+                    if (existing) {
+                      await db.update(resultRows)
+                        .set({ data: JSON.stringify(row), updatedAt: new Date() })
+                        .where(eq(resultRows.id, existing.id))
+                    }
+                  }
+                  stepRowCount += batch.rows.length
+                } else {
+                  // Search/Enrich: insert new rows
+                  const rowsToInsert = batch.rows.map((lead, idx) => ({
+                    resultSetId,
+                    rowIndex: totalSoFar + idx,
+                    data: JSON.stringify(lead),
+                  }))
 
-                if (rowsToInsert.length > 0) {
-                  await db.insert(resultRows).values(rowsToInsert)
+                  if (rowsToInsert.length > 0) {
+                    await db.insert(resultRows).values(rowsToInsert)
+                  }
+
+                  totalSoFar += batch.rows.length
+                  stepRowCount += batch.rows.length
                 }
-
-                totalSoFar += batch.rows.length
-                stepRowCount += batch.rows.length
 
                 send({
                   type: 'row_batch',
@@ -235,13 +281,60 @@ export async function POST(req: NextRequest) {
               }
             }
 
-            // Record provider performance
+            // Collect rows for the next step to consume
+            if (step.stepType === 'search' || step.stepType === 'enrich') {
+              const stepResultRows = await db.select({ data: resultRows.data })
+                .from(resultRows)
+                .where(eq(resultRows.resultSetId, resultSetId))
+              previousStepRows = stepResultRows.map(r => r.data as Record<string, unknown>)
+            }
+
+            // After qualify step, merge qualify columns into result set
+            if (step.stepType === 'qualify') {
+              const currentColsRow = await db.select({ c: resultSets.columnsDefinition })
+                .from(resultSets).where(eq(resultSets.id, resultSetId))
+              const currentCols = JSON.parse(currentColsRow[0]?.c as string || '[]') as ColumnDef[]
+              const qualifyCols: ColumnDef[] = [
+                { key: 'icp_score', label: 'ICP Score', type: 'score' },
+                { key: 'icp_fit_level', label: 'Fit Level', type: 'badge' },
+                { key: 'qualification_reason', label: 'Qualification Reason', type: 'text' },
+                { key: 'qualification_signals', label: 'Signals', type: 'text' },
+              ]
+              const mergedCols = [...currentCols]
+              for (const qc of qualifyCols) {
+                if (!mergedCols.find(c => c.key === qc.key)) {
+                  mergedCols.push(qc)
+                }
+              }
+              await db.update(resultSets)
+                .set({ columnsDefinition: JSON.stringify(mergedCols) })
+                .where(eq(resultSets.id, resultSetId))
+
+              send({
+                type: 'columns_updated',
+                columns: mergedCols,
+              })
+            }
+
+            // Record provider performance with cost estimation
             const latencyMs = Date.now() - stepStartTime
+            const catalogEntry = APIFY_CATALOG.find(e => e.id === usedExecutor.id)
+            const estimatedCost = catalogEntry
+              ? (stepRowCount / 1000) * catalogEntry.costPer1k
+              : (currentStep?.costEstimate ?? 0)
+
             await providerIntelligence.recordExecution(
               usedExecutor.id,
               { stepType: step.stepType },
-              { rowCount: stepRowCount, latencyMs, costEstimate: currentStep?.costEstimate ?? 0 },
+              { rowCount: stepRowCount, latencyMs, costEstimate: estimatedCost },
             )
+
+            // Update step with cost estimate
+            if (currentStep && estimatedCost > 0) {
+              await db.update(workflowSteps)
+                .set({ costEstimate: estimatedCost })
+                .where(eq(workflowSteps.id, currentStep.id))
+            }
 
             // Emit provider performance signal
             await getCollector().emit({
@@ -250,7 +343,7 @@ export async function POST(req: NextRequest) {
               data: {
                 providerId: usedExecutor.id,
                 stepType: step.stepType,
-                metrics: { rowCount: stepRowCount, latencyMs, costEstimate: currentStep?.costEstimate ?? 0 },
+                metrics: { rowCount: stepRowCount, latencyMs, costEstimate: estimatedCost },
               },
             })
           }
