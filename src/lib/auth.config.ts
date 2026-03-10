@@ -13,6 +13,7 @@ export const authConfig: NextAuthConfig = {
       clientSecret: process.env.AUTH_GOOGLE_SECRET!,
     }),
   ],
+  session: { strategy: 'jwt' },
   callbacks: {
     async signIn({ user }) {
       if (!user.email) return false
