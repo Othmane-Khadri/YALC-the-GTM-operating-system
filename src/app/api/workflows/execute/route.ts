@@ -188,6 +188,13 @@ export async function POST(req: NextRequest) {
           let executor = await registry.resolveAsync({ stepType: step.stepType, provider: step.provider })
           console.log(`[Step ${step.stepIndex}] Requested: "${step.provider}" → Resolved: "${executor.id}" (${executor.type})`)
 
+          // Always surface provider resolution to the client for debugging
+          send({
+            type: 'step_note',
+            stepIndex: step.stepIndex,
+            message: `Provider: "${step.provider}" → ${executor.id} (${executor.type})`,
+          })
+
           // Warn user when mock is used as primary executor (not via fallback)
           if (executor.id === 'mock' && step.provider !== 'mock') {
             send({
@@ -292,7 +299,7 @@ export async function POST(req: NextRequest) {
               send({
                 type: 'step_warning',
                 stepIndex: step.stepIndex,
-                message: `Provider "${executor.id}" failed — falling back to mock data.`,
+                message: `Provider "${executor.id}" failed: ${errMsg}. Falling back to simulated data.`,
               })
 
               // Resolve mock provider and re-execute
