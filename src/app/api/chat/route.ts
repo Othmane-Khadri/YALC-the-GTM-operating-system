@@ -13,6 +13,7 @@ import type { StreamEvent, KnowledgeChunk } from '@/lib/ai/types'
 import { buildFrameworkContext } from '@/lib/framework/context'
 import type { GTMFramework } from '@/lib/framework/types'
 import { getCollector } from '@/lib/signals/collector'
+import { ensureApifyMcp } from '@/lib/mcp/apify-auto-connect'
 
 export const runtime = 'nodejs'
 
@@ -144,6 +145,7 @@ export async function POST(req: NextRequest) {
             }))
 
         // ── 5. Stream from Claude ─────────────────────────────────────────
+        await ensureApifyMcp() // Discover Apify actors before building planner prompt
         const anthropic = getAnthropicClient()
         const systemPrompt = buildSystemPrompt(knowledgeChunks, connectedProviders, frameworkContext)
 
