@@ -102,13 +102,13 @@ export function CampaignsView() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <h3 className="font-medium text-sm truncate">{campaign.title}</h3>
-                      <span className={cn('text-xs px-2 py-0.5 rounded-full', STATUS_COLORS[campaign.status])}>
-                        {campaign.status}
+                      <h3 className="font-medium text-sm truncate">{String(campaign.title ?? '')}</h3>
+                      <span className={cn('text-xs px-2 py-0.5 rounded-full', STATUS_COLORS[String(campaign.status ?? '')])}>
+                        {String(campaign.status ?? '')}
                       </span>
                     </div>
                     <p className="text-xs text-text-muted mt-1 line-clamp-1">
-                      {campaign.hypothesis}
+                      {String(campaign.hypothesis ?? '')}
                     </p>
                   </div>
                   <div className="text-right text-xs text-text-muted whitespace-nowrap">

@@ -51,7 +51,7 @@ export function ExecutionProgressCard() {
         </div>
         {currentStep && (
           <p className="text-xs text-text-muted mt-1.5">
-            Generating row {execution.totalRows} — {currentStep.title}
+            Generating row {execution.totalRows} — {String(currentStep.title ?? '')}
           </p>
         )}
       </div>
@@ -71,7 +71,7 @@ export function ExecutionProgressCard() {
               "text-sm",
               step.status === 'running' ? "text-text-primary font-bold" : "text-text-secondary"
             )}>
-              {step.title}
+              {String(step.title ?? '')}
             </span>
             {step.rowsOut != null && step.status === 'completed' && (
               <span className="text-xs text-text-muted tabular-nums ml-auto">

@@ -75,7 +75,7 @@ export function TablesListView() {
                   className="group rounded-3xl border border-border bg-white p-6 transition-all duration-200 shadow-card hover:shadow-card-hover"
                 >
                   <h3 className="text-sm font-bold font-display text-text-primary group-hover:text-accent transition-colors truncate">
-                    {table.name}
+                    {String(table.name ?? '')}
                   </h3>
 
                   <div className="flex items-center gap-2 mt-2">

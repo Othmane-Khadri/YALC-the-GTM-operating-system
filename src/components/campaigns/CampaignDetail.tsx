@@ -74,7 +74,7 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
     <div className="flex flex-col h-full p-6 space-y-6 overflow-y-auto">
       <div className="border rounded-lg p-5 bg-white">
         <div className="flex items-center justify-between mb-2">
-          <h1 className="text-xl font-bold font-display">{campaign.title}</h1>
+          <h1 className="text-xl font-bold font-display">{String(campaign.title ?? '')}</h1>
           <div className="flex items-center gap-2">
             {(campaign.status === 'active' || campaign.status === 'paused') && (
               <button
@@ -111,10 +111,10 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
             )}
           </div>
         </div>
-        <p className="text-sm text-text-muted italic">Hypothesis: {campaign.hypothesis}</p>
+        <p className="text-sm text-text-muted italic">Hypothesis: {String(campaign.hypothesis ?? '')}</p>
         <div className="flex items-center gap-3 mt-3 text-xs text-text-muted">
-          {campaign.targetSegment && <span>Segment: {campaign.targetSegment}</span>}
-          {campaign.channels.length > 0 && <span>Channels: {campaign.channels.join(', ')}</span>}
+          {campaign.targetSegment && <span>Segment: {String(campaign.targetSegment)}</span>}
+          {campaign.channels.length > 0 && <span>Channels: {Array.isArray(campaign.channels) ? campaign.channels.join(', ') : String(campaign.channels)}</span>}
         </div>
       </div>
 
@@ -124,13 +124,13 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {campaign.successMetrics.map((m: SuccessMetric, i: number) => (
               <div key={i} className="flex items-center justify-between p-2 rounded bg-surface-2/50">
-                <span className="text-sm">{m.metric}</span>
+                <span className="text-sm">{String(m.metric ?? '')}</span>
                 <div className="text-right">
                   <span className="text-sm font-mono">
-                    {m.actual ?? '---'} / {m.target}
+                    {String(m.actual ?? '---')} / {String(m.target ?? '')}
                   </span>
                   {m.baseline !== null && (
-                    <span className="text-xs text-text-muted ml-2">(baseline: {m.baseline})</span>
+                    <span className="text-xs text-text-muted ml-2">(baseline: {String(m.baseline)})</span>
                   )}
                 </div>
               </div>
@@ -171,9 +171,9 @@ export function CampaignDetail({ campaignId }: CampaignDetailProps) {
           campaign.verdict.result === 'inconclusive' && 'border-warning bg-warning/5',
         )}>
           <h2 className="text-sm font-medium font-display mb-1">
-            Verdict: {campaign.verdict.result.toUpperCase()}
+            Verdict: {String(campaign.verdict.result ?? '').toUpperCase()}
           </h2>
-          <p className="text-sm text-text-muted">{campaign.verdict.evidence}</p>
+          <p className="text-sm text-text-muted">{String(campaign.verdict.evidence ?? '')}</p>
         </div>
       )}
     </div>

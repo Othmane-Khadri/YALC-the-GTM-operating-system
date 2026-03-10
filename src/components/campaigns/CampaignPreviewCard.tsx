@@ -61,20 +61,20 @@ export function CampaignPreviewCard({ proposal, conversationId, onCreated }: Cam
       <div className="flex items-center gap-2 mb-2">
         <span className="text-xs font-medium uppercase tracking-wider text-accent">Campaign Proposal</span>
       </div>
-      <h3 className="font-medium text-sm">{proposal.title}</h3>
-      <p className="text-xs text-text-muted mt-1 italic">{proposal.hypothesis}</p>
+      <h3 className="font-medium text-sm">{String(proposal.title ?? '')}</h3>
+      <p className="text-xs text-text-muted mt-1 italic">{String(proposal.hypothesis ?? '')}</p>
 
       <div className="flex items-center gap-3 mt-2 text-xs text-text-muted">
-        <span>Segment: {proposal.targetSegment}</span>
-        <span>Channels: {proposal.channels.join(', ')}</span>
+        <span>Segment: {String(proposal.targetSegment ?? '')}</span>
+        <span>Channels: {Array.isArray(proposal.channels) ? proposal.channels.join(', ') : String(proposal.channels ?? '')}</span>
       </div>
 
       <div className="mt-3 space-y-1">
         <p className="text-xs font-medium">Success Metrics:</p>
         {proposal.successMetrics.map((m, i) => (
           <div key={i} className="text-xs text-text-muted flex items-center gap-2">
-            <span>{m.metric}</span>
-            <span className="font-mono">target: {m.target}</span>
+            <span>{String(m.metric ?? '')}</span>
+            <span className="font-mono">target: {String(m.target ?? '')}</span>
           </div>
         ))}
       </div>
@@ -84,8 +84,8 @@ export function CampaignPreviewCard({ proposal, conversationId, onCreated }: Cam
         {proposal.steps.map((s, i) => (
           <div key={i} className="text-xs text-text-muted flex items-center gap-2">
             <span className="w-4 text-right font-mono">{i + 1}.</span>
-            <span className="font-mono">{s.skillId}</span>
-            {s.channel && <span className="text-accent">[{s.channel}]</span>}
+            <span className="font-mono">{String(s.skillId ?? '')}</span>
+            {s.channel && <span className="text-accent">[{String(s.channel)}]</span>}
             {s.approvalRequired !== false && <span className="text-warning">(approval)</span>}
           </div>
         ))}

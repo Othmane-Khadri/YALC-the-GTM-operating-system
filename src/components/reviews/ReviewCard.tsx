@@ -49,7 +49,7 @@ export function ReviewCard({ review, onUpdate }: ReviewCardProps) {
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-bold text-sm text-text-primary truncate">{review.title}</h3>
+              <h3 className="font-bold text-sm text-text-primary truncate">{String(review.title ?? '')}</h3>
               <span
                 className="font-bold rounded-md text-[9px] px-2 py-0.5 tracking-wide"
                 style={{ backgroundColor: colors.bg, color: colors.text }}
@@ -102,16 +102,16 @@ export function ReviewCard({ review, onUpdate }: ReviewCardProps) {
             <div className="space-y-1">
               {review.nudgeEvidence.metrics.map((m, i) => (
                 <div key={i} className="flex items-center gap-2 text-xs">
-                  <span className="font-bold text-text-primary">{m.name}:</span>
-                  <span className="text-text-secondary">{m.current}</span>
+                  <span className="font-bold text-text-primary">{String(m.name ?? '')}:</span>
+                  <span className="text-text-secondary">{String(m.current ?? '')}</span>
                   <span className="text-text-muted">→</span>
-                  <span style={{ color: m.projected > m.current ? 'var(--success)' : 'var(--error)' }}>
-                    {m.projected}
+                  <span style={{ color: Number(m.projected) > Number(m.current) ? 'var(--success)' : 'var(--error)' }}>
+                    {String(m.projected ?? '')}
                   </span>
                 </div>
               ))}
             </div>
-            <p className="text-xs text-text-muted">{review.nudgeEvidence.reasoning}</p>
+            <p className="text-xs text-text-muted">{String(review.nudgeEvidence.reasoning ?? '')}</p>
           </div>
         )}
 
