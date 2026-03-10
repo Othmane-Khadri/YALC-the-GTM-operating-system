@@ -25,7 +25,7 @@ export function TableLinkCard({ resultSetId, tableName, rowCount, columns: rawCo
             <rect x="2" y="10" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.5"/>
             <rect x="10" y="10" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.5"/>
           </svg>
-          <h3 className="text-sm font-bold text-text-primary">{tableName}</h3>
+          <h3 className="text-sm font-bold text-text-primary">{String(tableName ?? 'Results')}</h3>
         </div>
         <div className="flex items-center gap-3 mt-2">
           <span className="font-bold rounded-lg bg-surface-2 text-text-muted text-[11px] px-2.5 py-[3px] tabular-nums">
@@ -46,7 +46,7 @@ export function TableLinkCard({ resultSetId, tableName, rowCount, columns: rawCo
                 <tr className="bg-surface">
                   {columns.slice(0, 4).map(col => (
                     <th key={col.key} className="text-left px-2.5 py-1.5 font-bold text-text-muted uppercase tracking-wide">
-                      {col.label}
+                      {String(col.label ?? col.key)}
                     </th>
                   ))}
                 </tr>

@@ -92,7 +92,7 @@ export function MessageBubble({ message, onApproveWorkflow }: MessageBubbleProps
             : "text-text-primary px-1 py-2"
         )}
       >
-        {message.content}
+        {typeof message.content === 'string' ? message.content : String(message.content ?? '')}
       </div>
     </div>
   )

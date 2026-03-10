@@ -109,6 +109,10 @@ export function WorkflowPreviewCard({
   onEdit,
   isRunning = false,
 }: WorkflowPreviewCardProps) {
+  // Defensive: coerce all dynamic fields to strings — Claude's tool output isn't validated
+  const apiKeys = Array.isArray(workflow.requiredApiKeys) ? workflow.requiredApiKeys : []
+  const steps = Array.isArray(workflow.steps) ? workflow.steps : []
+
   return (
     <div className="rounded-3xl border overflow-hidden mt-3 animate-slide-up bg-white border-border max-w-2xl shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
       {/* Header */}
@@ -116,28 +120,28 @@ export function WorkflowPreviewCard({
         <div className="flex items-start justify-between gap-4">
           <div>
             <h3 className="text-base font-bold leading-tight text-text-primary tracking-[-0.01em]">
-              {workflow.title}
+              {String(workflow.title ?? '')}
             </h3>
             <p className="text-sm mt-1.5 leading-relaxed text-text-secondary">
-              {workflow.description}
+              {String(workflow.description ?? '')}
             </p>
           </div>
           <div className="flex-shrink-0 font-bold rounded-lg bg-surface-2 text-text-muted whitespace-nowrap text-[11px] px-3 py-[5px]">
-            {workflow.estimatedTime}
+            {String(workflow.estimatedTime ?? '')}
           </div>
         </div>
 
-        {workflow.requiredApiKeys.length > 0 && (
+        {apiKeys.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-3">
             <span className="text-text-muted text-[11px]">
               Requires:
             </span>
-            {workflow.requiredApiKeys.map((key) => (
+            {apiKeys.map((key, i) => (
               <span
-                key={key}
+                key={typeof key === 'string' ? key : i}
                 className="font-bold rounded-lg bg-accent-light text-[var(--accent-dark)] text-[11px] px-2.5 py-[3px] tracking-wide"
               >
-                {key}
+                {String(key)}
               </span>
             ))}
           </div>
@@ -146,23 +150,24 @@ export function WorkflowPreviewCard({
 
       {/* Steps */}
       <div>
-        {workflow.steps.map((step, index) => {
-          const typeStyle = STEP_TYPE_STYLES[step.stepType]
-          const providerColor = PROVIDER_COLORS[step.provider] ?? 'var(--text-muted)'
+        {steps.map((step, index) => {
+          const typeStyle = STEP_TYPE_STYLES[step.stepType] ?? STEP_TYPE_STYLES.search
+          const providerStr = String(step.provider ?? 'mock')
+          const providerColor = PROVIDER_COLORS[providerStr] ?? 'var(--text-muted)'
 
           return (
             <div
               key={index}
               className={cn(
                 "flex items-start gap-3.5 px-6 py-4",
-                index < workflow.steps.length - 1 && "border-b border-border-subtle"
+                index < steps.length - 1 && "border-b border-border-subtle"
               )}
             >
               <div
                 className="flex-shrink-0 flex items-center justify-center rounded-lg font-bold w-7 h-7 text-xs mt-px"
                 style={{ backgroundColor: typeStyle.bg, color: typeStyle.color }}
               >
-                {step.stepIndex + 1}
+                {(step.stepIndex ?? index) + 1}
               </div>
 
               <div className="flex-1 min-w-0">
@@ -171,7 +176,7 @@ export function WorkflowPreviewCard({
                     {STEP_ICONS[step.stepType]}
                   </span>
                   <span className="text-sm font-bold text-text-primary">
-                    {step.title}
+                    {String(step.title ?? '')}
                   </span>
                   <span
                     className="font-bold rounded text-[10px] px-[7px] py-[2px] tracking-[0.06em]"
@@ -183,7 +188,7 @@ export function WorkflowPreviewCard({
                     className="font-bold rounded text-[10px] px-[7px] py-[2px] tracking-[0.05em] uppercase"
                     style={{ backgroundColor: `${providerColor}14`, color: providerColor }}
                   >
-                    {step.provider}
+                    {providerStr}
                   </span>
                   {step.estimatedRows && (
                     <span className="text-xs text-text-muted">
@@ -192,7 +197,7 @@ export function WorkflowPreviewCard({
                   )}
                 </div>
                 <p className="text-sm mt-1.5 leading-relaxed text-text-secondary">
-                  {step.description}
+                  {String(step.description ?? '')}
                 </p>
               </div>
             </div>

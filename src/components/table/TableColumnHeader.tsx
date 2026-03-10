@@ -39,7 +39,7 @@ export function TableColumnHeader({ column }: TableColumnHeaderProps) {
         "flex items-center gap-1",
         column.type === 'number' && "justify-end"
       )}>
-        <span>{column.label}</span>
+        <span>{String(column.label ?? column.key)}</span>
         <span className="text-[10px]">
           {isActive ? (dir === 'asc' ? '▲' : '▼') : ''}
         </span>
