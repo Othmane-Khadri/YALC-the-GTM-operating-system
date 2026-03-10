@@ -186,7 +186,16 @@ export async function POST(req: NextRequest) {
 
           // Resolve provider via registry (async version uses intelligence)
           let executor = await registry.resolveAsync({ stepType: step.stepType, provider: step.provider })
-          console.log(`Resolved provider: ${executor.id} for step ${step.stepType}`)
+          console.log(`[Step ${step.stepIndex}] Requested: "${step.provider}" → Resolved: "${executor.id}" (${executor.type})`)
+
+          // Warn user when mock is used as primary executor (not via fallback)
+          if (executor.id === 'mock' && step.provider !== 'mock') {
+            send({
+              type: 'step_warning',
+              stepIndex: step.stepIndex,
+              message: `Provider "${step.provider}" not found in registry — using simulated data. Check that provider IDs match the catalog and API keys are set.`,
+            })
+          }
 
           // Filter/export steps: passthrough (no provider execution needed)
           if (step.stepType === 'filter') {

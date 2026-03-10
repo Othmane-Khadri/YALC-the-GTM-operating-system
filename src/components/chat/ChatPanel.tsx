@@ -84,6 +84,9 @@ export function ChatPanel() {
               finalWorkflow = event.workflow
             } else if (event.type === 'campaign_proposal' && event.campaign) {
               finalCampaign = event.campaign
+            } else if (event.type === 'error' && event.error) {
+              accumulatedText += `Error: ${event.error}`
+              setStreamingText(accumulatedText)
             }
           } catch {
             // Ignore parse errors in stream

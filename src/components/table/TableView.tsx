@@ -36,6 +36,7 @@ export function TableView({ tableId }: TableViewProps) {
   const [focusedIndex, setFocusedIndex] = useAtom(focusedRowIndexAtom)
   const filteredRows = useAtomValue(filteredRowsAtom)
   const stats = useAtomValue(feedbackStatsAtom)
+  const [error, setError] = useState<string | null>(null)
 
   const [showLearnings, setShowLearnings] = useState(false)
   const [patterns, setPatterns] = useState<LearningPattern[]>([])
@@ -58,8 +59,8 @@ export function TableView({ tableId }: TableViewProps) {
           createdAt: data.table.createdAt,
         } as TableMeta)
         setRows(data.rows as TableRow[])
-      } catch {
-        // Table load failed
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load table')
       } finally {
         setLoading(false)
       }
@@ -152,6 +153,17 @@ export function TableView({ tableId }: TableViewProps) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-text-muted text-sm animate-pulse">Loading table...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-500 text-sm font-medium mb-2">Failed to load table</p>
+          <p className="text-text-muted text-xs">{error}</p>
+        </div>
       </div>
     )
   }

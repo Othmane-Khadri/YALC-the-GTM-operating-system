@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
 
         const claudeStream = await anthropic.messages.create({
           model: PLANNER_MODEL,
-          max_tokens: 1024,
+          max_tokens: 4096,
           system: systemPrompt,
           tools: [proposeWorkflowTool, proposeCampaignTool],
           tool_choice: { type: 'auto' },
@@ -193,11 +193,11 @@ export async function POST(req: NextRequest) {
             }
           } else if (chunk.type === 'message_stop') {
             // If a workflow was proposed, emit it
-            if (toolUseBlock?.name === 'propose_workflow' && toolUseBlock.input) {
+            if (toolUseBlock?.name === 'propose_workflow' && toolUseBlock.input?.title && Array.isArray(toolUseBlock.input?.steps)) {
               const workflow = parseWorkflowFromToolUse(toolUseBlock.input)
               send({ type: 'workflow_proposal', workflow })
               finalText = "Here's a workflow I'd suggest for your goal:"
-            } else if (toolUseBlock?.name === 'propose_campaign' && toolUseBlock.input) {
+            } else if (toolUseBlock?.name === 'propose_campaign' && toolUseBlock.input?.title) {
               send({ type: 'campaign_proposal', campaign: toolUseBlock.input } as unknown as StreamEvent)
               finalText = "Here's a campaign I'd suggest:"
             }
