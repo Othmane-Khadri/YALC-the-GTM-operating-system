@@ -9,6 +9,7 @@ const PUBLIC_ROUTES = [
   '/login',
   '/api/auth', // NextAuth routes
   '/api/mcp-server', // has its own MCP_SERVER_TOKEN check
+  '/api/test/apify-diag', // public diagnostic endpoint
 ]
 
 const isPublic = (pathname: string) =>
