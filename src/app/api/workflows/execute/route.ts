@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
-import { workflows, workflowSteps, resultSets, resultRows, knowledgeItems } from '@/lib/db/schema'
+import { conversations, workflows, workflowSteps, resultSets, resultRows, knowledgeItems } from '@/lib/db/schema'
 import { eq, sql } from 'drizzle-orm'
 import { buildColumnsFromSteps } from '@/lib/execution/columns'
 import { buildFrameworkContext } from '@/lib/framework/context'
@@ -16,6 +16,7 @@ import { APIFY_CATALOG } from '@/lib/providers/builtin/apify-catalog'
 import { ensureApifyMcp } from '@/lib/mcp/apify-auto-connect'
 
 export const runtime = 'nodejs'
+export const maxDuration = 300
 
 function sseData(obj: Record<string, unknown>): string {
   return `data: ${JSON.stringify(obj)}\n\n`
@@ -49,6 +50,18 @@ export async function POST(req: NextRequest) {
         // Build columns from workflow steps
         const columns = buildColumnsFromSteps(workflow.steps)
         const totalRequested = workflow.estimatedResultCount || 50
+
+        // Ensure conversation exists (handles race conditions and fallback IDs)
+        const existing = await db.select({ id: conversations.id })
+          .from(conversations)
+          .where(eq(conversations.id, conversationId))
+          .limit(1)
+        if (existing.length === 0) {
+          await db.insert(conversations).values({
+            id: conversationId,
+            title: workflow.title ?? 'Workflow Run',
+          })
+        }
 
         // Create workflow row
         workflowId = crypto.randomUUID()

@@ -217,6 +217,17 @@ export function ChatPanel() {
               }))
             } else if (event.type === 'error') {
               console.error('Workflow error:', event.error)
+              // Surface the error visibly — stop execution and show message
+              setExecutionState({ status: 'idle', steps: [], totalRows: 0 })
+              const errorMsg: ChatMessage = {
+                id: crypto.randomUUID(),
+                role: 'assistant',
+                content: `Workflow failed: ${event.error ?? 'Unknown error'}`,
+                type: 'text',
+                createdAt: new Date(),
+              }
+              setMessages(prev => [...prev, errorMsg])
+              return // Stop processing further events
             }
           } catch {
             // Ignore parse errors

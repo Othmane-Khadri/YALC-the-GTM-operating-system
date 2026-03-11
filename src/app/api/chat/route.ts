@@ -16,6 +16,7 @@ import { getCollector } from '@/lib/signals/collector'
 import { ensureApifyMcp } from '@/lib/mcp/apify-auto-connect'
 
 export const runtime = 'nodejs'
+export const maxDuration = 60
 
 // Encode a StreamEvent as an SSE line
 function sseEvent(event: StreamEvent & { conversationId?: string }): string {
