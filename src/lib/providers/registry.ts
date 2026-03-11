@@ -1,8 +1,7 @@
 import type { StepExecutor, ProviderMetadata } from './types'
 import { MockProvider } from './builtin/mock-provider'
 import { QualifyProvider } from './builtin/qualify-provider'
-import { APIFY_CATALOG } from './builtin/apify-catalog'
-import { createApifyProvider } from './builtin/apify-factory'
+import { OrthogonalProvider } from './builtin/orthogonal'
 
 class ProviderRegistry {
   private providers = new Map<string, StepExecutor>()
@@ -19,8 +18,8 @@ class ProviderRegistry {
    * Resolve the best executor for a given step.
    * Priority:
    *   1. Exact provider match by id
-   *   2. Provider Intelligence recommendation (if stats exist)
-   *   3. Capability match — prefer MCP > builtin > mock
+   *   2. Capability match — prefer builtin > mock
+   *   3. Error if nothing found (no silent mock fallback)
    */
   resolve(step: { stepType: string; provider: string }): StepExecutor {
     // 1. Exact match
@@ -43,36 +42,10 @@ class ProviderRegistry {
   }
 
   /**
-   * Async resolve that uses Provider Intelligence to pick the best provider.
-   * Always prefers an exact match over intelligence recommendations.
+   * Simplified resolve — no intelligence layer needed with Orthogonal.
+   * Exact match, then capability match.
    */
-  async resolveAsync(step: { stepType: string; provider: string }, segment?: string): Promise<StepExecutor> {
-    // 1. Exact match always wins — never let intelligence override an explicit provider
-    const exact = this.providers.get(step.provider)
-    if (exact && exact.isAvailable()) return exact
-
-    // 2. Consult intelligence only when no exact match
-    try {
-      const { ProviderIntelligence } = await import('./intelligence')
-      const pi = new ProviderIntelligence()
-      const capabilities = Array.from(this.providers.values())
-        .filter(p => p.canExecute(step as never))
-        .flatMap(p => p.capabilities)
-
-      const best = await pi.getBestProvider({
-        stepType: step.stepType,
-        capabilities: capabilities as string[],
-        segment,
-      })
-
-      if (best) {
-        const executor = this.providers.get(best.providerId)
-        if (executor) return executor
-      }
-    } catch {
-      // No stats yet — fall through to sync resolve
-    }
-
+  async resolveAsync(step: { stepType: string; provider: string }): Promise<StepExecutor> {
     return this.resolve(step)
   }
 
@@ -107,9 +80,7 @@ const registry = new ProviderRegistry()
 // Auto-register providers
 registry.register(new MockProvider())
 registry.register(new QualifyProvider())
-for (const entry of APIFY_CATALOG) {
-  registry.register(createApifyProvider(entry))
-}
+registry.register(new OrthogonalProvider())
 
 export function getRegistry(): ProviderRegistry {
   return registry

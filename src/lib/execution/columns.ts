@@ -1,6 +1,5 @@
 import type { ColumnDef, ColumnType } from '@/lib/ai/types'
 import type { ProposedStep } from '@/lib/ai/types'
-import { APIFY_CATALOG } from '@/lib/providers/builtin/apify-catalog'
 
 // Default columns for search steps
 export const SEARCH_COLUMNS: ColumnDef[] = [
@@ -12,22 +11,8 @@ export const SEARCH_COLUMNS: ColumnDef[] = [
   { key: 'description', label: 'Description', type: 'text' },
 ]
 
-// Build provider-specific columns from Apify catalog
-const catalogSearchColumns: Record<string, ColumnDef[]> = {}
-const catalogEnrichColumns: Record<string, ColumnDef[]> = {}
-for (const entry of APIFY_CATALOG) {
-  if (entry.capabilities.includes('search')) {
-    catalogSearchColumns[entry.id] = entry.columns
-  }
-  if (entry.capabilities.includes('enrich')) {
-    catalogEnrichColumns[entry.id] = entry.columns
-  }
-}
-
 // Provider-specific search columns (falls back to SEARCH_COLUMNS if not mapped)
-export const SEARCH_COLUMNS_BY_PROVIDER: Record<string, ColumnDef[]> = {
-  ...catalogSearchColumns,
-}
+export const SEARCH_COLUMNS_BY_PROVIDER: Record<string, ColumnDef[]> = {}
 
 // Enrichment columns by provider
 export const ENRICH_COLUMNS: Record<string, ColumnDef[]> = {
@@ -49,7 +34,6 @@ export const ENRICH_COLUMNS: Record<string, ColumnDef[]> = {
     { key: 'email_verified', label: 'Email Verified', type: 'badge' },
     { key: 'confidence', label: 'Confidence', type: 'score' },
   ],
-  ...catalogEnrichColumns,
 }
 
 // Qualify columns

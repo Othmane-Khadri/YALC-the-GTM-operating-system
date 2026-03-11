@@ -34,10 +34,10 @@ export async function POST(
     }
 
     let isValid = false
-    if (provider === 'apify') {
-      const { apifyHealthCheck } = await import('@/lib/providers/builtin/apify-base')
-      const health = await apifyHealthCheck()
-      isValid = health.ok
+    if (provider === 'orthogonal') {
+      const { OrthogonalProvider } = await import('@/lib/providers/builtin/orthogonal')
+      const health = await new OrthogonalProvider().healthCheck()
+      isValid = health?.ok ?? false
     } else {
       isValid = !!(connection.encryptedKey && connection.encryptedKey.includes(':'))
     }

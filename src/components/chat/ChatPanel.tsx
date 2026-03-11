@@ -1,5 +1,6 @@
 'use client'
 
+import { useRef } from 'react'
 import { useSetAtom, useAtomValue } from 'jotai'
 import {
   messagesAtom,
@@ -21,7 +22,13 @@ export function ChatPanel() {
   const setExecutionState = useSetAtom(executionStateAtom)
   const conversationId = useAtomValue(activeConversationIdAtom)
 
-  const handleSubmit = async (userInput: string) => {
+  // Track attached CSV rows and seedRows from workflow proposals
+  const attachedRowsRef = useRef<Record<string, unknown>[]>([])
+  const pendingSeedRowsRef = useRef<Record<string, unknown>[]>([])
+
+  const handleSubmit = async (userInput: string, csvRows?: Record<string, unknown>[]) => {
+    // Store attached rows for this request
+    attachedRowsRef.current = csvRows ?? []
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -41,6 +48,7 @@ export function ChatPanel() {
         body: JSON.stringify({
           message: userInput,
           conversationId,
+          ...(attachedRowsRef.current.length > 0 ? { attachedRows: attachedRowsRef.current } : {}),
         }),
       })
 
@@ -54,7 +62,6 @@ export function ChatPanel() {
       let buffer = ''
       let accumulatedText = ''
       let finalWorkflow: WorkflowDefinition | undefined
-      let finalCampaign: Record<string, unknown> | undefined
       let newConversationId: string | undefined
 
       while (true) {
@@ -82,8 +89,15 @@ export function ChatPanel() {
               setStreamingText(accumulatedText)
             } else if (event.type === 'workflow_proposal' && event.workflow) {
               finalWorkflow = event.workflow
-            } else if (event.type === 'campaign_proposal' && event.campaign) {
-              finalCampaign = event.campaign
+              // Capture seedRows from event (sent by server when CSV was attached)
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const seedRows = (event as any).seedRows as Record<string, unknown>[] | undefined
+              if (seedRows && seedRows.length > 0) {
+                pendingSeedRowsRef.current = seedRows
+              } else if (attachedRowsRef.current.length > 0) {
+                // Fallback: use attached CSV rows as seedRows
+                pendingSeedRowsRef.current = attachedRowsRef.current
+              }
             } else if (event.type === 'error' && event.error) {
               accumulatedText += `Error: ${event.error}`
               setStreamingText(accumulatedText)
@@ -103,15 +117,10 @@ export function ChatPanel() {
         id: crypto.randomUUID(),
         role: 'assistant',
         content: finalWorkflow
-          ? "Here's a workflow I'd suggest for your goal:"
-          : finalCampaign
-            ? "Here's a campaign I'd suggest:"
-            : accumulatedText,
-        type: finalWorkflow ? 'workflow_proposal'
-          : finalCampaign ? 'campaign_proposal'
-          : 'text',
+          ? "Here's what I'll do:"
+          : accumulatedText,
+        type: finalWorkflow ? 'workflow_proposal' : 'text',
         workflowDefinition: finalWorkflow,
-        campaignProposal: finalCampaign,
         createdAt: new Date(),
       }
 
@@ -140,6 +149,11 @@ export function ChatPanel() {
     }))
     setExecutionState({ status: 'running', steps, totalRows: 0 })
 
+    // Use pending seedRows if available (from CSV upload)
+    const seedRows = pendingSeedRowsRef.current.length > 0 ? pendingSeedRowsRef.current : undefined
+    pendingSeedRowsRef.current = []
+    attachedRowsRef.current = []
+
     try {
       const res = await fetch('/api/workflows/execute', {
         method: 'POST',
@@ -147,6 +161,7 @@ export function ChatPanel() {
         body: JSON.stringify({
           conversationId: conversationId || 'default',
           workflow,
+          ...(seedRows ? { seedRows } : {}),
         }),
       })
 
@@ -295,7 +310,7 @@ export function ChatPanel() {
       style={{ backgroundColor: 'var(--background)' }}
     >
       <MessageList onApproveWorkflow={handleApproveWorkflow} />
-      <ChatInput onSubmit={handleSubmit} />
+      <ChatInput onSubmit={(msg, csvRows) => handleSubmit(msg, csvRows)} />
     </div>
   )
 }

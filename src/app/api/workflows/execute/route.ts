@@ -6,14 +6,11 @@ import { buildColumnsFromSteps } from '@/lib/execution/columns'
 import { buildFrameworkContext } from '@/lib/framework/context'
 import { frameworks } from '@/lib/db/schema'
 import { getRegistry } from '@/lib/providers/registry'
-import { ProviderIntelligence } from '@/lib/providers/intelligence'
 import { getCollector } from '@/lib/signals/collector'
 import type { WorkflowDefinition } from '@/lib/ai/types'
 import type { GTMFramework } from '@/lib/framework/types'
 import type { WorkflowStepInput, ExecutionContext } from '@/lib/providers/types'
 import type { ColumnDef } from '@/lib/ai/types'
-import { APIFY_CATALOG } from '@/lib/providers/builtin/apify-catalog'
-import { ensureApifyMcp } from '@/lib/mcp/apify-auto-connect'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -170,10 +167,6 @@ export async function POST(req: NextRequest) {
         }
 
         const registry = getRegistry()
-        const providerIntelligence = new ProviderIntelligence()
-
-        // Ensure Apify MCP server is connected for dynamic actor discovery
-        await ensureApifyMcp()
 
         // Pre-flight: verify all providers are resolvable before starting execution
         for (const step of workflow.steps) {
@@ -210,25 +203,16 @@ export async function POST(req: NextRequest) {
               .where(eq(workflowSteps.id, currentStep.id))
           }
 
-          // Resolve provider via registry (async version uses intelligence)
-          let executor = await registry.resolveAsync({ stepType: step.stepType, provider: step.provider })
+          // Resolve provider via registry
+          const executor = await registry.resolveAsync({ stepType: step.stepType, provider: step.provider })
           console.log(`[Step ${step.stepIndex}] Requested: "${step.provider}" → Resolved: "${executor.id}" (${executor.type})`)
 
-          // Always surface provider resolution to the client for debugging
+          // Surface provider resolution to the client
           send({
             type: 'step_note',
             stepIndex: step.stepIndex,
             message: `Provider: "${step.provider}" → ${executor.id} (${executor.type})`,
           })
-
-          // Warn user when mock is used as primary executor (not via fallback)
-          if (executor.id === 'mock' && step.provider !== 'mock') {
-            send({
-              type: 'step_warning',
-              stepIndex: step.stepIndex,
-              message: `Provider "${step.provider}" not found in registry — using simulated data. Check that provider IDs match the catalog and API keys are set.`,
-            })
-          }
 
           // Filter/export steps: passthrough (no provider execution needed)
           if (step.stepType === 'filter') {
@@ -265,72 +249,36 @@ export async function POST(req: NextRequest) {
 
             const stepStartTime = Date.now()
             let stepRowCount = 0
-            let usedExecutor = executor
 
-            // Graceful fallback: if provider throws, fall back to mock
-            try {
-              for await (const batch of executor.execute(stepInput, context)) {
-                if (step.stepType === 'qualify' && previousStepRows.length > 0) {
-                  // Qualify: update existing rows in-place with scored data
-                  const existingRows = await db.select().from(resultRows)
-                    .where(eq(resultRows.resultSetId, resultSetId))
-                  for (let ri = 0; ri < batch.rows.length; ri++) {
-                    const row = batch.rows[ri]
-                    // Match by stable key (name, linkedin_url, email, url) instead of array index
-                    const rowData = row as Record<string, unknown>
-                    let existing = existingRows.find(e => {
-                      const d = (typeof e.data === 'string' ? (() => { try { return JSON.parse(e.data) } catch { return {} } })() : e.data) as Record<string, unknown>
-                      for (const key of ['linkedin_url', 'email', 'url', 'name']) {
-                        if (rowData[key] && d[key] && String(rowData[key]) === String(d[key])) return true
-                      }
-                      return false
-                    })
-                    // Fallback to index-based matching if no key match found
-                    if (!existing) {
-                      const fallbackIndex = ri + (batch.batchIndex * context.batchSize)
-                      existing = existingRows[fallbackIndex]
+            // No mock fallback — surface errors directly
+            for await (const batch of executor.execute(stepInput, context)) {
+              if (step.stepType === 'qualify' && previousStepRows.length > 0) {
+                // Qualify: update existing rows in-place with scored data
+                const existingRows = await db.select().from(resultRows)
+                  .where(eq(resultRows.resultSetId, resultSetId))
+                for (let ri = 0; ri < batch.rows.length; ri++) {
+                  const row = batch.rows[ri]
+                  const rowData = row as Record<string, unknown>
+                  let existing = existingRows.find(e => {
+                    const d = (typeof e.data === 'string' ? (() => { try { return JSON.parse(e.data) } catch { return {} } })() : e.data) as Record<string, unknown>
+                    for (const key of ['linkedin_url', 'email', 'url', 'name']) {
+                      if (rowData[key] && d[key] && String(rowData[key]) === String(d[key])) return true
                     }
-                    if (existing) {
-                      await db.update(resultRows)
-                        .set({ data: row, updatedAt: new Date() })
-                        .where(eq(resultRows.id, existing.id))
-                    }
+                    return false
+                  })
+                  if (!existing) {
+                    const fallbackIndex = ri + (batch.batchIndex * context.batchSize)
+                    existing = existingRows[fallbackIndex]
                   }
-                  stepRowCount += batch.rows.length
-                } else {
-                  // Search/Enrich: insert new rows
-                  const rowsToInsert = batch.rows.map((lead, idx) => ({
-                    resultSetId,
-                    rowIndex: totalSoFar + idx,
-                    data: lead,
-                  }))
-
-                  if (rowsToInsert.length > 0) {
-                    await db.insert(resultRows).values(rowsToInsert)
+                  if (existing) {
+                    await db.update(resultRows)
+                      .set({ data: row, updatedAt: new Date() })
+                      .where(eq(resultRows.id, existing.id))
                   }
-
-                  totalSoFar += batch.rows.length
-                  stepRowCount += batch.rows.length
                 }
-
-                send({
-                  type: 'row_batch',
-                  rows: batch.rows,
-                  totalSoFar,
-                })
-              }
-            } catch (providerErr) {
-              const errMsg = providerErr instanceof Error ? providerErr.message : 'Provider failed'
-              console.warn(`Provider ${executor.id} failed: ${errMsg}. Falling back to mock.`)
-              send({
-                type: 'step_warning',
-                stepIndex: step.stepIndex,
-                message: `Provider "${executor.id}" failed: ${errMsg}. Falling back to simulated data.`,
-              })
-
-              // Resolve mock provider and re-execute
-              usedExecutor = registry.resolve({ stepType: step.stepType, provider: 'mock' })
-              for await (const batch of usedExecutor.execute(stepInput, context)) {
+                stepRowCount += batch.rows.length
+              } else {
+                // Search/Enrich: insert new rows
                 const rowsToInsert = batch.rows.map((lead, idx) => ({
                   resultSetId,
                   rowIndex: totalSoFar + idx,
@@ -343,13 +291,13 @@ export async function POST(req: NextRequest) {
 
                 totalSoFar += batch.rows.length
                 stepRowCount += batch.rows.length
-
-                send({
-                  type: 'row_batch',
-                  rows: batch.rows,
-                  totalSoFar,
-                })
               }
+
+              send({
+                type: 'row_batch',
+                rows: batch.rows,
+                totalSoFar,
+              })
             }
 
             // Collect rows for the next step to consume
@@ -399,34 +347,17 @@ export async function POST(req: NextRequest) {
               })
             }
 
-            // Record provider performance with cost estimation
+            // Record provider performance
             const latencyMs = Date.now() - stepStartTime
-            const catalogEntry = APIFY_CATALOG.find(e => e.id === usedExecutor.id)
-            const estimatedCost = catalogEntry
-              ? (stepRowCount / 1000) * catalogEntry.costPer1k
-              : (currentStep?.costEstimate ?? 0)
-
-            await providerIntelligence.recordExecution(
-              usedExecutor.id,
-              { stepType: step.stepType },
-              { rowCount: stepRowCount, latencyMs, costEstimate: estimatedCost },
-            )
-
-            // Update step with cost estimate
-            if (currentStep && estimatedCost > 0) {
-              await db.update(workflowSteps)
-                .set({ costEstimate: estimatedCost })
-                .where(eq(workflowSteps.id, currentStep.id))
-            }
 
             // Emit provider performance signal
             await getCollector().emit({
               type: 'provider_performance',
               category: 'provider',
               data: {
-                providerId: usedExecutor.id,
+                providerId: executor.id,
                 stepType: step.stepType,
-                metrics: { rowCount: stepRowCount, latencyMs, costEstimate: estimatedCost },
+                metrics: { rowCount: stepRowCount, latencyMs },
               },
             })
           }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useAtom, useAtomValue } from 'jotai'
+import { useCallback } from 'react'
 import {
   feedbackFilterAtom,
   tableSearchAtom,
@@ -8,6 +9,7 @@ import {
   feedbackStatsAtom,
   selectedRowIdsAtom,
   tableRowsAtom,
+  activeTableMetaAtom,
 } from '@/atoms/table'
 import type { FeedbackFilter } from '@/atoms/table'
 import { cn } from '@/lib/utils'
@@ -32,6 +34,14 @@ const FILTER_COLORS: Record<FeedbackFilter, string> = {
   flagged: 'var(--warning)',
 }
 
+function escapeCsvField(value: unknown): string {
+  const str = value == null ? '' : String(value)
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return `"${str.replace(/"/g, '""')}"`
+  }
+  return str
+}
+
 export function TableToolbar({ onBulkFeedback }: TableToolbarProps) {
   const [filter, setFilter] = useAtom(feedbackFilterAtom)
   const [search, setSearch] = useAtom(tableSearchAtom)
@@ -39,8 +49,28 @@ export function TableToolbar({ onBulkFeedback }: TableToolbarProps) {
   const stats = useAtomValue(feedbackStatsAtom)
   const [selectedIds, setSelectedIds] = useAtom(selectedRowIdsAtom)
   const allRows = useAtomValue(tableRowsAtom)
+  const meta = useAtomValue(activeTableMetaAtom)
 
   const hasSelection = selectedIds.size > 0
+
+  const handleExportCSV = useCallback(() => {
+    const columns = meta?.columns ?? []
+    if (columns.length === 0 || filteredRows.length === 0) return
+
+    const header = columns.map(c => escapeCsvField(c.label)).join(',')
+    const rows = filteredRows.map(row =>
+      columns.map(c => escapeCsvField(row.data[c.key])).join(',')
+    )
+    const csv = [header, ...rows].join('\n')
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${meta?.name ?? 'export'}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [meta, filteredRows])
 
   return (
     <div className="flex items-center gap-3 px-5 py-3 border-b border-border bg-white">
@@ -113,9 +143,24 @@ export function TableToolbar({ onBulkFeedback }: TableToolbarProps) {
         </>
       )}
 
-      {/* Row count */}
-      <div className="ml-auto text-xs text-text-muted tabular-nums">
-        {filteredRows.length} of {allRows.length} rows
+      {/* Export CSV */}
+      <div className="ml-auto flex items-center gap-3">
+        <button
+          onClick={handleExportCSV}
+          disabled={filteredRows.length === 0}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-text-muted hover:text-text-secondary hover:bg-surface transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          title="Export filtered rows as CSV"
+        >
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <path d="M2 8.5v2a1 1 0 001 1h7a1 1 0 001-1v-2M6.5 2v7M6.5 9L4 6.5M6.5 9L9 6.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Export CSV
+        </button>
+
+        {/* Row count */}
+        <div className="text-xs text-text-muted tabular-nums">
+          {filteredRows.length} of {allRows.length} rows
+        </div>
       </div>
     </div>
   )

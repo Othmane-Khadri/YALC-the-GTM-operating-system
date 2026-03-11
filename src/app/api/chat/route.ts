@@ -4,17 +4,14 @@ import { conversations, messages } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { getAnthropicClient, PLANNER_MODEL } from '@/lib/ai/client'
 import {
-  proposeWorkflowTool,
-  proposeCampaignTool,
+  actionTools,
   buildSystemPrompt,
-  parseWorkflowFromToolUse,
+  buildWorkflowFromAction,
 } from '@/lib/ai/workflow-planner'
 import type { StreamEvent, KnowledgeChunk } from '@/lib/ai/types'
 import { buildFrameworkContext } from '@/lib/framework/context'
 import type { GTMFramework } from '@/lib/framework/types'
 import { getCollector } from '@/lib/signals/collector'
-import { ensureApifyMcp } from '@/lib/mcp/apify-auto-connect'
-
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
@@ -79,9 +76,10 @@ async function getConnectedProviders(): Promise<string[]> {
 }
 
 export async function POST(req: NextRequest) {
-  const { message, conversationId } = await req.json() as {
+  const { message, conversationId, attachedRows } = await req.json() as {
     message: string
     conversationId?: string
+    attachedRows?: Record<string, unknown>[]
   }
 
   if (!message?.trim()) {
@@ -146,9 +144,19 @@ export async function POST(req: NextRequest) {
             }))
 
         // ── 5. Stream from Claude ─────────────────────────────────────────
-        await ensureApifyMcp() // Discover Apify actors before building planner prompt
         const anthropic = getAnthropicClient()
         const systemPrompt = buildSystemPrompt(knowledgeChunks, connectedProviders, frameworkContext)
+
+        // If CSV rows are attached, mention them in the user message context
+        let enrichedMessage = message
+        if (attachedRows && attachedRows.length > 0) {
+          enrichedMessage += `\n\n[User uploaded ${attachedRows.length} rows as CSV. First row keys: ${Object.keys(attachedRows[0]).join(', ')}]`
+        }
+
+        // Rebuild last message with enriched content
+        if (anthropicMessages.length > 0) {
+          anthropicMessages[anthropicMessages.length - 1].content = enrichedMessage
+        }
 
         // Send conversation ID so frontend can track it
         send({ type: 'text_delta', content: '', conversationId: convId })
@@ -157,7 +165,7 @@ export async function POST(req: NextRequest) {
           model: PLANNER_MODEL,
           max_tokens: 4096,
           system: systemPrompt,
-          tools: [proposeWorkflowTool, proposeCampaignTool],
+          tools: actionTools,
           tool_choice: { type: 'auto' },
           messages: anthropicMessages,
           stream: true,
@@ -193,32 +201,30 @@ export async function POST(req: NextRequest) {
               }
             }
           } else if (chunk.type === 'message_stop') {
-            // If a workflow was proposed, emit it
-            if (toolUseBlock?.name === 'propose_workflow' && toolUseBlock.input?.title && Array.isArray(toolUseBlock.input?.steps)) {
-              const workflow = parseWorkflowFromToolUse(toolUseBlock.input)
-              send({ type: 'workflow_proposal', workflow })
-              finalText = "Here's a workflow I'd suggest for your goal:"
-            } else if (toolUseBlock?.name === 'propose_campaign' && toolUseBlock.input?.title) {
-              send({ type: 'campaign_proposal', campaign: toolUseBlock.input } as unknown as StreamEvent)
-              finalText = "Here's a campaign I'd suggest:"
+            // Map action tool calls to fixed workflows
+            const actionNames = ['find_leads', 'enrich_leads', 'qualify_leads']
+            if (toolUseBlock && actionNames.includes(toolUseBlock.name)) {
+              const workflow = buildWorkflowFromAction(toolUseBlock.name, toolUseBlock.input)
+              // Attach seedRows for enrich/qualify when CSV was uploaded
+              send({
+                type: 'workflow_proposal',
+                workflow,
+                ...(attachedRows && attachedRows.length > 0 ? { seedRows: attachedRows } : {}),
+              } as StreamEvent)
+              finalText = "Here's what I'll do:"
             }
           }
         }
 
         // ── 6. Save assistant message to DB ──────────────────────────────
-        const isWorkflow = toolUseBlock?.name === 'propose_workflow'
-        const isCampaign = toolUseBlock?.name === 'propose_campaign'
+        const isAction = toolUseBlock && ['find_leads', 'enrich_leads', 'qualify_leads'].includes(toolUseBlock.name)
 
         await db.insert(messages).values({
           conversationId: convId,
           role: 'assistant',
           content: finalText || '',
-          messageType: isWorkflow ? 'workflow_proposal'
-            : isCampaign ? 'campaign_proposal'
-            : 'text',
-          metadata: isWorkflow ? { workflowDefinition: toolUseBlock!.input }
-            : isCampaign ? { campaignProposal: toolUseBlock!.input }
-            : null,
+          messageType: isAction ? 'workflow_proposal' : 'text',
+          metadata: isAction ? { workflowDefinition: toolUseBlock!.input } : null,
         })
 
         // ── 7. Detect corrections and emit signals ─────────────────────

@@ -24,7 +24,7 @@ const ACTION_CARDS = [
     iconBg: 'var(--success-light)',
     iconColor: 'var(--success)',
     accent: 'var(--success)',
-    title: 'Find companies',
+    title: 'Find leads',
     description: 'Find 50 SaaS companies in France hiring for sales roles',
   },
   {
@@ -37,20 +37,20 @@ const ACTION_CARDS = [
     iconBg: 'var(--accent-light)',
     iconColor: 'var(--accent)',
     accent: 'var(--accent)',
-    title: 'Enrich your list',
-    description: 'Enrich my lead list with tech stack and decision maker emails',
+    title: 'Scrape & qualify',
+    description: 'Scrape product pages from a list of URLs and qualify against my ICP',
   },
   {
     icon: (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <path d="M10 3l2 4 4.5.7-3.25 3.2.8 4.6L10 13.2 5.95 15.5l.8-4.6L3.5 7.7 8 7z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+        <path d="M14 10v2.5a1.5 1.5 0 01-1.5 1.5h-5A1.5 1.5 0 016 12.5V10M10 4v7M10 4L7.5 6.5M10 4l2.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
       </svg>
     ),
     iconBg: 'var(--accent-light)',
     iconColor: 'var(--accent-dark)',
     accent: 'var(--accent-dark)',
-    title: 'Qualify ICP',
-    description: 'Qualify 200 companies against my ICP for enterprise accounts',
+    title: 'Upload & qualify',
+    description: 'Upload a CSV of leads and qualify them against my ICP criteria',
   },
 ]
 
