@@ -125,6 +125,7 @@ export type ApiProvider =
   | 'clay'
   | 'hunter'
   | 'openai'
+  | 'orthogonal'
 
 export const PROVIDER_LABELS: Record<ApiProvider, string> = {
   apollo: 'Apollo.io',
@@ -135,6 +136,7 @@ export const PROVIDER_LABELS: Record<ApiProvider, string> = {
   clay: 'Clay',
   hunter: 'Hunter.io',
   openai: 'OpenAI',
+  orthogonal: 'Orthogonal',
 }
 
 // Step type icons moved to WorkflowPreviewCard as SVG components
