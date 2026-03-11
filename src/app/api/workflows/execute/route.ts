@@ -23,9 +23,10 @@ function sseData(obj: Record<string, unknown>): string {
 }
 
 export async function POST(req: NextRequest) {
-  const { conversationId, workflow } = await req.json() as {
+  const { conversationId, workflow, seedRows } = await req.json() as {
     conversationId: string
     workflow: WorkflowDefinition
+    seedRows?: Record<string, unknown>[]
   }
 
   if (!workflow?.steps || !Array.isArray(workflow.steps) || workflow.steps.length === 0) {
@@ -155,7 +156,19 @@ export async function POST(req: NextRequest) {
         }
 
         let totalSoFar = 0
-        let previousStepRows: Record<string, unknown>[] = []
+        let previousStepRows: Record<string, unknown>[] = seedRows ?? []
+
+        // If seedRows provided, insert them into resultRows so qualify can update in-place
+        if (seedRows && seedRows.length > 0) {
+          const seedInserts = seedRows.map((row, idx) => ({
+            resultSetId,
+            rowIndex: idx,
+            data: row,
+          }))
+          await db.insert(resultRows).values(seedInserts)
+          totalSoFar = seedRows.length
+        }
+
         const registry = getRegistry()
         const providerIntelligence = new ProviderIntelligence()
 
