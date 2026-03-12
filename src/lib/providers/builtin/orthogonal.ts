@@ -5,14 +5,18 @@ import { SEARCH_COLUMNS } from '../../execution/columns'
 
 const BASE_URL = 'https://api.orth.sh'
 
+export interface OrthEndpoint {
+  path: string
+  method: string
+  description?: string
+  price: string
+  score: number
+}
+
 export interface OrthSearchResult {
   slug: string
-  endpoints: Array<{
-    path: string
-    method: string
-    price: string
-    score: number
-  }>
+  name?: string
+  endpoints: OrthEndpoint[]
 }
 
 export class OrthogonalProvider implements StepExecutor {
@@ -49,15 +53,31 @@ export class OrthogonalProvider implements StepExecutor {
     return data.results ?? []
   }
 
-  async runAPI(slug: string, path: string, params: Record<string, unknown>): Promise<unknown> {
+  async runAPI(
+    slug: string,
+    path: string,
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<unknown> {
     const token = await getOrthogonalToken()
+
+    // /v1/run expects: { api, path, body?, query? }
+    // Use `body` for POST/PUT/PATCH, `query` for GET/DELETE
+    const isBodyMethod = ['POST', 'PUT', 'PATCH'].includes(method.toUpperCase())
+    const payload: Record<string, unknown> = { api: slug, path }
+    if (isBodyMethod) {
+      payload.body = params
+    } else {
+      payload.query = params
+    }
+
     const res = await fetch(`${BASE_URL}/v1/run`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ api: slug, path, body: params }),
+      body: JSON.stringify(payload),
     })
     if (!res.ok) {
       const errText = await res.text()
@@ -71,39 +91,77 @@ export class OrthogonalProvider implements StepExecutor {
   }
 
   async *execute(step: WorkflowStepInput, context: ExecutionContext): AsyncIterable<RowBatch> {
-    // 1. Build search prompt from step description + config
-    const searchPrompt = step.config?.query
-      ? String(step.config.query)
-      : step.config?.url
-        ? `scrape data from ${step.config.url}`
+    // 1. Build a descriptive search prompt for Orthogonal's semantic search
+    const query = step.config?.query ? String(step.config.query) : ''
+    let searchPrompt: string
+
+    if (step.stepType === 'search') {
+      searchPrompt = query
+        ? `find companies or people: ${query}`
         : step.description
+    } else if (step.stepType === 'enrich') {
+      searchPrompt = query
+        ? `enrich leads: ${query}`
+        : step.config?.url
+          ? `scrape data from ${step.config.url}`
+          : `enrich company or people data: ${step.description}`
+    } else {
+      searchPrompt = step.description
+    }
 
     // 2. Find the best API via /v1/search
-    const searchResults = await this.searchAPIs(searchPrompt, 3)
+    const searchResults = await this.searchAPIs(searchPrompt, 5)
     if (searchResults.length === 0) {
       throw new Error(`Orthogonal found no APIs matching: "${searchPrompt}"`)
     }
 
+    // Pick the best endpoint with the highest score
     const bestResult = searchResults[0]
     const bestEndpoint = bestResult.endpoints[0]
     if (!bestEndpoint) {
       throw new Error(`Orthogonal API "${bestResult.slug}" has no endpoints`)
     }
 
-    // 3. Build params from step config
-    const params: Record<string, unknown> = {
-      ...(step.config ?? {}),
+    console.log(`[Orthogonal] Matched: ${bestResult.slug} ${bestEndpoint.method} ${bestEndpoint.path} (score: ${bestEndpoint.score})`)
+
+    // 3. Build params based on what the matched API likely expects
+    //    Pass query/description as the main search param, plus limit
+    const params: Record<string, unknown> = {}
+
+    // Common search params — APIs typically accept q/query/keyword/search_query
+    if (query) {
+      params.q = query
+      params.query = query
     }
+
+    // Pass limit/count
     if (context.totalRequested) {
       params.limit = context.totalRequested
+      params.per_page = context.totalRequested
     }
-    // If enriching, pass previous step rows
+
+    // Pass any explicit config that looks like real API params (not our internal keys)
+    const internalKeys = new Set(['query', 'targetCount', 'filters', 'url', 'enrichmentGoal', 'criteria'])
+    if (step.config) {
+      for (const [k, v] of Object.entries(step.config)) {
+        if (!internalKeys.has(k) && v !== undefined) {
+          params[k] = v
+        }
+      }
+    }
+
+    // If enriching with previous rows, pass them
     if (step.stepType === 'enrich' && context.previousStepRows?.length) {
       params.leads = context.previousStepRows
     }
 
+    // If there's a URL, pass it as url param
+    if (step.config?.url) {
+      params.url = step.config.url
+    }
+
     // 4. Execute the API call
-    const rawData = await this.runAPI(bestResult.slug, bestEndpoint.path, params)
+    const rawData = await this.runAPI(bestResult.slug, bestEndpoint.path, bestEndpoint.method, params)
 
     // 5. Normalize into rows
     const rows = this.normalizeResponse(rawData)
