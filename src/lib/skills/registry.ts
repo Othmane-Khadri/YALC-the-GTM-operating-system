@@ -4,7 +4,6 @@ import { findCompaniesSkill } from './builtin/find-companies'
 import { enrichLeadsSkill } from './builtin/enrich-leads'
 import { qualifyLeadsSkill } from './builtin/qualify-leads'
 import { exportDataSkill } from './builtin/export-data'
-import { linkedinEngagementSkill } from './builtin/linkedin-engagement'
 
 class SkillRegistry {
   private skills = new Map<string, Skill>()
@@ -55,7 +54,6 @@ skillRegistry.register(findCompaniesSkill)
 skillRegistry.register(enrichLeadsSkill)
 skillRegistry.register(qualifyLeadsSkill)
 skillRegistry.register(exportDataSkill)
-skillRegistry.register(linkedinEngagementSkill)
 
 export function getSkillRegistry(): SkillRegistry {
   return skillRegistry

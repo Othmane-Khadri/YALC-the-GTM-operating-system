@@ -7,8 +7,7 @@ node_modules
 out
 
 # Environment variables — NEVER commit these
-.env.local
-.env
+.env*
 
 # Credential files — NEVER commit these
 client_secret*.json
@@ -40,3 +39,14 @@ CLAUDE.md
 npm-debug.log*
 pnpm-debug.log*
 .vercel
+
+# Lead data and intelligence (may contain sensitive info)
+data/leads/*
+data/intelligence/*
+data/campaigns/*
+data/content/*
+!data/leads/.gitkeep
+!data/intelligence/.gitkeep
+!data/intelligence/README.md
+!data/campaigns/.gitkeep
+!data/content/.gitkeep

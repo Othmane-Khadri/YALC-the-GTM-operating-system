@@ -1,41 +1,26 @@
 {
-  "name": "yalc",
-  "version": "0.1.0",
+  "name": "gtm-os",
+  "version": "0.2.0",
   "private": false,
   "license": "MIT",
-  "description": "Open-source, AI-native operating system for running any GTM campaign",
+  "description": "Open-source, AI-native GTM engine — core library for lead finding, enrichment, and ICP qualification",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "@apify/actors-mcp-server": "^0.9.7",
-    "@auth/drizzle-adapter": "^1.11.1",
     "@libsql/client": "^0.17.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
-    "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.1",
-    "jotai": "^2.12.0",
-    "next": "^14.2.0",
-    "next-auth": "5.0.0-beta.30",
-    "pdf-parse": "^2.4.5",
-    "react": "^18.3.0",
-    "react-dom": "^18.3.0"
+    "pdf-parse": "^2.4.5"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
     "@types/pdf-parse": "^1.1.5",
-    "@types/react": "^18.3.0",
-    "@types/react-dom": "^18.3.0",
-    "autoprefixer": "^10.4.0",
     "drizzle-kit": "^0.30.0",
-    "postcss": "^8.4.0",
-    "tailwindcss": "^3.4.0",
     "typescript": "^5.7.0"
   }
 }

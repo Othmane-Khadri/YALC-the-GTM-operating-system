@@ -49,7 +49,7 @@ export class OrthogonalProvider implements StepExecutor {
       const errText = await res.text()
       throw new Error(`Orthogonal /v1/search failed (${res.status}): ${errText}`)
     }
-    const data = await res.json()
+    const data = await res.json() as { results?: OrthSearchResult[] }
     return data.results ?? []
   }
 
@@ -83,7 +83,7 @@ export class OrthogonalProvider implements StepExecutor {
       const errText = await res.text()
       throw new Error(`Orthogonal /v1/run failed (${res.status}): ${errText}`)
     }
-    const data = await res.json()
+    const data = await res.json() as { success?: boolean; data?: unknown }
     if (!data.success) {
       throw new Error(`Orthogonal run error: ${JSON.stringify(data)}`)
     }
