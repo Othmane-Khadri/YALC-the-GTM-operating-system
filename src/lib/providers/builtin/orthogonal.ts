@@ -163,8 +163,9 @@ export class OrthogonalProvider implements StepExecutor {
     // 4. Execute the API call
     const rawData = await this.runAPI(bestResult.slug, bestEndpoint.path, bestEndpoint.method, params)
 
-    // 5. Normalize into rows
-    const rows = this.normalizeResponse(rawData)
+    // 5. Normalize into rows and flatten nested fields
+    const rawRows = this.normalizeResponse(rawData)
+    const rows = rawRows.map(row => this.flattenRow(row))
 
     if (rows.length === 0) {
       yield { rows: [], batchIndex: 0, totalSoFar: 0 }
@@ -213,18 +214,74 @@ export class OrthogonalProvider implements StepExecutor {
     }
   }
 
+  /** Flatten nested API response objects into table-friendly flat rows */
+  private flattenRow(row: Record<string, unknown>): Record<string, unknown> {
+    const flat: Record<string, unknown> = {}
+
+    for (const [key, val] of Object.entries(row)) {
+      if (val === null || val === undefined) continue
+
+      if (Array.isArray(val)) {
+        // Arrays of strings → join; arrays of objects → skip (too complex for table)
+        if (val.length > 0 && typeof val[0] === 'string') {
+          flat[key] = val.join(', ')
+        } else if (val.length === 0) {
+          flat[key] = ''
+        }
+      } else if (typeof val === 'object') {
+        // Flatten simple numeric ranges (e.g. employee_count_consensus: { gte: 55, lte: 55 })
+        const obj = val as Record<string, unknown>
+        if ('gte' in obj && 'lte' in obj) {
+          flat[key] = obj.gte === obj.lte ? obj.gte : `${obj.gte}–${obj.lte}`
+        }
+        // Skip other complex objects
+      } else {
+        flat[key] = val
+      }
+    }
+
+    // Map common API field names to our standard column keys
+    if (!flat.company_name) {
+      flat.company_name = flat.name || flat.company || flat.organization_name || flat.linkedin_primary_slug || ''
+    }
+    if (!flat.website && flat.domains) {
+      flat.website = String(flat.domains).split(',')[0]?.trim()
+    }
+    if (!flat.employee_count && flat.employee_count_consensus) {
+      flat.employee_count = flat.employee_count_consensus
+    }
+    if (!flat.location) {
+      flat.location = flat.headquarters || flat.country || flat.city || ''
+    }
+
+    return flat
+  }
+
   /** Normalize any Orthogonal API response into flat rows */
   private normalizeResponse(data: unknown): Record<string, unknown>[] {
     if (Array.isArray(data)) return data as Record<string, unknown>[]
 
-    // If response is an object with a data/results/items array, extract it
     if (data && typeof data === 'object') {
       const obj = data as Record<string, unknown>
-      for (const key of ['results', 'data', 'items', 'leads', 'people', 'companies', 'contacts', 'records']) {
-        if (Array.isArray(obj[key])) {
-          return obj[key] as Record<string, unknown>[]
+
+      // Check common data keys at any nesting level (handles data.output.data, data.results, etc.)
+      const dataKeys = ['results', 'data', 'items', 'leads', 'people', 'companies', 'contacts', 'records', 'output']
+      for (const key of dataKeys) {
+        const val = obj[key]
+        if (Array.isArray(val)) {
+          return val as Record<string, unknown>[]
+        }
+        // Recurse one level into nested objects (e.g. output.data, data.results)
+        if (val && typeof val === 'object' && !Array.isArray(val)) {
+          const nested = val as Record<string, unknown>
+          for (const innerKey of dataKeys) {
+            if (Array.isArray(nested[innerKey])) {
+              return nested[innerKey] as Record<string, unknown>[]
+            }
+          }
         }
       }
+
       // Single object — wrap in array
       return [obj]
     }
