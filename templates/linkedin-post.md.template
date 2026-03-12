@@ -1,0 +1,27 @@
+# LinkedIn Post: {topic}
+**Date:** {YYYY-MM-DD}
+**Segment:** {segment_id}
+
+## Hook
+{first_line — this is the only line visible before "see more", make it count}
+
+## Body
+
+{story_or_insight — a specific observation, anecdote, or contrarian take}
+
+{framework_or_lesson — the actionable takeaway}
+
+{cta_or_question — invite engagement, don't sell}
+
+---
+
+## Template Rules
+- Under 1300 characters total
+- Hook must be compelling enough to earn the "see more" click
+- No hashtags in the body text
+- Line breaks between paragraphs for mobile readability
+- Use key phrases from gtm-os.yaml segments[].voice.key_phrases
+- Reference differentiators from positioning.differentiators when relevant
+- Avoid phrases from segments[].voice.avoid_phrases
+- Never be generic — ground in a specific observation or experience
+- End with a question to drive comments, not a link to drive clicks

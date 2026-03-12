@@ -1,0 +1,27 @@
+# Task: Search Companies via Fiber AI (through Orthogonal)
+# Fiber AI is best for: company search by natural language, strong on EU companies
+
+id: search_companies_fiber
+name: "Search Companies (Fiber AI)"
+description: "Find companies by natural language query. Strong coverage for European companies."
+provider: orthogonal
+api_slug: fiber
+endpoint: /v1/natural-language-search/companies
+method: POST
+param_mapping:
+  query: query                # Fiber expects "query" not "q"
+  count: limit                # Number of results (default 25)
+output_fields:
+  - company_name: name
+  - website: domains
+  - industry: industry
+  - employee_count: employee_count_consensus
+  - location: headquarters
+  - description: description
+  - linkedin_url: linkedin_primary_slug
+  - founded_year: year_founded
+best_for:
+  - "European company search"
+  - "SaaS company discovery"
+  - "Natural language company queries"
+cost_per_call: "~$0.01-0.05 via Orthogonal"

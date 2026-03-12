@@ -1,0 +1,43 @@
+# Research Brief: {Company Name}
+**Date:** {YYYY-MM-DD}
+**Source:** {domain}
+
+## Company Overview
+- **Industry:** {industry}
+- **Size:** {employee_count} employees
+- **Stage:** {stage — seed, series-a, series-b, growth, enterprise}
+- **HQ:** {headquarters}
+- **Founded:** {year}
+- **Website:** {url}
+
+## What They Do
+{1-2 paragraphs summarizing core business from website scrape}
+
+## ICP Fit Assessment
+- **Score:** {0-100}
+- **Fit level:** {Strong / Moderate / Poor}
+- **Reason:** {2-3 sentences grounding the score in gtm-os.yaml segments criteria}
+
+## Key Decision Makers
+| Name | Title | LinkedIn |
+|------|-------|----------|
+| {name} | {title} | {url} |
+
+## Pain Points & Triggers
+{Mapped to gtm-os.yaml segments[].pain_points — which ones likely apply and why}
+- {pain_point_1 — evidence from website/hiring/news}
+- {pain_point_2 — evidence}
+
+## Buying Signals Detected
+{Check for: hiring, funding, product launch, expansion, competitor pressure}
+- {signal_1}
+- {signal_2}
+
+## Recommended Approach
+- **Best channel:** {email / LinkedIn / Reddit / etc.}
+- **Messaging angle:** {which key_message to lead with and why}
+- **Timing:** {any urgency signals — funding just raised, new hire, etc.}
+
+## Sources
+- {URL_1 — what was found}
+- {URL_2 — what was found}

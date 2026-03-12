@@ -1,0 +1,35 @@
+# Task: Search Companies via Nyne (through Orthogonal)
+# Nyne is best for: detailed company data, funding info, technology detection
+# NOTE: Nyne uses async API — POST to start, GET to poll results
+
+id: search_companies_nyne
+name: "Search Companies (Nyne)"
+description: "Find companies with detailed data including funding, tech stack, and needs analysis."
+provider: orthogonal
+api_slug: nyne
+endpoint: /v1/companies/search
+method: POST
+async_polling: true           # POST returns a task ID, GET to poll for results
+poll_endpoint: /v1/companies/search/{task_id}
+poll_method: GET
+param_mapping:
+  query: q
+  count: limit
+  industry: industry
+  location: location
+  company_size: company_size
+output_fields:
+  - company_name: name
+  - website: domain
+  - industry: industry
+  - employee_count: employees
+  - location: location
+  - funding_total: total_funding
+  - funding_round: last_funding_round
+  - tech_stack: technologies
+  - description: description
+best_for:
+  - "Detailed company intelligence"
+  - "Funding and investment data"
+  - "Technology stack detection"
+cost_per_call: "~$0.02-0.10 via Orthogonal"

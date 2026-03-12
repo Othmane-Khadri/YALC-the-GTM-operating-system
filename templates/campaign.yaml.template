@@ -1,0 +1,37 @@
+# GTM-OS Campaign
+# Copy this template and fill in your hypothesis to start a new campaign.
+
+id: ""
+name: ""
+hypothesis: ""                    # Testable statement, e.g. "LinkedIn outreach converts 2x for DACH SaaS"
+target_segment: ""                # Maps to gtm-os.yaml segments[].id
+channels: []                      # linkedin, email, reddit, etc.
+status: draft                     # draft → active → completed
+
+success_metrics:
+  - metric: ""                    # e.g., "reply_rate"
+    target: 0                     # e.g., 15 (%)
+    baseline: 0                   # Current known rate
+    actual: null                  # Filled during execution
+
+steps:
+  - index: 1
+    title: ""
+    skill: ""                     # discover, qualify, enrich, research, write
+    status: pending               # pending → running → completed → failed
+    input: {}
+    output_file: ""               # Path to result file
+    depends_on: []                # Step indices this depends on
+
+metrics:
+  leads_found: 0
+  leads_qualified: 0
+  content_sent: 0
+  replies: 0
+  conversions: 0
+
+verdict: null                     # confirmed, disproven, inconclusive
+verdict_evidence: ""
+
+created_at: ""
+updated_at: ""

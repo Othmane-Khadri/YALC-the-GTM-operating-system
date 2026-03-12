@@ -1,0 +1,64 @@
+# GTM-OS — Company Context
+# This file is your GTM operating system's brain.
+# Fill it in during onboarding or manually.
+
+onboarding_complete: false
+
+company:
+  name: ""
+  website: ""
+  linkedin_url: ""
+  industry: ""
+  sub_industry: ""
+  stage: ""  # pre-seed | seed | series-a | series-b | growth | enterprise
+  description: ""
+  team_size: ""
+  founded_year:
+  headquarters: ""
+
+positioning:
+  value_prop: ""
+  tagline: ""
+  category: ""
+  differentiators: []
+  proof_points: []
+  competitors:
+    # - name: ""
+    #   website: ""
+    #   positioning: ""
+    #   weaknesses: []
+
+segments:
+  - id: "primary"
+    name: ""
+    description: ""
+    priority: "primary"
+    target_roles: []
+    target_company_sizes: []
+    target_industries: []
+    pain_points: []
+    buying_triggers: []
+    disqualifiers: []
+    voice:
+      tone: ""
+      style: ""
+      key_phrases: []
+      avoid_phrases: []
+    messaging:
+      elevator_pitch: ""
+      key_messages: []
+      objection_handling: []
+
+channels:
+  active: []  # linkedin, email, reddit, twitter, cold-call, etc.
+
+signals:
+  buying_intent_signals: []
+  monitoring_keywords: []
+  trigger_events: []
+
+objections: []
+
+learnings: []
+
+connected_providers: []
