@@ -1,0 +1,12 @@
+id: store_leads_notion
+name: Store Leads in Notion
+description: Export leads to a Notion database via the official Notion SDK
+provider: notion
+env_required:
+  - NOTION_API_KEY
+capabilities:
+  - export
+best_for:
+  - Exporting qualified leads to a Notion database
+  - Batch creating pages with lead data
+  - Syncing workflow results to Notion for team collaboration

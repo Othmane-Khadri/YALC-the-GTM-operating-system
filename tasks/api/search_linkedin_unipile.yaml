@@ -1,0 +1,14 @@
+id: search_linkedin_unipile
+name: LinkedIn People Search
+description: Search LinkedIn for people matching a query via Unipile SDK
+provider: unipile
+env_required:
+  - UNIPILE_API_KEY
+  - UNIPILE_DSN
+capabilities:
+  - search
+  - enrich
+best_for:
+  - Finding people on LinkedIn by title, company, industry
+  - Enriching leads with LinkedIn profile data
+  - Discovering decision makers at target companies
