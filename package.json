@@ -15,7 +15,10 @@
     "@libsql/client": "^0.17.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "drizzle-orm": "^0.45.1",
-    "pdf-parse": "^2.4.5"
+    "pdf-parse": "^2.4.5",
+    "unipile-node-sdk": "^1.0.0",
+    "@mendable/firecrawl-js": "^1.0.0",
+    "@notionhq/client": "^2.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
