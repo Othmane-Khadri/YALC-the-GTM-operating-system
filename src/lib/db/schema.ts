@@ -1,44 +1,5 @@
-import { sqliteTable, text, integer, real, primaryKey } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core'
 import { relations, sql } from 'drizzle-orm'
-
-// ─── Auth (NextAuth.js) ────────────────────────────────────────────────────
-export const users = sqliteTable('users', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  name: text('name'),
-  email: text('email').unique().notNull(),
-  emailVerified: integer('emailVerified', { mode: 'timestamp' }),
-  image: text('image'),
-})
-
-export const accounts = sqliteTable('accounts', {
-  userId: text('userId').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  type: text('type').notNull(),
-  provider: text('provider').notNull(),
-  providerAccountId: text('providerAccountId').notNull(),
-  refresh_token: text('refresh_token'),
-  access_token: text('access_token'),
-  expires_at: integer('expires_at'),
-  token_type: text('token_type'),
-  scope: text('scope'),
-  id_token: text('id_token'),
-  session_state: text('session_state'),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.provider, table.providerAccountId] }),
-}))
-
-export const sessions = sqliteTable('sessions', {
-  sessionToken: text('sessionToken').primaryKey(),
-  userId: text('userId').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  expires: integer('expires', { mode: 'timestamp' }).notNull(),
-})
-
-export const verificationTokens = sqliteTable('verificationTokens', {
-  identifier: text('identifier').notNull(),
-  token: text('token').notNull(),
-  expires: integer('expires', { mode: 'timestamp' }).notNull(),
-}, (table) => ({
-  pk: primaryKey({ columns: [table.identifier, table.token] }),
-}))
 
 // ─── Conversations ──────────────────────────────────────────────────────────
 // Primary entity — every chat thread is a conversation
