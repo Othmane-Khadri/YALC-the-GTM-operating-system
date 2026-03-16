@@ -117,24 +117,16 @@ export interface KnowledgeChunk {
 // ─── API Connection Types ─────────────────────────────────────────────────────
 
 export type ApiProvider =
-  | 'apollo'
   | 'anthropic'
   | 'firecrawl'
-  | 'builtwith'
-  | 'clay'
-  | 'hunter'
-  | 'openai'
-  | 'orthogonal'
+  | 'unipile'
+  | 'notion'
 
 export const PROVIDER_LABELS: Record<ApiProvider, string> = {
-  apollo: 'Apollo.io',
   anthropic: 'Anthropic (Claude)',
   firecrawl: 'Firecrawl',
-  builtwith: 'BuiltWith',
-  clay: 'Clay',
-  hunter: 'Hunter.io',
-  openai: 'OpenAI',
-  orthogonal: 'Orthogonal',
+  unipile: 'Unipile (LinkedIn)',
+  notion: 'Notion',
 }
 
 // Step type icons moved to WorkflowPreviewCard as SVG components

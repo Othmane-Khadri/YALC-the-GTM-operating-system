@@ -152,6 +152,12 @@ export function buildWorkflowFromAction(
     if (toolInput.url) config.url = toolInput.url
     if (toolInput.filters) config.filters = toolInput.filters
 
+    // Detect LinkedIn vs web search
+    const isLinkedIn = query.toLowerCase().includes('linkedin')
+      || String(toolInput.url ?? '').toLowerCase().includes('linkedin.com')
+    const provider = isLinkedIn ? 'unipile' : 'firecrawl'
+    const requiredKey = isLinkedIn ? 'unipile' : 'firecrawl'
+
     return {
       title: query.slice(0, 60),
       description: query,
@@ -160,7 +166,7 @@ export function buildWorkflowFromAction(
           stepIndex: 0,
           title: toolInput.url ? 'Scrape & collect' : 'Search leads',
           stepType: 'search',
-          provider: 'orthogonal',
+          provider,
           description: query,
           estimatedRows: targetCount,
           config,
@@ -175,13 +181,19 @@ export function buildWorkflowFromAction(
         },
       ],
       estimatedTime: '~2 minutes',
-      requiredApiKeys: ['orthogonal'],
+      requiredApiKeys: [requiredKey],
       estimatedResultCount: targetCount,
     }
   }
 
   if (toolName === 'enrich_leads') {
     const goal = (toolInput.enrichmentGoal as string) ?? 'Enrich leads'
+
+    // Detect LinkedIn enrichment
+    const isLinkedIn = goal.toLowerCase().includes('linkedin')
+    const provider = isLinkedIn ? 'unipile' : 'firecrawl'
+    const requiredKey = isLinkedIn ? 'unipile' : 'firecrawl'
+
     return {
       title: `Enrich: ${goal}`.slice(0, 60),
       description: goal,
@@ -190,14 +202,14 @@ export function buildWorkflowFromAction(
           stepIndex: 0,
           title: 'Enrich leads',
           stepType: 'enrich',
-          provider: 'orthogonal',
+          provider,
           description: goal,
           estimatedRows: targetCount,
           config: { query: goal },
         },
       ],
       estimatedTime: '~2 minutes',
-      requiredApiKeys: ['orthogonal'],
+      requiredApiKeys: [requiredKey],
       estimatedResultCount: targetCount,
     }
   }

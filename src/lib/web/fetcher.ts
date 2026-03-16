@@ -70,20 +70,10 @@ export class WebFetcher {
   }
 
   private async fetchViaFirecrawl(url: string): Promise<string | null> {
-    const { getRegistry } = await import('../providers/registry')
-    const registry = getRegistry()
-
-    const providers = registry.getAll()
-    const firecrawl = providers.find(
-      p => p.id.includes('firecrawl') && p.type === 'mcp' && p.status === 'active'
-    )
-
-    if (!firecrawl) return null
-
-    const { mcpManager } = await import('../mcp/client')
+    const { firecrawlService } = await import('../services/firecrawl')
+    if (!firecrawlService.isAvailable()) return null
     try {
-      const result = await mcpManager.callTool(firecrawl.id, 'firecrawl_scrape', { url })
-      return typeof result === 'string' ? result : JSON.stringify(result)
+      return await firecrawlService.scrape(url)
     } catch {
       return null
     }

@@ -1,7 +1,9 @@
 import type { StepExecutor, ProviderMetadata } from './types'
 import { MockProvider } from './builtin/mock-provider'
 import { QualifyProvider } from './builtin/qualify-provider'
-import { OrthogonalProvider } from './builtin/orthogonal'
+import { FirecrawlProvider } from './builtin/firecrawl-provider'
+import { UnipileProvider } from './builtin/unipile-provider'
+import { NotionProvider } from './builtin/notion-provider'
 
 class ProviderRegistry {
   private providers = new Map<string, StepExecutor>()
@@ -41,10 +43,6 @@ class ProviderRegistry {
     throw new Error(`No provider found for step type="${step.stepType}" provider="${step.provider}"`)
   }
 
-  /**
-   * Simplified resolve — no intelligence layer needed with Orthogonal.
-   * Exact match, then capability match.
-   */
   async resolveAsync(step: { stepType: string; provider: string }): Promise<StepExecutor> {
     return this.resolve(step)
   }
@@ -65,7 +63,6 @@ class ProviderRegistry {
    * the workflow planner's system prompt.
    */
   getAvailableForPlanner(): string {
-    // Only show providers whose credentials are actually available
     const available = Array.from(this.providers.values()).filter(p => p.isAvailable())
     if (available.length === 0) return 'No providers available.'
     return available
@@ -80,7 +77,9 @@ const registry = new ProviderRegistry()
 // Auto-register providers
 registry.register(new MockProvider())
 registry.register(new QualifyProvider())
-registry.register(new OrthogonalProvider())
+registry.register(new FirecrawlProvider())
+registry.register(new UnipileProvider())
+registry.register(new NotionProvider())
 
 export function getRegistry(): ProviderRegistry {
   return registry
