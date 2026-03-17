@@ -105,6 +105,34 @@ export class UnipileService {
     const c = getClient()
     return c.users.getAllPostComments({ account_id: accountId, post_id: postId })
   }
+
+  async listChats(accountId: string, limit = 100) {
+    const dsn = process.env.UNIPILE_DSN!
+    const apiKey = process.env.UNIPILE_API_KEY!
+    const url = `${dsn}/api/v1/chats?account_id=${encodeURIComponent(accountId)}&limit=${limit}`
+    const res = await fetch(url, {
+      headers: { 'X-API-KEY': apiKey },
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`Unipile listChats failed (${res.status}): ${text}`)
+    }
+    return res.json()
+  }
+
+  async getMessages(chatId: string, limit = 50) {
+    const dsn = process.env.UNIPILE_DSN!
+    const apiKey = process.env.UNIPILE_API_KEY!
+    const url = `${dsn}/api/v1/chats/${encodeURIComponent(chatId)}/messages?limit=${limit}`
+    const res = await fetch(url, {
+      headers: { 'X-API-KEY': apiKey },
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`Unipile getMessages failed (${res.status}): ${text}`)
+    }
+    return res.json()
+  }
 }
 
 export const unipileService = new UnipileService()

@@ -256,6 +256,13 @@ export const campaigns = sqliteTable('campaigns', {
   successMetrics: text('success_metrics').notNull(),
   metrics: text('metrics').notNull(),
   verdict: text('verdict'),
+  // LinkedIn campaign extensions
+  linkedinAccountId: text('linkedin_account_id'),
+  dailyLimit: integer('daily_limit').default(30),
+  sequenceTiming: text('sequence_timing', { mode: 'json' }), // { connect_to_dm1_days, dm1_to_dm2_days }
+  experimentStatus: text('experiment_status'), // testing | winner_declared | inconclusive
+  winnerVariant: text('winner_variant'),
+  notionPageId: text('notion_page_id'), // for Notion sync
   createdAt: text('created_at').default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').default(sql`(datetime('now'))`),
 })
@@ -293,6 +300,59 @@ export const campaignContent = sqliteTable('campaign_content', {
   repliedAt: text('replied_at'),
   convertedAt: text('converted_at'),
   bouncedAt: text('bounced_at'),
+})
+
+// ─── Campaign Variants ─────────────────────────────────────────────────────
+// One row per messaging angle/variant for A/B testing
+export const campaignVariants = sqliteTable('campaign_variants', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  campaignId: text('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  status: text('status').notNull().default('active'), // active | winner | retired
+  connectNote: text('connect_note').notNull(),
+  dm1Template: text('dm1_template').notNull(),
+  dm2Template: text('dm2_template').notNull(),
+  sends: integer('sends').default(0),
+  accepts: integer('accepts').default(0),
+  acceptRate: real('accept_rate').default(0),
+  dmsSent: integer('dms_sent').default(0),
+  replies: integer('replies').default(0),
+  replyRate: real('reply_rate').default(0),
+  notionPageId: text('notion_page_id'),
+  createdAt: text('created_at').default(sql`(datetime('now'))`),
+})
+
+// ─── Campaign Leads ────────────────────────────────────────────────────────
+// One row per lead assigned to a campaign
+export const campaignLeads = sqliteTable('campaign_leads', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  campaignId: text('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  variantId: text('variant_id').references(() => campaignVariants.id),
+  // Lead identity
+  providerId: text('provider_id').notNull(),
+  linkedinUrl: text('linkedin_url'),
+  firstName: text('first_name'),
+  lastName: text('last_name'),
+  headline: text('headline'),
+  company: text('company'),
+  // Lifecycle
+  lifecycleStatus: text('lifecycle_status').notNull().default('Queued'),
+  // Queued | Connect_Sent | Connected | DM1_Sent | DM2_Sent | Replied |
+  // Demo_Booked | Deal_Created | Closed_Won | Closed_Lost | Expired | No_Reply
+  // Qualification
+  qualificationScore: integer('qualification_score'),
+  tags: text('tags', { mode: 'json' }), // string[]
+  source: text('source'), // content_engager | profile_visitor | csv | notion | pre_scored
+  // Timestamps for sequence tracking
+  connectSentAt: text('connect_sent_at'),
+  connectedAt: text('connected_at'),
+  dm1SentAt: text('dm1_sent_at'),
+  dm2SentAt: text('dm2_sent_at'),
+  repliedAt: text('replied_at'),
+  // Notion sync
+  notionPageId: text('notion_page_id'),
+  createdAt: text('created_at').default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').default(sql`(datetime('now'))`),
 })
 
 // ─── Provider Stats ────────────────────────────────────────────────────────
@@ -412,6 +472,8 @@ export const campaignsRelations = relations(campaigns, ({ one, many }) => ({
   }),
   steps: many(campaignSteps),
   content: many(campaignContent),
+  variants: many(campaignVariants),
+  leads: many(campaignLeads),
 }))
 
 export const campaignStepsRelations = relations(campaignSteps, ({ one }) => ({
@@ -429,6 +491,25 @@ export const campaignContentRelations = relations(campaignContent, ({ one }) => 
   step: one(campaignSteps, {
     fields: [campaignContent.stepId],
     references: [campaignSteps.id],
+  }),
+}))
+
+export const campaignVariantsRelations = relations(campaignVariants, ({ one, many }) => ({
+  campaign: one(campaigns, {
+    fields: [campaignVariants.campaignId],
+    references: [campaigns.id],
+  }),
+  leads: many(campaignLeads),
+}))
+
+export const campaignLeadsRelations = relations(campaignLeads, ({ one }) => ({
+  campaign: one(campaigns, {
+    fields: [campaignLeads.campaignId],
+    references: [campaigns.id],
+  }),
+  variant: one(campaignVariants, {
+    fields: [campaignLeads.variantId],
+    references: [campaignVariants.id],
   }),
 }))
 

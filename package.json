@@ -1,10 +1,14 @@
 {
   "name": "gtm-os",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": false,
   "license": "MIT",
   "description": "Open-source, AI-native GTM engine — core library for lead finding, enrichment, and ICP qualification",
+  "bin": {
+    "gtm-os": "./src/cli/index.ts"
+  },
   "scripts": {
+    "cli": "npx tsx src/cli/index.ts",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
@@ -13,14 +17,17 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@libsql/client": "^0.17.0",
-    "@modelcontextprotocol/sdk": "^1.27.1",
-    "drizzle-orm": "^0.45.1",
-    "pdf-parse": "^2.4.5",
-    "unipile-node-sdk": "^1.0.0",
     "@mendable/firecrawl-js": "^1.0.0",
-    "@notionhq/client": "^2.0.0"
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@notionhq/client": "^2.0.0",
+    "commander": "^14.0.3",
+    "drizzle-orm": "^0.45.1",
+    "js-yaml": "^4.1.1",
+    "pdf-parse": "^2.4.5",
+    "unipile-node-sdk": "^1.0.0"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.17.0",
     "@types/pdf-parse": "^1.1.5",
     "drizzle-kit": "^0.30.0",
