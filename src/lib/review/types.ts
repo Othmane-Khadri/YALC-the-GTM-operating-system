@@ -8,6 +8,7 @@ export type ReviewType =
   | 'anomaly'
   | 'escalation'
   | 'snapshot_request'
+  | 'lead_qualification'
 
 export type ReviewPriority = 'low' | 'normal' | 'high' | 'urgent'
 
