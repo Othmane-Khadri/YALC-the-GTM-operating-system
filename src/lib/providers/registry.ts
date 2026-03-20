@@ -1,11 +1,6 @@
 import type { StepExecutor, ProviderMetadata } from './types'
-import { MockProvider } from './builtin/mock-provider'
-import { QualifyProvider } from './builtin/qualify-provider'
-import { FirecrawlProvider } from './builtin/firecrawl-provider'
-import { UnipileProvider } from './builtin/unipile-provider'
-import { NotionProvider } from './builtin/notion-provider'
 
-class ProviderRegistry {
+export class ProviderRegistry {
   private providers = new Map<string, StepExecutor>()
 
   register(executor: StepExecutor): void {
@@ -71,18 +66,31 @@ class ProviderRegistry {
   }
 }
 
-// Module-level singleton
-const registry = new ProviderRegistry()
+/**
+ * Register all built-in providers on a registry instance.
+ */
+export function registerBuiltinProviders(registry: ProviderRegistry): void {
+  // Lazy imports to avoid circular deps and allow tree-shaking
+  const { MockProvider } = require('./builtin/mock-provider')
+  const { QualifyProvider } = require('./builtin/qualify-provider')
+  const { FirecrawlProvider } = require('./builtin/firecrawl-provider')
+  const { UnipileProvider } = require('./builtin/unipile-provider')
+  const { NotionProvider } = require('./builtin/notion-provider')
 
-// Auto-register providers
-registry.register(new MockProvider())
-registry.register(new QualifyProvider())
-registry.register(new FirecrawlProvider())
-registry.register(new UnipileProvider())
-registry.register(new NotionProvider())
-
-export function getRegistry(): ProviderRegistry {
-  return registry
+  registry.register(new MockProvider())
+  registry.register(new QualifyProvider())
+  registry.register(new FirecrawlProvider())
+  registry.register(new UnipileProvider())
+  registry.register(new NotionProvider())
 }
 
-export { ProviderRegistry }
+// Lazy default instance for CLI backward compatibility
+let _defaultRegistry: ProviderRegistry | null = null
+
+export function getRegistry(): ProviderRegistry {
+  if (!_defaultRegistry) {
+    _defaultRegistry = new ProviderRegistry()
+    registerBuiltinProviders(_defaultRegistry)
+  }
+  return _defaultRegistry
+}

@@ -1,9 +1,14 @@
 {
   "name": "gtm-os",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": false,
+  "type": "module",
   "license": "MIT",
   "description": "Open-source, AI-native GTM engine — core library for lead finding, enrichment, and ICP qualification",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "bin": {
     "gtm-os": "./src/cli/index.ts"
   },

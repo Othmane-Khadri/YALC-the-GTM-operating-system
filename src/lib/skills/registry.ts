@@ -1,11 +1,6 @@
 import type { Skill, SkillMetadata, SkillCategory } from './types'
 
-import { findCompaniesSkill } from './builtin/find-companies'
-import { enrichLeadsSkill } from './builtin/enrich-leads'
-import { qualifyLeadsSkill } from './builtin/qualify-leads'
-import { exportDataSkill } from './builtin/export-data'
-
-class SkillRegistry {
+export class SkillRegistry {
   private skills = new Map<string, Skill>()
 
   register(skill: Skill): void {
@@ -46,17 +41,30 @@ class SkillRegistry {
   }
 }
 
-// Module-level singleton
-const skillRegistry = new SkillRegistry()
+/**
+ * Register all built-in skills on a registry instance.
+ */
+export function registerBuiltinSkills(registry: SkillRegistry): void {
+  const { findCompaniesSkill } = require('./builtin/find-companies')
+  const { enrichLeadsSkill } = require('./builtin/enrich-leads')
+  const { qualifyLeadsSkill } = require('./builtin/qualify-leads')
+  const { exportDataSkill } = require('./builtin/export-data')
+  const { optimizeSkill } = require('./builtin/optimize-skill')
 
-// Auto-register built-in skills
-skillRegistry.register(findCompaniesSkill)
-skillRegistry.register(enrichLeadsSkill)
-skillRegistry.register(qualifyLeadsSkill)
-skillRegistry.register(exportDataSkill)
-
-export function getSkillRegistry(): SkillRegistry {
-  return skillRegistry
+  registry.register(findCompaniesSkill)
+  registry.register(enrichLeadsSkill)
+  registry.register(qualifyLeadsSkill)
+  registry.register(exportDataSkill)
+  registry.register(optimizeSkill)
 }
 
-export { SkillRegistry }
+// Lazy default instance for CLI backward compatibility
+let _defaultSkillRegistry: SkillRegistry | null = null
+
+export function getSkillRegistry(): SkillRegistry {
+  if (!_defaultSkillRegistry) {
+    _defaultSkillRegistry = new SkillRegistry()
+    registerBuiltinSkills(_defaultSkillRegistry)
+  }
+  return _defaultSkillRegistry
+}

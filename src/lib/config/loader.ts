@@ -24,6 +24,11 @@ const DEFAULTS: GTMOSConfig = {
     disqualifiers_path: '',
     cache_ttl_days: 30,
   },
+  data: {
+    leads_dir: './data/leads',
+    intelligence_dir: './data/intelligence',
+    campaigns_dir: './data/campaigns',
+  },
 }
 
 let _config: GTMOSConfig | null = null
@@ -44,6 +49,7 @@ export function loadConfig(configPath: string): GTMOSConfig {
       },
     },
     qualification: { ...DEFAULTS.qualification, ...parsed.qualification },
+    data: { ...DEFAULTS.data, ...parsed.data },
   }
 
   return _config

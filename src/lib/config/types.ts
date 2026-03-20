@@ -21,8 +21,15 @@ export interface QualificationConfig {
   cache_ttl_days: number
 }
 
+export interface DataConfig {
+  leads_dir: string
+  intelligence_dir: string
+  campaigns_dir: string
+}
+
 export interface GTMOSConfig {
   notion: NotionConfig
   unipile: UnipileConfig
   qualification: QualificationConfig
+  data: DataConfig
 }
