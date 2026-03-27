@@ -79,6 +79,43 @@ program
     console.log(`\nNext: npx tsx src/cli/index.ts leads:qualify --result-set ${result.resultSetId}`)
   })
 
+// ─── linkedin:answer-comments ───────────────────────────────────────────────
+program
+  .command('linkedin:answer-comments')
+  .description('Reply to LinkedIn post comments (Lead Magnet or AI-personalized)')
+  .requiredOption('--url <url>', 'LinkedIn post URL')
+  .option('--mode <mode>', 'Reply mode: lead-magnet or general', 'general')
+  .option('--template <text>', 'Reply template for lead-magnet mode')
+  .option('--max <n>', 'Max replies', '50')
+  .option('--dry-run', 'Preview without sending', true)
+  .option('--send', 'Actually send replies (disables dry-run)')
+  .action(async (opts) => {
+    const { answerCommentsSkill } = await import('../lib/skills/builtin/answer-comments')
+    const { getSkillRegistryReady } = await import('../lib/skills/registry')
+    const registry = await getSkillRegistryReady()
+    const skill = registry.get('answer-comments')!
+    const dryRun = opts.send ? false : (opts.dryRun ?? true)
+
+    const context = {
+      framework: null as any,
+      intelligence: [],
+      providers: { resolve: () => ({ id: 'mock', name: 'mock', execute: async function*() {} }) } as any,
+      userId: 'default',
+    }
+
+    for await (const event of skill.execute({
+      url: opts.url,
+      mode: opts.mode,
+      replyTemplate: opts.template,
+      maxReplies: parseInt(opts.max, 10),
+      dryRun,
+    }, context)) {
+      if (event.type === 'progress') console.log(`[${event.percent}%] ${event.message}`)
+      else if (event.type === 'error') console.error(`ERROR: ${event.message}`)
+      else if (event.type === 'result') console.log('\nResult:', JSON.stringify(event.data, null, 2))
+    }
+  })
+
 // ─── leads:qualify ──────────────────────────────────────────────────────────
 program
   .command('leads:qualify')
