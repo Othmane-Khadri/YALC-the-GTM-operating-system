@@ -116,6 +116,33 @@ program
     }
   })
 
+// ─── email:create-sequence ──────────────────────────────────────────────────
+program
+  .command('email:create-sequence')
+  .description('Generate an email drip sequence with AI + brand voice')
+  .requiredOption('--type <type>', 'Sequence type: welcome, lead-nurture, re-engagement, onboarding')
+  .requiredOption('--product <text>', 'Product/service description')
+  .requiredOption('--audience <text>', 'Target audience description')
+  .option('--segment-id <id>', 'ICP segment ID for voice targeting')
+  .action(async (opts) => {
+    const { emailSequenceSkill } = await import('../lib/skills/builtin/email-sequence')
+    const context = {
+      framework: null as any,
+      intelligence: [],
+      providers: { resolve: () => ({ id: 'mock', name: 'mock', execute: async function*() {} }) } as any,
+      userId: 'default',
+    }
+    for await (const event of emailSequenceSkill.execute({
+      type: opts.type,
+      segmentId: opts.segmentId,
+      productContext: opts.product,
+      audienceContext: opts.audience,
+    }, context)) {
+      if (event.type === 'progress') console.log(`[${event.percent}%] ${event.message}`)
+      else if (event.type === 'error') console.error(`ERROR: ${event.message}`)
+    }
+  })
+
 // ─── leads:qualify ──────────────────────────────────────────────────────────
 program
   .command('leads:qualify')
