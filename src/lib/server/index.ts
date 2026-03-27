@@ -6,6 +6,8 @@ import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { reviewRoutes } from './routes/review'
 import { learningRoutes } from './routes/learning'
+import { campaignRoutes } from './routes/campaigns'
+import { swipeRoutes } from './routes/swipe'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -17,6 +19,8 @@ export function createApp() {
   // API routes
   app.route('/api/review', reviewRoutes)
   app.route('/api/learning', learningRoutes)
+  app.route('/api/campaigns', campaignRoutes)
+  app.route('/api/swipe', swipeRoutes)
 
   // Serve static HTML pages
   app.get('/review', (c) => {
@@ -29,6 +33,16 @@ export function createApp() {
     return c.html(html)
   })
 
+  app.get('/campaigns', (c) => {
+    const html = readFileSync(join(__dirname, 'public', 'campaigns.html'), 'utf-8')
+    return c.html(html)
+  })
+
+  app.get('/campaigns/:id', (c) => {
+    const html = readFileSync(join(__dirname, 'public', 'campaign-detail.html'), 'utf-8')
+    return c.html(html)
+  })
+
   // Landing page
   app.get('/', (c) => {
     return c.html(`<!DOCTYPE html>
@@ -38,6 +52,7 @@ export function createApp() {
 p{color:#888;margin-bottom:2rem}a{display:block;padding:1rem;margin:.5rem 0;background:#1a1a1a;border:1px solid #333;border-radius:8px;color:#f5c542;text-decoration:none;font-weight:600}
 a:hover{background:#242424;border-color:#f5c542}</style></head>
 <body><div class="container"><h1>GTM-OS</h1><p>Open-source GTM operating system</p>
+<a href="/campaigns">Campaign Dashboard</a>
 <a href="/review">Lead Review Dashboard</a>
 <a href="/swipe/demo">Skill Optimization (RL)</a>
 </div></body></html>`)
@@ -49,7 +64,8 @@ a:hover{background:#242424;border-color:#f5c542}</style></head>
 export function startServer(port = 3847) {
   const app = createApp()
   console.log(`\nGTM-OS Server: http://localhost:${port}`)
-  console.log('  /review  — Lead review dashboard')
-  console.log('  /swipe   — Skill optimization\n')
+  console.log('  /campaigns — Campaign dashboard')
+  console.log('  /review    — Lead review dashboard')
+  console.log('  /swipe     — Skill optimization\n')
   serve({ fetch: app.fetch, port })
 }

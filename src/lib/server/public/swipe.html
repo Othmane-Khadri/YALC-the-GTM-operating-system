@@ -331,7 +331,7 @@ let isDragging = false;
 
 async function init() {
   try {
-    const res = await fetch(`/api/learning/sessions/${sessionId}/samples`);
+    const res = await fetch(`/api/swipe/${sessionId}`);
     if (!res.ok) {
       document.getElementById('loadingPhase').innerHTML =
         '<p style="color:#ef4444">Session not found. Start a session from the CLI first.</p>';
@@ -465,7 +465,7 @@ async function submitResults() {
   };
 
   try {
-    await fetch(`/api/learning/sessions/${sessionId}/results`, {
+    await fetch(`/api/swipe/${sessionId}/results`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload, null, 2)

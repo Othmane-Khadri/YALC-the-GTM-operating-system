@@ -42,7 +42,7 @@ export const optimizeSkill: Skill = {
         description: 'Port for the swipe UI server (default: 3847)',
       },
     },
-    required: ['skillId', 'samples'],
+    required: ['skillId'],
   },
   outputSchema: {
     type: 'object',
@@ -71,20 +71,42 @@ export const optimizeSkill: Skill = {
   async *execute(input: unknown, _context: SkillContext): AsyncIterable<SkillEvent> {
     const {
       skillId,
-      samples,
+      samples: providedSamples,
       outputType = 'prose',
+      generateSamples: shouldGenerate = false,
+      basePrompt,
+      sampleCount = 20,
+      persistToStore = false,
     } = input as {
       skillId: string
-      samples: {
+      samples?: {
         id: number
         content: string
         dimensions: Record<string, string>
       }[]
       outputType?: string
+      generateSamples?: boolean
+      basePrompt?: string
+      sampleCount?: number
+      persistToStore?: boolean
+    }
+
+    let samples = providedSamples ?? []
+
+    // Auto-generate samples if requested
+    if (shouldGenerate && samples.length === 0) {
+      if (!basePrompt) {
+        yield { type: 'error', message: 'basePrompt is required when generateSamples is true.' }
+        return
+      }
+      yield { type: 'progress', message: `Generating ${sampleCount} varied samples...`, percent: 5 }
+      const { generateSamples: genFn } = await import('../../rl/sample-generator')
+      samples = await genFn(basePrompt, outputType as any, sampleCount)
+      yield { type: 'progress', message: `Generated ${samples.length} samples`, percent: 8 }
     }
 
     if (!samples || samples.length === 0) {
-      yield { type: 'error', message: 'No samples provided. Generate samples before running optimize-skill.' }
+      yield { type: 'error', message: 'No samples provided. Set generateSamples: true with basePrompt, or provide samples array.' }
       return
     }
 
@@ -132,99 +154,40 @@ export const optimizeSkill: Skill = {
 
     yield { type: 'progress', message: 'Results received! Analyzing patterns...', percent: 60 }
 
-    // Phase D: Analyze patterns
+    // Phase D: Analyze with preference extractor
     const resultsData = JSON.parse(readFileSync(resultsPath, 'utf-8'))
-    const results: {
+    const swipeResults = resultsData.results as {
       id: number
       verdict: 'like' | 'dislike'
       comment: string | null
       time_spent_ms: number
-    }[] = resultsData.results
+    }[]
 
-    const liked = results.filter((r) => r.verdict === 'like')
-    const disliked = results.filter((r) => r.verdict === 'dislike')
-    const withComments = results.filter((r) => r.comment)
+    const { analyzePreferences, persistToIntelligenceStore } = await import('../../rl/preference-extractor')
+    const analysis = analyzePreferences(swipeResults, samples)
 
-    // Build contingency tables per dimension
-    const allDimensions = new Set<string>()
-    for (const s of samples) {
-      for (const key of Object.keys(s.dimensions || {})) {
-        allDimensions.add(key)
-      }
-    }
+    yield { type: 'progress', message: `Found ${analysis.rules.length} preference rules`, percent: 80 }
 
-    interface DimensionRule {
-      strength: 'strong' | 'mild'
-      dimension: string
-      description: string
-      spread: number
-    }
-
-    const rules: DimensionRule[] = []
-
-    for (const dim of allDimensions) {
-      const valueStats: Record<string, { liked: number; total: number }> = {}
-
-      for (const result of results) {
-        const sample = samples.find((s) => s.id === result.id)
-        if (!sample) continue
-        const val = sample.dimensions?.[dim]
-        if (!val) continue
-
-        if (!valueStats[val]) valueStats[val] = { liked: 0, total: 0 }
-        valueStats[val].total++
-        if (result.verdict === 'like') valueStats[val].liked++
-      }
-
-      const entries = Object.entries(valueStats)
-      if (entries.length < 2) continue
-
-      const rates = entries.map(([val, s]) => ({
-        value: val,
-        likeRate: s.total > 0 ? s.liked / s.total : 0,
-        count: s.total,
-      }))
-
-      const maxRate = Math.max(...rates.map((r) => r.likeRate))
-      const minRate = Math.min(...rates.map((r) => r.likeRate))
-      const spread = (maxRate - minRate) * 100
-
-      if (spread < 30) continue
-
-      const best = rates.reduce((a, b) => (a.likeRate > b.likeRate ? a : b))
-      const worst = rates.reduce((a, b) => (a.likeRate < b.likeRate ? a : b))
-
-      const strength: 'strong' | 'mild' = spread > 60 ? 'strong' : 'mild'
-      const desc = `Prefer "${best.value}" ${dim} (${Math.round(best.likeRate * 100)}% liked) over "${worst.value}" (${Math.round(worst.likeRate * 100)}% liked)`
-
-      // Require minimum 3 samples per value for strong rules
-      if (strength === 'strong' && (best.count < 3 || worst.count < 3)) continue
-
-      rules.push({ strength, dimension: dim, description: desc, spread: Math.round(spread) })
-    }
-
-    yield { type: 'progress', message: `Found ${rules.length} preference rules`, percent: 80 }
-
-    // Extract comment-based rules
-    const commentRules: string[] = []
-    for (const r of withComments) {
-      if (r.comment) {
-        const prefix = r.verdict === 'like' ? 'Liked' : 'Disliked'
-        commentRules.push(`[${prefix}] "${r.comment}"`)
-      }
+    // Persist to Intelligence Store if requested
+    if (persistToStore) {
+      const persisted = await persistToIntelligenceStore(skillId, analysis)
+      yield { type: 'progress', message: `Persisted ${persisted} rules to Intelligence Store`, percent: 90 }
     }
 
     yield { type: 'progress', message: 'Analysis complete', percent: 95 }
 
     // Phase E: Emit results
+    const liked = swipeResults.filter((r) => r.verdict === 'like')
+    const disliked = swipeResults.filter((r) => r.verdict === 'dislike')
+
     const summary = {
       sessionId,
       totalSamples: samples.length,
       liked: liked.length,
       disliked: disliked.length,
-      comments: withComments.length,
-      rules,
-      commentFeedback: commentRules,
+      comments: analysis.commentInsights.length,
+      rules: analysis.rules,
+      commentFeedback: analysis.commentInsights,
     }
 
     yield {
