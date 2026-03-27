@@ -13,6 +13,8 @@ interface CreatorOptions {
   title?: string
   hypothesis?: string
   variants?: string // JSON string of variant definitions
+  autoCopy?: boolean
+  segmentId?: string
 }
 
 interface CreatorResult {
@@ -94,6 +96,22 @@ export async function runCreator(opts: CreatorOptions): Promise<CreatorResult> {
       variantDefs = JSON.parse(opts.variants)
     } catch {
       console.log('[creator] Invalid variants JSON, creating default variant')
+    }
+  }
+
+  if (variantDefs.length === 0 && opts.autoCopy) {
+    // Generate voice-aware copy via Claude
+    console.log('[creator] Generating voice-aware copy via Claude...')
+    try {
+      const { generateCampaignCopy } = await import('../outbound/copy-generator')
+      variantDefs = await generateCampaignCopy({
+        segmentId: opts.segmentId,
+        hypothesis,
+        variantCount: 2,
+      })
+      console.log(`[creator] Generated ${variantDefs.length} voice-aware variants`)
+    } catch (err) {
+      console.log(`[creator] Auto-copy failed, falling back to defaults: ${err instanceof Error ? err.message : err}`)
     }
   }
 
