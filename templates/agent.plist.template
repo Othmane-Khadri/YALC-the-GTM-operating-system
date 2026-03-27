@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.gtm-os.agent.{{AGENT_ID}}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{NODE_PATH}}</string>
+        <string>--import</string>
+        <string>tsx</string>
+        <string>{{GTM_OS_PATH}}/src/cli/index.ts</string>
+        <string>agent:run</string>
+        <string>--agent</string>
+        <string>{{AGENT_ID}}</string>
+    </array>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>{{HOUR}}</integer>
+        <key>Minute</key>
+        <integer>{{MINUTE}}</integer>
+    </dict>
+    <key>WorkingDirectory</key>
+    <string>{{GTM_OS_PATH}}</string>
+    <key>StandardOutPath</key>
+    <string>{{GTM_OS_PATH}}/data/agent-logs/{{AGENT_ID}}/launchd-stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>{{GTM_OS_PATH}}/data/agent-logs/{{AGENT_ID}}/launchd-stderr.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+    </dict>
+</dict>
+</plist>

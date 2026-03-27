@@ -317,4 +317,88 @@ program
     await collectFeedback(opts.resultSet)
   })
 
+// ─── agent:run ─────────────────────────────────────────────────────────────
+program
+  .command('agent:run')
+  .description('Run a background agent immediately')
+  .requiredOption('--agent <id>', 'Agent ID to run')
+  .option('--post-url <url>', 'LinkedIn post URL (for linkedin scraper agent)')
+  .action(async (opts) => {
+    const { BackgroundAgent } = await import('../lib/agents/runner')
+
+    let config
+    if (opts.agent === 'daily-linkedin-scraper') {
+      if (!opts.postUrl) {
+        console.error('Error: --post-url required for daily-linkedin-scraper agent')
+        process.exit(1)
+      }
+      const { createDailyLinkedinScraperConfig } = await import('../lib/agents/examples/daily-linkedin-scraper')
+      config = createDailyLinkedinScraperConfig(opts.postUrl)
+    } else {
+      console.error(`Unknown agent: ${opts.agent}. Available: daily-linkedin-scraper`)
+      process.exit(1)
+    }
+
+    const agent = new BackgroundAgent(config)
+    const log = await agent.run()
+    console.log(`\nAgent run complete: ${log.status}`)
+    console.log(`  Steps: ${log.steps.length}`)
+    console.log(`  Duration: ${new Date(log.completedAt).getTime() - new Date(log.startedAt).getTime()}ms`)
+  })
+
+// ─── agent:install ─────────────────────────────────────────────────────────
+program
+  .command('agent:install')
+  .description('Install a background agent as a launchd service')
+  .requiredOption('--agent <id>', 'Agent ID to install')
+  .option('--hour <n>', 'Hour to run (0-23)', '8')
+  .option('--minute <n>', 'Minute to run (0-59)', '0')
+  .action(async (opts) => {
+    const { execSync } = await import('child_process')
+    const { join } = await import('path')
+    const scriptPath = join(process.cwd(), 'scripts', 'install-agent.sh')
+    try {
+      const output = execSync(`bash "${scriptPath}" "${opts.agent}" "${opts.hour}" "${opts.minute}"`, { encoding: 'utf-8' })
+      console.log(output)
+    } catch (err) {
+      console.error('Installation failed:', err instanceof Error ? err.message : err)
+    }
+  })
+
+// ─── agent:list ────────────────────────────────────────────────────────────
+program
+  .command('agent:list')
+  .description('List installed background agents with last run status')
+  .action(async () => {
+    const { readdirSync, existsSync } = await import('fs')
+    const { join } = await import('path')
+    const { AgentLogger } = await import('../lib/agents/logger')
+
+    const logBase = join(process.cwd(), 'data', 'agent-logs')
+    if (!existsSync(logBase)) {
+      console.log('No agents have been run yet.')
+      return
+    }
+
+    const agents = readdirSync(logBase, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+
+    if (agents.length === 0) {
+      console.log('No agents found.')
+      return
+    }
+
+    console.log('\n── Background Agents ──')
+    for (const agentId of agents) {
+      const lastRun = AgentLogger.getLastRun(agentId)
+      if (lastRun) {
+        const duration = new Date(lastRun.completedAt).getTime() - new Date(lastRun.startedAt).getTime()
+        console.log(`  ${agentId.padEnd(30)} ${lastRun.status.padEnd(10)} ${lastRun.completedAt.slice(0, 16)} (${duration}ms)`)
+      } else {
+        console.log(`  ${agentId.padEnd(30)} never run`)
+      }
+    }
+  })
+
 program.parse()
