@@ -202,6 +202,35 @@ program
     exec(`open http://localhost:${port}/campaigns`)
   })
 
+// ─── orchestrate ────────────────────────────────────────────────────────────
+program
+  .command('orchestrate')
+  .description('Decompose a natural language GTM request into phased skill execution')
+  .argument('<query>', 'Natural language request')
+  .option('--auto-approve', 'Skip approval gates')
+  .action(async (query, opts) => {
+    const { orchestrateSkill } = await import('../lib/skills/builtin/orchestrate')
+    const context = {
+      framework: null as any,
+      intelligence: [],
+      providers: { resolve: () => ({ id: 'mock', name: 'mock', execute: async function*() {} }) } as any,
+      userId: 'default',
+    }
+    for await (const event of orchestrateSkill.execute({
+      query,
+      autoApprove: opts.autoApprove ?? false,
+    }, context)) {
+      if (event.type === 'progress') console.log(`[${event.percent}%] ${event.message}`)
+      else if (event.type === 'approval_needed') {
+        console.log(`\n--- ${event.title} ---`)
+        console.log(event.description)
+        console.log('---\n')
+      }
+      else if (event.type === 'error') console.error(`ERROR: ${event.message}`)
+      else if (event.type === 'result') console.log('\nResult:', JSON.stringify(event.data, null, 2))
+    }
+  })
+
 // ─── setup ──────────────────────────────────────────────────────────────────
 program
   .command('setup')
