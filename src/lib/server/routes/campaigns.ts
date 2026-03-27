@@ -1,0 +1,187 @@
+import { Hono } from 'hono'
+import { eq, desc, sql } from 'drizzle-orm'
+import { db } from '../../db'
+import { campaigns, campaignLeads, campaignVariants } from '../../db/schema'
+import { CampaignManager } from '../../campaign/manager'
+import type { CampaignStatus } from '../../campaign/types'
+
+const manager = new CampaignManager()
+
+export const campaignRoutes = new Hono()
+
+// List all campaigns with metrics + funnel counts
+campaignRoutes.get('/', async (c) => {
+  const status = c.req.query('status') as CampaignStatus | undefined
+  const campaignList = await manager.list(status || undefined)
+
+  const enriched = await Promise.all(
+    campaignList.map(async (campaign) => {
+      // Get lead funnel counts grouped by lifecycle status
+      const leadRows = await db
+        .select({
+          lifecycleStatus: campaignLeads.lifecycleStatus,
+          count: sql<number>`count(*)`,
+        })
+        .from(campaignLeads)
+        .where(eq(campaignLeads.campaignId, campaign.id))
+        .groupBy(campaignLeads.lifecycleStatus)
+
+      const funnel: Record<string, number> = {}
+      let leadCount = 0
+      for (const row of leadRows) {
+        funnel[row.lifecycleStatus] = row.count
+        leadCount += row.count
+      }
+
+      // Get variant count
+      const variants = await db
+        .select({ id: campaignVariants.id })
+        .from(campaignVariants)
+        .where(eq(campaignVariants.campaignId, campaign.id))
+
+      // Get metrics
+      const metrics = await manager.getMetrics(campaign.id)
+
+      return {
+        id: campaign.id,
+        title: campaign.title,
+        status: campaign.status,
+        hypothesis: campaign.hypothesis,
+        targetSegment: campaign.targetSegment,
+        channels: campaign.channels,
+        createdAt: campaign.createdAt,
+        updatedAt: campaign.updatedAt,
+        leadCount,
+        variantCount: variants.length,
+        metrics,
+        funnel,
+      }
+    })
+  )
+
+  return c.json({ campaigns: enriched })
+})
+
+// Get single campaign with variant details
+campaignRoutes.get('/:id', async (c) => {
+  const id = c.req.param('id')
+  const campaign = await manager.get(id)
+  if (!campaign) return c.json({ error: 'Campaign not found' }, 404)
+
+  const metrics = await manager.getMetrics(id)
+  const breakdown = await manager.getMetricsBreakdown(id)
+
+  // Get full variant details
+  const variants = await db
+    .select()
+    .from(campaignVariants)
+    .where(eq(campaignVariants.campaignId, id))
+
+  // Get campaign row for LinkedIn-specific fields
+  const campaignRow = await db
+    .select()
+    .from(campaigns)
+    .where(eq(campaigns.id, id))
+    .limit(1)
+
+  // Get lead funnel counts
+  const leadRows = await db
+    .select({
+      lifecycleStatus: campaignLeads.lifecycleStatus,
+      count: sql<number>`count(*)`,
+    })
+    .from(campaignLeads)
+    .where(eq(campaignLeads.campaignId, id))
+    .groupBy(campaignLeads.lifecycleStatus)
+
+  const funnel: Record<string, number> = {}
+  let leadCount = 0
+  for (const row of leadRows) {
+    funnel[row.lifecycleStatus] = row.count
+    leadCount += row.count
+  }
+
+  return c.json({
+    ...campaign,
+    leadCount,
+    metrics,
+    breakdown,
+    funnel,
+    experimentStatus: campaignRow[0]?.experimentStatus ?? null,
+    winnerVariant: campaignRow[0]?.winnerVariant ?? null,
+    variants: variants.map((v) => ({
+      id: v.id,
+      name: v.name,
+      status: v.status,
+      connectNote: v.connectNote,
+      dm1Template: v.dm1Template,
+      dm2Template: v.dm2Template,
+      sends: v.sends ?? 0,
+      accepts: v.accepts ?? 0,
+      acceptRate: v.acceptRate ?? 0,
+      dmsSent: v.dmsSent ?? 0,
+      replies: v.replies ?? 0,
+      replyRate: v.replyRate ?? 0,
+    })),
+  })
+})
+
+// Get campaign report with 7 sections
+campaignRoutes.get('/:id/report', async (c) => {
+  const id = c.req.param('id')
+  try {
+    const { generateCampaignReport } = await import('../../campaign/intelligence-report')
+    const report = await generateCampaignReport(id)
+    return c.json(report)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return c.json({ error: message }, 404)
+  }
+})
+
+// Get leads with timeline data for a campaign
+campaignRoutes.get('/:id/leads', async (c) => {
+  const id = c.req.param('id')
+
+  // Verify campaign exists
+  const campaign = await manager.get(id)
+  if (!campaign) return c.json({ error: 'Campaign not found' }, 404)
+
+  // Get all leads for this campaign
+  const leads = await db
+    .select()
+    .from(campaignLeads)
+    .where(eq(campaignLeads.campaignId, id))
+    .orderBy(desc(campaignLeads.updatedAt))
+
+  // Get variants for name lookup
+  const variants = await db
+    .select()
+    .from(campaignVariants)
+    .where(eq(campaignVariants.campaignId, id))
+
+  const variantMap = new Map(variants.map((v) => [v.id, v.name]))
+
+  return c.json({
+    leads: leads.map((lead) => ({
+      id: lead.id,
+      firstName: lead.firstName,
+      lastName: lead.lastName,
+      headline: lead.headline,
+      company: lead.company,
+      linkedinUrl: lead.linkedinUrl,
+      lifecycleStatus: lead.lifecycleStatus,
+      variantId: lead.variantId,
+      variantName: lead.variantId ? variantMap.get(lead.variantId) ?? null : null,
+      qualificationScore: lead.qualificationScore,
+      source: lead.source,
+      connectSentAt: lead.connectSentAt,
+      connectedAt: lead.connectedAt,
+      dm1SentAt: lead.dm1SentAt,
+      dm2SentAt: lead.dm2SentAt,
+      repliedAt: lead.repliedAt,
+      createdAt: lead.createdAt,
+      updatedAt: lead.updatedAt,
+    })),
+  })
+})
