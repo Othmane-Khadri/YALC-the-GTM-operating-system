@@ -9,6 +9,22 @@ const manager = new CampaignManager()
 
 export const campaignRoutes = new Hono()
 
+// Monthly report across campaigns
+campaignRoutes.get('/monthly-report', async (c) => {
+  const month = c.req.query('month') ?? `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+  try {
+    const { loadConfig } = await import('../../config/loader')
+    const config = loadConfig(
+      (process.env.GTM_OS_CONFIG ?? '~/.gtm-os/config.yaml').replace('~', process.env.HOME!),
+    )
+    const { generateMonthlyReport } = await import('../../campaign/monthly-report')
+    const report = await generateMonthlyReport({ config, month })
+    return c.json(report)
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500)
+  }
+})
+
 // List all campaigns with metrics + funnel counts
 campaignRoutes.get('/', async (c) => {
   const status = c.req.query('status') as CampaignStatus | undefined

@@ -55,6 +55,7 @@ export async function registerBuiltinSkills(registry: SkillRegistry): Promise<vo
   const { answerCommentsSkill } = await import('./builtin/answer-comments')
   const { emailSequenceSkill } = await import('./builtin/email-sequence')
   const { orchestrateSkill } = await import('./builtin/orchestrate')
+  const { monthlyCampaignReportSkill } = await import('./builtin/monthly-campaign-report')
 
   registry.register(findCompaniesSkill)
   registry.register(enrichLeadsSkill)
@@ -66,6 +67,7 @@ export async function registerBuiltinSkills(registry: SkillRegistry): Promise<vo
   registry.register(answerCommentsSkill)
   registry.register(emailSequenceSkill)
   registry.register(orchestrateSkill)
+  registry.register(monthlyCampaignReportSkill)
 }
 
 // Lazy default instance for CLI backward compatibility

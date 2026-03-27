@@ -202,6 +202,33 @@ program
     exec(`open http://localhost:${port}/campaigns`)
   })
 
+// ─── campaign:monthly-report ────────────────────────────────────────────────
+program
+  .command('campaign:monthly-report')
+  .description('Generate cross-campaign monthly report')
+  .option('--month <month>', 'Month in YYYY-MM format')
+  .option('--open', 'Open dashboard in browser')
+  .action(async (opts) => {
+    const month = opts.month ?? `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
+    const { monthlyCampaignReportSkill } = await import('../lib/skills/builtin/monthly-campaign-report')
+    const context = {
+      framework: null as any,
+      intelligence: [],
+      providers: { resolve: () => ({ id: 'mock', name: 'mock', execute: async function*() {} }) } as any,
+      userId: 'default',
+    }
+    for await (const event of monthlyCampaignReportSkill.execute({ month }, context)) {
+      if (event.type === 'progress') console.log(`[${event.percent}%] ${event.message}`)
+      else if (event.type === 'error') console.error(`ERROR: ${event.message}`)
+    }
+    if (opts.open) {
+      const { startServer } = await import('../lib/server/index')
+      startServer(3847)
+      const { exec } = await import('child_process')
+      exec(`open http://localhost:3847/monthly-report?month=${month}`)
+    }
+  })
+
 // ─── orchestrate ────────────────────────────────────────────────────────────
 program
   .command('orchestrate')

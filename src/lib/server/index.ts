@@ -43,6 +43,11 @@ export function createApp() {
     return c.html(html)
   })
 
+  app.get('/monthly-report', (c) => {
+    const html = readFileSync(join(__dirname, 'public', 'monthly-report.html'), 'utf-8')
+    return c.html(html)
+  })
+
   // Landing page
   app.get('/', (c) => {
     return c.html(`<!DOCTYPE html>
