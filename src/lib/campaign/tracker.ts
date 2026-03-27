@@ -3,6 +3,9 @@ import { db } from '../db'
 import { campaigns, campaignLeads, campaignVariants } from '../db/schema'
 import { unipileService } from '../services/unipile'
 import { syncCampaignMetricsToNotion, syncVariantStatsToNotion } from '../notion/sync'
+import { IntelligenceStore } from '../intelligence/store'
+import { shouldPromote as checkShouldPromote } from '../intelligence/confidence'
+import { validateMessage } from '../outbound/validator'
 import type { GTMOSConfig } from '../config/types'
 
 interface TrackerOptions {
@@ -80,6 +83,38 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
       console.log(`[tracker] Checking ${dmSentLeads.length} leads for replies...`)
       const replied = await checkReplies(accountId, dmSentLeads, opts.dryRun)
       summary.repliesDetected += replied
+
+      // Wire replies to intelligence
+      if (!opts.dryRun && replied > 0) {
+        const store = new IntelligenceStore()
+        for (const lead of dmSentLeads) {
+          if (lead.repliedAt) continue // already tracked
+          const variant = lead.variantId ? variantMap.get(lead.variantId) : null
+          if (!variant) continue
+          try {
+            await store.add({
+              category: 'campaign',
+              insight: `Variant "${variant.name}" messaging generated a reply from ${lead.headline ?? 'unknown role'} at ${lead.company ?? 'unknown company'}`,
+              evidence: [{
+                type: 'campaign_outcome',
+                sourceId: campaign.id,
+                metric: 'reply',
+                value: 1,
+                sampleSize: variant.dmsSent ?? 0,
+                timestamp: new Date().toISOString(),
+              }],
+              segment: null,
+              channel: 'linkedin',
+              confidence: 'hypothesis',
+              source: 'campaign_outcome',
+              biasCheck: null,
+              supersedes: null,
+              validatedAt: null,
+              expiresAt: null,
+            })
+          } catch { /* intelligence is best-effort */ }
+        }
+      }
     }
 
     // Phase 4: Advance sequences
@@ -228,6 +263,20 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
       }
     }
 
+    // Phase 7a: Check intelligence promotions
+    if (!opts.dryRun) {
+      try {
+        const store = new IntelligenceStore()
+        const allIntelligence = await store.query({ source: 'campaign_outcome' })
+        for (const entry of allIntelligence) {
+          const { shouldPromote } = checkShouldPromote(entry)
+          if (shouldPromote) {
+            try { await store.promote(entry.id) } catch { /* already at max */ }
+          }
+        }
+      } catch { /* intelligence is best-effort */ }
+    }
+
     // Phase 7b: Sync to Notion
     if (!opts.dryRun) {
       console.log(`[tracker] Syncing to Notion...`)
@@ -330,11 +379,21 @@ async function checkReplies(
 }
 
 function personalize(template: string, lead: typeof campaignLeads.$inferSelect): string {
-  return template
+  const text = template
     .replace(/\{\{first_name\}\}/g, lead.firstName ?? '')
     .replace(/\{\{last_name\}\}/g, lead.lastName ?? '')
     .replace(/\{\{company\}\}/g, lead.company ?? '')
     .replace(/\{\{headline\}\}/g, lead.headline ?? '')
+
+  // Block sending of non-compliant messages
+  const result = validateMessage(text)
+  const hardViolations = result.violations.filter(v => v.severity === 'hard')
+  if (hardViolations.length > 0) {
+    console.log(`[tracker] BLOCKED message for ${lead.firstName} ${lead.lastName}: ${hardViolations.map(v => v.ruleName).join(', ')}`)
+    return ''
+  }
+
+  return text
 }
 
 function isDaysAgo(dateStr: string | null, days: number): boolean {
