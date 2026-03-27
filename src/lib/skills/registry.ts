@@ -44,27 +44,38 @@ export class SkillRegistry {
 /**
  * Register all built-in skills on a registry instance.
  */
-export function registerBuiltinSkills(registry: SkillRegistry): void {
-  const { findCompaniesSkill } = require('./builtin/find-companies')
-  const { enrichLeadsSkill } = require('./builtin/enrich-leads')
-  const { qualifyLeadsSkill } = require('./builtin/qualify-leads')
-  const { exportDataSkill } = require('./builtin/export-data')
-  const { optimizeSkill } = require('./builtin/optimize-skill')
+export async function registerBuiltinSkills(registry: SkillRegistry): Promise<void> {
+  const { findCompaniesSkill } = await import('./builtin/find-companies')
+  const { enrichLeadsSkill } = await import('./builtin/enrich-leads')
+  const { qualifyLeadsSkill } = await import('./builtin/qualify-leads')
+  const { exportDataSkill } = await import('./builtin/export-data')
+  const { optimizeSkill } = await import('./builtin/optimize-skill')
+  const { visualizeCampaignsSkill } = await import('./builtin/visualize-campaigns')
+  const { scrapeLinkedinSkill } = await import('./builtin/scrape-linkedin')
 
   registry.register(findCompaniesSkill)
   registry.register(enrichLeadsSkill)
   registry.register(qualifyLeadsSkill)
   registry.register(exportDataSkill)
   registry.register(optimizeSkill)
+  registry.register(visualizeCampaignsSkill)
+  registry.register(scrapeLinkedinSkill)
 }
 
 // Lazy default instance for CLI backward compatibility
 let _defaultSkillRegistry: SkillRegistry | null = null
+let _skillInitPromise: Promise<void> | null = null
 
 export function getSkillRegistry(): SkillRegistry {
   if (!_defaultSkillRegistry) {
     _defaultSkillRegistry = new SkillRegistry()
-    registerBuiltinSkills(_defaultSkillRegistry)
+    _skillInitPromise = registerBuiltinSkills(_defaultSkillRegistry)
   }
   return _defaultSkillRegistry
+}
+
+export async function getSkillRegistryReady(): Promise<SkillRegistry> {
+  const registry = getSkillRegistry()
+  if (_skillInitPromise) await _skillInitPromise
+  return registry
 }
