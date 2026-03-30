@@ -1,161 +1,139 @@
-# YALC — Yet Another Lead Compiler
+# YALC — The Open-Source GTM Operating System
 
-**An open-source, AI-native operating system for running any GTM campaign.**
+AI plans your campaigns, qualifies your leads, and learns from every interaction.
 
-Describe your goal in plain language. YALC proposes the best workflow — the data sources, enrichment steps, qualification criteria — all informed by your own knowledge base. Approve, execute, verify results in an interactive table.
+YALC is a TypeScript CLI library for AI-native go-to-market. It orchestrates lead discovery, qualification, campaign execution, and intelligence accumulation across LinkedIn, email, and CRM channels.
 
-> Built in public. 30 days. No shortcuts.
-> Started March 3, 2026
-
----
-
-## The Core Idea
-
-Clay is a spreadsheet with enrichment columns. YALC is an intelligence layer that happens to output tables.
-
-- **Chat-first interface** — the spreadsheet is a verification layer, not the creation layer
-- **AI proposes, you approve** — like Cursor, but for GTM workflows
-- **Your knowledge base is the differentiator** — upload your ICP, templates, competitor docs. The AI uses them in every workflow.
-- **RLHF built in** — approve/reject rows, tag bad data. The system gets better at your specific GTM operation.
-- **MCP-interoperable** — bring your own Apollo, Firecrawl, BuiltWith, Clay keys
-
----
-
-## Getting Started
+## Quick Start
 
 ```bash
-git clone https://github.com/Othmane-Khadri/YALC-the-GTM-operating-system.git
-cd YALC-the-GTM-operating-system
+git clone https://github.com/earleads/gtm-os.git
+cd gtm-os
 pnpm install
-cp .env.example .env.local
-# Add your ANTHROPIC_API_KEY to .env.local
-pnpm db:push
-pnpm dev
+cp .env.example .env.local  # Add your API keys
+
+# Initialize your GTM framework
+pnpm cli -- setup
+
+# Run your first qualification (dry-run)
+pnpm cli -- leads:qualify --source csv --input data/leads/sample.csv --dry-run
+
+# Create a campaign
+pnpm cli -- campaign:create --title "Q2 Outbound" --hypothesis "VP Eng responds to pain-point messaging"
+
+# Track campaign progress
+pnpm cli -- campaign:track --dry-run
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+## Architecture
 
-### Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | Claude API key from [console.anthropic.com](https://console.anthropic.com) |
-| `DATABASE_URL` | Yes | SQLite path (default: `file:./gtm-os.db`) or Turso URL for hosted |
-| `ENCRYPTION_KEY` | Yes | AES-256 key for stored API keys. Generate: `openssl rand -hex 32` |
-| `APIFY_TOKEN` | No | Enables real lead search and LinkedIn engagement scraping via Apify |
-| `TURSO_AUTH_TOKEN` | No | Required for Vercel/Turso remote database deployment |
-| `GTM_OS_API_TOKEN` | No | Bearer token protecting `/api/*` routes |
-| `MCP_SERVER_TOKEN` | No | Auth token for the MCP server endpoint |
-
----
-
-## Build Log
-
-### Day 1 — Foundation
-- Chat interface with streaming SSE responses from Claude
-- AI workflow planner: describe a GTM goal, get a structured multi-step workflow proposal
-- SQLite database with Drizzle ORM, full schema for conversations, messages, workflows, and result sets
-
-### Day 2 — GTM Framework + AI Onboarding
-- GTM Framework schema (company identity, positioning, ICPs, channels, learnings) with Claude-powered onboarding that extracts strategy from your website + uploaded docs
-- 5-step onboarding modal (website input, document upload, AI processing, review, follow-up questions) with SSE streaming status
-- Visual overhaul: Space Mono, transparent assistant messages, staggered animations, SVG icons
-
-### Day 3 — Execution Engine + Tables + RLHF
-- Execution engine generates lead batches via Claude with quality distribution (30% great / 40% okay / 30% poor ICP fit) — streamed into chat
-- Full table UI with Vim-style keyboard shortcuts (j/k/a/r/f), RLHF feedback column (approve/reject/flag), sortable columns with typed renderers
-- Learning extractor: approved/rejected leads feed into Claude pattern recognition, surfaces insights for user review before saving to framework
-
-### Day 4 — Systems Architecture (12 Interconnected Systems)
-- Provider registry + abstraction layer, MCP client/server, skills engine (find-companies, enrich-leads, qualify-leads, export-data)
-- Intelligence system (8 categories, evidence-backed, confidence scoring), human review queue, web intelligence layer (3-tier fetch: cache, Firecrawl MCP, built-in)
-- Campaign-as-hypothesis framework, continuous learning loop, provider intelligence (per-segment scoring), nudge engine, data quality monitor (dedup + completeness + anomaly detection)
-
-### Day 5 — Design Rebrand + Knowledge Base
-- Migrated from fruit-named palette to The Kiln design language — semantic color tokens, DM Sans + Inter fonts, WCAG AA contrast
-- `/tables` list page (card grid with feedback progress bars) and `/knowledge` page (drag-drop upload, type filtering, 100k char cap, PDF support)
-- Accessibility: SVG icons replacing emoji, 44px touch targets, prefers-reduced-motion support
-
-### Day 6 — Security Audit + Knowledge AI Pipeline + Apify Providers
-- Pre-public security audit: zero hardcoded secrets, AES-256-GCM encryption, SSRF protection, MCP env isolation, timing-safe auth. Fixed 3 vulnerabilities before release.
-- Knowledge → AI pipeline: FTS5 full-text search with sync triggers, knowledge injected into Claude's system prompt, full-text injection for small docs (< 4000 chars)
-- Dual-repo strategy: public MIT repo (all source code) + private fork (production rate limiting, Vercel deployment)
-- **Apify Lead Finder** provider: real lead search by industry, title, location, company size (~$1.50/1K leads)
-- **LinkedIn Post Engagement Scraper** provider: scrape likers/commenters from any LinkedIn post, optional profile enrichment (~$1.20/1K profiles)
-- **LinkedIn Engagement skill**: registered in skill system, auto-surfaced in Claude's planner
-- Turso remote DB wired for Vercel deployment
-- Google OAuth with email allowlist, settings page, edge-compatible middleware
-
-### Day 7 — Smart Provider Selection + Pipeline Fixes
-- Credential-aware provider registry: Apify providers only surface in Claude's planner when `APIFY_TOKEN` exists, preventing impossible proposals
-- Graceful provider fallback: if any provider fails mid-workflow, execution auto-falls back to mock data instead of crashing
-- Fixed workflow planner tool description: Claude now uses actual registry IDs instead of legacy provider names
-- Filter/export step passthrough: steps complete cleanly instead of silently zeroing out row counts
-- Apify vault fallback: providers check encrypted DB vault when env var is absent
-- Knowledge context wired into mock data generation for more relevant results
-- Brand docs + CLAUDE.md updated from Clay-era references to current Kiln design language
-
-### Day 8+ — Coming next
-- Real provider integrations (Apollo, Firecrawl, BuiltWith)
-- Campaign execution with multi-channel orchestration
-- Export to CSV/CRM
-- Collaborative workspaces
-- ...
-
----
-
-## Deployment
-
-### Local (default)
-
-```bash
-pnpm dev
+```
+┌──────────────────────────────────────────────────────────┐
+│                        CLI Layer                          │
+│  campaign:track · campaign:create · leads:qualify · ...   │
+├──────────────────────────────────────────────────────────┤
+│                      Skills Layer                         │
+│  qualify · scrape-linkedin · answer-comments · email ·    │
+│  orchestrate · visualize · monthly-report                 │
+├──────────────────────────────────────────────────────────┤
+│                    Providers Layer                         │
+│  Unipile · Crustdata · Firecrawl · Notion · FullEnrich   │
+├──────────────────────────────────────────────────────────┤
+│                    Services Layer                          │
+│  API wrappers · Rate limiter · Outbound validator         │
+├──────────────────────────────────────────────────────────┤
+│                    Data Layer                              │
+│  Drizzle ORM · SQLite/Turso · Intelligence Store          │
+└──────────────────────────────────────────────────────────┘
 ```
 
-Uses SQLite at `file:./gtm-os.db` — no external services needed beyond an Anthropic API key.
+**Three-layer pattern:** Service (API wrapper) → Provider (StepExecutor) → Skill (user-facing operation). Never skip layers.
 
-### Vercel
+## Providers
 
-1. Push to GitHub
-2. Import the repo in [vercel.com](https://vercel.com)
-3. Set environment variables:
-   - `DATABASE_URL` — your Turso database URL (e.g. `libsql://your-db.turso.io`)
-   - `TURSO_AUTH_TOKEN` — Turso auth token
-   - `ANTHROPIC_API_KEY` — Claude API key
-   - `ENCRYPTION_KEY` — generate with `openssl rand -hex 32`
-   - `APIFY_TOKEN` — (optional) for real lead search and LinkedIn scraping
-   - `GTM_OS_API_TOKEN` — (recommended) protects API routes in production
-4. Deploy
+| Provider | Capabilities | Env Var |
+|----------|-------------|---------|
+| **Unipile** | LinkedIn search, connections, DMs, scraping | `UNIPILE_API_KEY`, `UNIPILE_DSN` |
+| **Crustdata** | Company/people search, enrichment | `CRUSTDATA_API_KEY` |
+| **Firecrawl** | Web scraping, search | `FIRECRAWL_API_KEY` |
+| **Notion** | Database sync, page management | `NOTION_API_KEY` |
+| **FullEnrich** | Email/phone enrichment | `FULLENRICH_API_KEY` |
+| **Anthropic** | AI planning, qualification, personalization | `ANTHROPIC_API_KEY` |
 
----
+## Skills
 
-## Tech Stack
+| Skill | Category | Description |
+|-------|----------|-------------|
+| `qualify-leads` | data | 7-gate lead qualification pipeline |
+| `scrape-linkedin` | data | Scrape post engagers (likers/commenters) |
+| `answer-comments` | outreach | Reply to LinkedIn post comments |
+| `email-sequence` | content | Generate email drip sequences |
+| `visualize-campaigns` | analysis | Campaign dashboards |
+| `monthly-campaign-report` | analysis | Cross-campaign intelligence report |
+| `orchestrate` | integration | Multi-step workflow from natural language |
 
-| Layer | Choice |
-|-------|--------|
-| Frontend | Next.js 14, React 18, TypeScript |
-| Styling | Tailwind CSS, DM Sans + Inter |
-| State | Jotai |
-| Backend | Next.js API Routes (streaming SSE) |
-| Database | SQLite + Drizzle ORM (local) / Turso (hosted) |
-| AI | Anthropic Claude (Sonnet for planning, Opus for qualification) |
-| License | MIT |
+## CLI Commands
 
----
+```
+campaign:track          Poll Unipile, advance sequences, sync Notion
+campaign:create         Create campaign with A/B variant testing
+campaign:report         Generate weekly intelligence report
+campaign:monthly-report Cross-campaign monthly report
+campaign:dashboard      Open visualization dashboard
+leads:qualify           Run 7-gate qualification pipeline
+leads:scrape-post       Scrape LinkedIn post engagers
+leads:import            Import leads from CSV/JSON/Notion
+linkedin:answer-comments Reply to LinkedIn post comments
+email:create-sequence   Generate email drip sequence
+notion:sync             Bidirectional SQLite ↔ Notion sync
+notion:bootstrap        Import existing Notion data to SQLite
+orchestrate             Natural language → phased skill execution
+setup                   Check API keys and provider connectivity
+onboard                 Build GTM framework from profile/website
+agent:run               Run background agent immediately
+agent:install           Install agent as launchd service
+agent:list              List agents with last run status
+```
 
-## Philosophy
+All commands that send or write support `--dry-run`.
 
-> Intelligence is available at every step. Structure is the foundation. The user's knowledge is the differentiator. The table is the verification layer, not the creation layer.
+## Configuration
 
----
+YALC uses `~/.gtm-os/config.yaml` for persistent configuration:
 
-## Follow the Build
+```yaml
+notion:
+  campaigns_ds: ""
+  leads_ds: ""
+  variants_ds: ""
+  parent_page: ""
+unipile:
+  daily_connect_limit: 30
+  sequence_timing:
+    connect_to_dm1_days: 2
+    dm1_to_dm2_days: 3
+  rate_limit_ms: 3000
+qualification:
+  rules_path: ~/.gtm-os/qualification_rules.md
+  cache_ttl_days: 30
+```
 
-- Daily build logs: [Substack](https://othmanekhadri.substack.com)
-- LinkedIn updates: [Othmane Khadri](https://linkedin.com/in/othmanekhadri)
+## Key Design Decisions
 
----
+- **Intelligence everywhere**: Every campaign outcome feeds the intelligence store. The system learns what works per segment/channel.
+- **Outbound validation**: Every human-facing message passes through `validateMessage()`. Hard violations block sends.
+- **Rate limiting**: DB-backed token bucket rate limiter on all external sends (LinkedIn connects, DMs, emails).
+- **No silent mocks**: Provider registry throws `ProviderNotFoundError` with suggestions instead of silently falling back to mock data.
+- **Transactions**: All campaign tracker DB writes are wrapped in Drizzle transactions.
+
+## Contributing
+
+1. Follow the three-layer pattern: Service → Provider → Skill
+2. Run `pnpm typecheck` after every file change
+3. Support `--dry-run` on any command that sends or writes
+4. Never log API keys — use `sk-...redacted` pattern
+5. Wire campaign outcomes to the intelligence store
 
 ## License
 
-MIT — do whatever you want with it.
+MIT
