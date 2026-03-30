@@ -1,5 +1,50 @@
 import type { StepExecutor, ProviderMetadata } from './types'
 
+export class ProviderNotFoundError extends Error {
+  constructor(provider: string, available: string[], suggestion?: string) {
+    const msg = suggestion
+      ? `Provider '${provider}' not found. Available: ${available.join(', ')}. Did you mean '${suggestion}'?`
+      : `Provider '${provider}' not found. Available: ${available.join(', ')}.`
+    super(msg)
+    this.name = 'ProviderNotFoundError'
+  }
+}
+
+function normalize(id: string): string {
+  return id.toLowerCase().replace(/[-_]/g, '').trim()
+}
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length
+  const n = b.length
+  const dp: number[][] = Array.from({ length: m + 1 }, () => Array(n + 1).fill(0))
+  for (let i = 0; i <= m; i++) dp[i][0] = i
+  for (let j = 0; j <= n; j++) dp[0][j] = j
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1])
+    }
+  }
+  return dp[m][n]
+}
+
+function findClosest(target: string, candidates: string[]): string | undefined {
+  const norm = normalize(target)
+  let best: string | undefined
+  let bestDist = Infinity
+  for (const c of candidates) {
+    const dist = levenshtein(norm, normalize(c))
+    if (dist < bestDist) {
+      bestDist = dist
+      best = c
+    }
+  }
+  // Only suggest if reasonably close (distance < half the target length)
+  return best && bestDist <= Math.ceil(target.length / 2) ? best : undefined
+}
+
 export class ProviderRegistry {
   private providers = new Map<string, StepExecutor>()
 
@@ -15,27 +60,33 @@ export class ProviderRegistry {
    * Resolve the best executor for a given step.
    * Priority:
    *   1. Exact provider match by id
-   *   2. Capability match — prefer builtin > mock
-   *   3. Error if nothing found (no silent mock fallback)
+   *   2. Normalized match (lowercase, no hyphens/underscores)
+   *   3. Capability match — prefer builtin > mock
+   *   4. Error with suggestion (NEVER silently fall back to mock)
    */
   resolve(step: { stepType: string; provider: string }): StepExecutor {
     // 1. Exact match
     const exact = this.providers.get(step.provider)
     if (exact) return exact
 
-    // 2. Capability match — find all that canExecute, sort by type priority
-    const typePriority: Record<string, number> = { mcp: 0, builtin: 1, mock: 2 }
+    // 2. Normalized match
+    const normalizedTarget = normalize(step.provider)
+    for (const [id, executor] of this.providers) {
+      if (normalize(id) === normalizedTarget) return executor
+    }
+
+    // 3. Capability match — find all that canExecute, sort by type priority
+    const typePriority: Record<string, number> = { builtin: 0, mock: 1 }
     const candidates = Array.from(this.providers.values())
       .filter(p => p.canExecute(step as never))
-      .sort((a, b) => (typePriority[a.type] ?? 3) - (typePriority[b.type] ?? 3))
+      .sort((a, b) => (typePriority[a.type] ?? 2) - (typePriority[b.type] ?? 2))
 
     if (candidates.length > 0) return candidates[0]
 
-    // 3. Fallback to mock if registered
-    const mock = this.providers.get('mock')
-    if (mock) return mock
-
-    throw new Error(`No provider found for step type="${step.stepType}" provider="${step.provider}"`)
+    // 4. No match — throw with suggestion
+    const available = Array.from(this.providers.keys())
+    const suggestion = findClosest(step.provider, available)
+    throw new ProviderNotFoundError(step.provider, available, suggestion)
   }
 
   async resolveAsync(step: { stepType: string; provider: string }): Promise<StepExecutor> {
@@ -69,28 +120,39 @@ export class ProviderRegistry {
 /**
  * Register all built-in providers on a registry instance.
  */
-export function registerBuiltinProviders(registry: ProviderRegistry): void {
-  // Lazy imports to avoid circular deps and allow tree-shaking
-  const { MockProvider } = require('./builtin/mock-provider')
-  const { QualifyProvider } = require('./builtin/qualify-provider')
-  const { FirecrawlProvider } = require('./builtin/firecrawl-provider')
-  const { UnipileProvider } = require('./builtin/unipile-provider')
-  const { NotionProvider } = require('./builtin/notion-provider')
+export async function registerBuiltinProviders(registry: ProviderRegistry): Promise<void> {
+  const { MockProvider } = await import('./builtin/mock-provider')
+  const { QualifyProvider } = await import('./builtin/qualify-provider')
+  const { FirecrawlProvider } = await import('./builtin/firecrawl-provider')
+  const { UnipileProvider } = await import('./builtin/unipile-provider')
+  const { NotionProvider } = await import('./builtin/notion-provider')
+  const { CrustdataProvider } = await import('./builtin/crustdata-provider')
+  const { FullEnrichProvider } = await import('./builtin/fullenrich-provider')
 
   registry.register(new MockProvider())
   registry.register(new QualifyProvider())
   registry.register(new FirecrawlProvider())
   registry.register(new UnipileProvider())
   registry.register(new NotionProvider())
+  registry.register(new CrustdataProvider())
+  registry.register(new FullEnrichProvider())
 }
 
 // Lazy default instance for CLI backward compatibility
 let _defaultRegistry: ProviderRegistry | null = null
 
+let _initPromise: Promise<void> | null = null
+
 export function getRegistry(): ProviderRegistry {
   if (!_defaultRegistry) {
     _defaultRegistry = new ProviderRegistry()
-    registerBuiltinProviders(_defaultRegistry)
+    _initPromise = registerBuiltinProviders(_defaultRegistry)
   }
   return _defaultRegistry
+}
+
+export async function getRegistryReady(): Promise<ProviderRegistry> {
+  const registry = getRegistry()
+  if (_initPromise) await _initPromise
+  return registry
 }

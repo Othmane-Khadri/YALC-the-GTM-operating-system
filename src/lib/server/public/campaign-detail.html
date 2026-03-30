@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GTM-OS — Campaign Detail</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            surface: { DEFAULT: '#0f0f0f', card: '#1a1a1a', hover: '#242424' },
+            accent: { DEFAULT: '#f5c542', dim: '#a68a2a' },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background: #0f0f0f; }
+    .card-enter { animation: fadeUp 0.2s ease-out; }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 9999px; font-weight: 500; }
+    .timeline-dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .timeline-line { height: 2px; flex: 1; min-width: 12px; }
+    .pulse { animation: pulse-ring 1.5s ease-in-out infinite; }
+    @keyframes pulse-ring {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(245,197,66,0.4); }
+      50% { box-shadow: 0 0 0 4px rgba(245,197,66,0); }
+    }
+    .metric-box { text-align: center; }
+    .metric-box .value { font-size: 20px; font-weight: 700; }
+    .metric-box .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; }
+  </style>
+</head>
+<body class="dark text-gray-100 min-h-screen">
+  <div id="app" class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- Loading -->
+    <div id="loading" class="text-gray-500 text-sm text-center py-12">Loading campaign...</div>
+
+    <!-- Content (hidden until loaded) -->
+    <div id="content" class="hidden">
+
+      <!-- Back + header -->
+      <div class="mb-6">
+        <a href="/campaigns" class="text-xs text-gray-500 hover:text-accent transition">&larr; Back to campaigns</a>
+        <div class="flex items-start justify-between mt-3">
+          <div>
+            <h1 id="campaignTitle" class="text-xl font-bold"></h1>
+            <p id="campaignHypothesis" class="text-sm text-gray-500 mt-1"></p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="campaignStatus" class="badge"></span>
+            <span id="experimentBadge" class="badge hidden"></span>
+          </div>
+        </div>
+        <div id="campaignMeta" class="flex items-center gap-4 mt-3 text-xs text-gray-600"></div>
+      </div>
+
+      <!-- Variant comparison -->
+      <div id="variantsSection" class="mb-6">
+        <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Variant Performance</h2>
+        <div id="variants" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      </div>
+
+      <!-- Funnel summary -->
+      <div class="mb-6">
+        <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Funnel</h2>
+        <div id="funnelBar" class="bg-surface-card rounded-lg p-4 border border-gray-800"></div>
+      </div>
+
+      <!-- Lead timeline table -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide">
+            Leads <span id="leadCount" class="text-gray-600"></span>
+          </h2>
+          <div class="flex items-center gap-2">
+            <input id="searchInput" type="text" placeholder="Search name..."
+              oninput="filterLeads()"
+              class="bg-surface-card border border-gray-700 text-xs rounded-lg px-3 py-1.5 text-gray-300 focus:border-accent outline-none w-40">
+            <select id="statusLeadFilter" onchange="filterLeads()"
+              class="bg-surface-card border border-gray-700 text-xs rounded-lg px-3 py-1.5 text-gray-300 focus:border-accent outline-none">
+              <option value="">All statuses</option>
+              <option value="Queued">Queued</option>
+              <option value="Connect_Sent">Connect Sent</option>
+              <option value="Connected">Connected</option>
+              <option value="DM1_Sent">DM1 Sent</option>
+              <option value="DM2_Sent">DM2 Sent</option>
+              <option value="Replied">Replied</option>
+              <option value="Demo_Booked">Demo Booked</option>
+              <option value="Expired">Expired</option>
+              <option value="No_Reply">No Reply</option>
+            </select>
+            <select id="variantFilter" onchange="filterLeads()"
+              class="bg-surface-card border border-gray-700 text-xs rounded-lg px-3 py-1.5 text-gray-300 focus:border-accent outline-none">
+              <option value="">All variants</option>
+            </select>
+          </div>
+        </div>
+        <div id="leads" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let campaignData = null
+    let allLeads = []
+
+    const STATUS_COLORS = {
+      active:    { bg: 'rgba(34,197,94,0.12)', text: '#22c55e' },
+      paused:    { bg: 'rgba(234,179,8,0.12)',  text: '#eab308' },
+      draft:     { bg: 'rgba(156,163,175,0.12)', text: '#9ca3af' },
+      completed: { bg: 'rgba(59,130,246,0.12)',  text: '#3b82f6' },
+      planning:  { bg: 'rgba(168,85,247,0.12)',  text: '#a855f7' },
+      failed:    { bg: 'rgba(239,68,68,0.12)',   text: '#ef4444' },
+    }
+
+    const LIFECYCLE_COLORS = {
+      Queued:       { bg: 'rgba(75,85,99,0.15)',   text: '#9ca3af' },
+      Connect_Sent: { bg: 'rgba(59,130,246,0.15)', text: '#3b82f6' },
+      Connected:    { bg: 'rgba(99,102,241,0.15)', text: '#6366f1' },
+      DM1_Sent:     { bg: 'rgba(139,92,246,0.15)', text: '#8b5cf6' },
+      DM2_Sent:     { bg: 'rgba(167,139,250,0.15)',text: '#a78bfa' },
+      Replied:      { bg: 'rgba(34,197,94,0.15)',  text: '#22c55e' },
+      Demo_Booked:  { bg: 'rgba(245,197,66,0.15)', text: '#f5c542' },
+      Deal_Created: { bg: 'rgba(245,158,11,0.15)', text: '#f59e0b' },
+      Closed_Won:   { bg: 'rgba(16,185,129,0.15)', text: '#10b981' },
+      Closed_Lost:  { bg: 'rgba(239,68,68,0.15)',  text: '#ef4444' },
+      Expired:      { bg: 'rgba(107,114,128,0.15)',text: '#6b7280' },
+      No_Reply:     { bg: 'rgba(55,65,81,0.15)',   text: '#6b7280' },
+    }
+
+    // Timeline stage definitions
+    const TIMELINE_STAGES = [
+      { key: 'connectSentAt', label: 'Connect', color: '#3b82f6' },
+      { key: 'connectedAt',   label: 'Accepted', color: '#6366f1' },
+      { key: 'dm1SentAt',     label: 'DM1', color: '#8b5cf6' },
+      { key: 'dm2SentAt',     label: 'DM2', color: '#a78bfa' },
+      { key: 'repliedAt',     label: 'Replied', color: '#22c55e' },
+    ]
+
+    const campaignId = window.location.pathname.split('/').filter(Boolean).pop()
+
+    async function loadCampaign() {
+      try {
+        const [campaignRes, leadsRes] = await Promise.all([
+          fetch(`/api/campaigns/${campaignId}`),
+          fetch(`/api/campaigns/${campaignId}/leads`),
+        ])
+
+        if (!campaignRes.ok) {
+          document.getElementById('loading').innerHTML = '<span class="text-red-400">Campaign not found</span>'
+          return
+        }
+
+        campaignData = await campaignRes.json()
+        const leadsData = await leadsRes.json()
+        allLeads = leadsData.leads || []
+
+        renderCampaign()
+        renderVariants()
+        renderFunnel()
+        populateVariantFilter()
+        renderLeads(allLeads)
+
+        document.getElementById('loading').classList.add('hidden')
+        document.getElementById('content').classList.remove('hidden')
+      } catch (err) {
+        document.getElementById('loading').innerHTML = '<span class="text-red-400">Failed to load campaign</span>'
+      }
+    }
+
+    function renderCampaign() {
+      const c = campaignData
+      document.title = `GTM-OS — ${c.title}`
+      document.getElementById('campaignTitle').textContent = c.title
+      document.getElementById('campaignHypothesis').textContent = c.hypothesis || ''
+
+      const sc = STATUS_COLORS[c.status] || STATUS_COLORS.draft
+      const statusEl = document.getElementById('campaignStatus')
+      statusEl.textContent = c.status
+      statusEl.style.background = sc.bg
+      statusEl.style.color = sc.text
+
+      if (c.experimentStatus === 'winner_declared' && c.winnerVariant) {
+        const eb = document.getElementById('experimentBadge')
+        eb.textContent = 'Winner declared'
+        eb.style.background = 'rgba(245,197,66,0.15)'
+        eb.style.color = '#f5c542'
+        eb.classList.remove('hidden')
+      }
+
+      const channels = (c.channels || []).map(ch =>
+        `<span class="inline-block text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">${ch}</span>`
+      ).join(' ')
+
+      document.getElementById('campaignMeta').innerHTML = `
+        ${c.targetSegment ? `<span>Segment: ${esc(c.targetSegment)}</span>` : ''}
+        ${channels}
+        <span>${c.leadCount || 0} leads</span>
+        <span>Created ${formatDate(c.createdAt)}</span>
+      `
+
+      document.getElementById('leadCount').textContent = `(${allLeads.length})`
+    }
+
+    function renderVariants() {
+      const variants = campaignData.variants || []
+      if (variants.length === 0) {
+        document.getElementById('variantsSection').classList.add('hidden')
+        return
+      }
+
+      const cols = variants.length <= 2 ? 'md:grid-cols-2' : 'md:grid-cols-2 lg:grid-cols-3'
+      document.getElementById('variants').className = `grid grid-cols-1 ${cols} gap-4`
+
+      document.getElementById('variants').innerHTML = variants.map(v => {
+        const isWinner = v.status === 'winner' || v.id === campaignData.winnerVariant
+        const borderClass = isWinner ? 'border-accent' : 'border-gray-800'
+
+        return `
+          <div class="card-enter bg-surface-card rounded-lg p-4 border ${borderClass}">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold text-sm">${esc(v.name)}</h3>
+              ${isWinner ? '<span class="badge" style="background:rgba(245,197,66,0.15);color:#f5c542">Winner</span>' :
+                v.status === 'retired' ? '<span class="badge" style="background:rgba(107,114,128,0.15);color:#6b7280">Retired</span>' : ''}
+            </div>
+            <p class="text-[11px] text-gray-600 mb-3 line-clamp-2">${esc((v.connectNote || '').substring(0, 80))}${(v.connectNote || '').length > 80 ? '...' : ''}</p>
+            <div class="grid grid-cols-4 gap-2">
+              <div class="metric-box">
+                <div class="value text-gray-200">${v.sends || 0}</div>
+                <div class="label">Sends</div>
+              </div>
+              <div class="metric-box">
+                <div class="value text-indigo-400">${((v.acceptRate || 0) * 100).toFixed(0)}%</div>
+                <div class="label">Accept</div>
+              </div>
+              <div class="metric-box">
+                <div class="value text-gray-200">${v.dmsSent || 0}</div>
+                <div class="label">DMs</div>
+              </div>
+              <div class="metric-box">
+                <div class="value text-accent">${((v.replyRate || 0) * 100).toFixed(0)}%</div>
+                <div class="label">Reply</div>
+              </div>
+            </div>
+          </div>
+        `
+      }).join('')
+    }
+
+    function renderFunnel() {
+      const funnel = campaignData.funnel || {}
+      const total = campaignData.leadCount || 0
+
+      const stages = [
+        { key: 'Queued', label: 'Queued', color: '#4b5563' },
+        { key: 'Connect_Sent', label: 'Sent', color: '#3b82f6' },
+        { key: 'Connected', label: 'Connected', color: '#6366f1' },
+        { key: 'DM1_Sent', label: 'DM1', color: '#8b5cf6' },
+        { key: 'DM2_Sent', label: 'DM2', color: '#a78bfa' },
+        { key: 'Replied', label: 'Replied', color: '#22c55e' },
+        { key: 'Demo_Booked', label: 'Demos', color: '#f5c542' },
+        { key: 'Expired', label: 'Expired', color: '#6b7280' },
+        { key: 'No_Reply', label: 'No Reply', color: '#374151' },
+      ]
+
+      const items = stages.filter(s => (funnel[s.key] || 0) > 0)
+
+      if (items.length === 0) {
+        document.getElementById('funnelBar').innerHTML = '<div class="text-xs text-gray-600 text-center">No lead data yet</div>'
+        return
+      }
+
+      // Bar segments
+      const bar = items.map(s => {
+        const pct = ((funnel[s.key] || 0) / total * 100).toFixed(1)
+        return `<div style="width:${pct}%; background:${s.color}" class="h-full" title="${s.label}: ${funnel[s.key]}"></div>`
+      }).join('')
+
+      // Legend
+      const legend = items.map(s =>
+        `<div class="flex items-center gap-1.5">
+          <div style="background:${s.color}" class="w-2 h-2 rounded-full"></div>
+          <span class="text-gray-400">${s.label}</span>
+          <span class="font-medium text-gray-200">${funnel[s.key]}</span>
+        </div>`
+      ).join('')
+
+      document.getElementById('funnelBar').innerHTML = `
+        <div class="h-3 bg-gray-800 rounded-full overflow-hidden flex mb-3">${bar}</div>
+        <div class="flex flex-wrap gap-4 text-[11px]">${legend}</div>
+      `
+    }
+
+    function populateVariantFilter() {
+      const variants = campaignData.variants || []
+      const select = document.getElementById('variantFilter')
+      variants.forEach(v => {
+        const opt = document.createElement('option')
+        opt.value = v.id
+        opt.textContent = v.name
+        select.appendChild(opt)
+      })
+    }
+
+    function filterLeads() {
+      const search = document.getElementById('searchInput').value.toLowerCase()
+      const status = document.getElementById('statusLeadFilter').value
+      const variantId = document.getElementById('variantFilter').value
+
+      const filtered = allLeads.filter(lead => {
+        const name = `${lead.firstName || ''} ${lead.lastName || ''} ${lead.company || ''}`.toLowerCase()
+        if (search && !name.includes(search)) return false
+        if (status && lead.lifecycleStatus !== status) return false
+        if (variantId && lead.variantId !== variantId) return false
+        return true
+      })
+
+      renderLeads(filtered)
+    }
+
+    function renderLeads(leads) {
+      const container = document.getElementById('leads')
+
+      if (leads.length === 0) {
+        container.innerHTML = '<div class="text-gray-600 text-sm text-center py-8">No leads match filters</div>'
+        return
+      }
+
+      container.innerHTML = leads.map((lead, i) => {
+        const name = [lead.firstName, lead.lastName].filter(Boolean).join(' ') || 'Unknown'
+        const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+        const lc = LIFECYCLE_COLORS[lead.lifecycleStatus] || LIFECYCLE_COLORS.Queued
+        const timeline = buildTimeline(lead)
+
+        const linkedinLink = lead.linkedinUrl
+          ? `<a href="${lead.linkedinUrl}" target="_blank" class="text-blue-400 hover:text-blue-300 text-[10px]">in</a>`
+          : ''
+
+        return `
+          <div class="card-enter bg-surface-card rounded-lg p-3 border border-gray-800 hover:border-gray-700 transition"
+            style="animation-delay: ${Math.min(i * 30, 300)}ms">
+            <div class="flex items-center gap-3">
+              <!-- Avatar -->
+              <div class="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center text-[11px] font-bold text-accent shrink-0">
+                ${initials}
+              </div>
+
+              <!-- Name + info -->
+              <div class="min-w-[140px] shrink-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-semibold text-sm">${esc(name)}</span>
+                  ${linkedinLink}
+                </div>
+                <div class="text-[11px] text-gray-500 truncate max-w-[200px]">
+                  ${esc(lead.headline || '')}${lead.company ? ` @ ${esc(lead.company)}` : ''}
+                </div>
+                <div class="flex items-center gap-2 mt-0.5">
+                  ${lead.variantName ? `<span class="text-[9px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-500">${esc(lead.variantName)}</span>` : ''}
+                  ${lead.qualificationScore ? `<span class="text-[9px] text-gray-600">${lead.qualificationScore}pt</span>` : ''}
+                </div>
+              </div>
+
+              <!-- Timeline -->
+              <div class="flex-1 flex items-center justify-center px-2">
+                ${timeline}
+              </div>
+
+              <!-- Status badge -->
+              <span class="badge shrink-0" style="background:${lc.bg}; color:${lc.text}">
+                ${lead.lifecycleStatus.replace(/_/g, ' ')}
+              </span>
+            </div>
+          </div>
+        `
+      }).join('')
+    }
+
+    function buildTimeline(lead) {
+      if (lead.lifecycleStatus === 'Queued') {
+        return '<div class="text-[10px] text-gray-600">Queued — awaiting send</div>'
+      }
+
+      let html = '<div class="flex items-start gap-0 w-full max-w-md">'
+
+      for (let i = 0; i < TIMELINE_STAGES.length; i++) {
+        const stage = TIMELINE_STAGES[i]
+        const timestamp = lead[stage.key]
+        const nextStage = TIMELINE_STAGES[i + 1]
+        const nextTimestamp = nextStage ? lead[nextStage.key] : null
+
+        // Determine dot state
+        let dotStyle, dotClass = 'timeline-dot'
+        if (timestamp) {
+          // Completed — is this the current (latest) step?
+          const isLatest = !nextTimestamp && i === getLatestStageIndex(lead)
+          if (isLatest && lead.lifecycleStatus !== 'Expired' && lead.lifecycleStatus !== 'No_Reply') {
+            dotStyle = `background:${stage.color}; box-shadow: 0 0 0 3px ${stage.color}33;`
+            dotClass += ' pulse'
+          } else {
+            dotStyle = `background:${stage.color};`
+          }
+        } else {
+          // Future step
+          dotStyle = `background:transparent; border: 1.5px solid #4b5563;`
+        }
+
+        html += `
+          <div class="flex flex-col items-center" style="min-width:48px;">
+            <div class="${dotClass}" style="${dotStyle}"></div>
+            <div class="text-[9px] mt-1 ${timestamp ? 'text-gray-400' : 'text-gray-700'}">${stage.label}</div>
+            ${timestamp ? `<div class="text-[8px] text-gray-600">${formatShortDate(timestamp)}</div>` : ''}
+          </div>
+        `
+
+        // Connector line between dots
+        if (i < TIMELINE_STAGES.length - 1) {
+          const lineColor = timestamp ? stage.color : '#333'
+          html += `<div class="timeline-line self-center" style="background:${lineColor}; margin-top: -18px;"></div>`
+        }
+      }
+
+      html += '</div>'
+      return html
+    }
+
+    function getLatestStageIndex(lead) {
+      let latest = -1
+      for (let i = 0; i < TIMELINE_STAGES.length; i++) {
+        if (lead[TIMELINE_STAGES[i].key]) latest = i
+      }
+      return latest
+    }
+
+    function formatShortDate(dateStr) {
+      if (!dateStr) return ''
+      const d = new Date(dateStr)
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+      return `${months[d.getMonth()]} ${d.getDate()}`
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return ''
+      const d = new Date(dateStr)
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    }
+
+    function esc(str) {
+      const el = document.createElement('span')
+      el.textContent = str || ''
+      return el.innerHTML
+    }
+
+    loadCampaign()
+  </script>
+</body>
+</html>

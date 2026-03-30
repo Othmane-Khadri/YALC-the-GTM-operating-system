@@ -2,8 +2,33 @@ import Anthropic from '@anthropic-ai/sdk'
 import { getAnthropicClient, PLANNER_MODEL } from '../ai/client'
 import { CampaignManager } from './manager'
 import { IntelligenceStore } from '../intelligence/store'
-import type { Nudge, NudgeCategory, AbTestVerdict } from './nudge-types'
 import type { Campaign, CampaignMetrics } from './types'
+
+// Inlined from deleted nudge-types.ts
+export type NudgeCategory = 'audience' | 'content' | 'timing' | 'channel' | 'volume' | 'icp' | 'ab_verdict' | 'campaign_health'
+
+export interface Nudge {
+  category: NudgeCategory
+  insight: string
+  recommendation: string
+  evidence: { metric: string; current: number; comparison: number; source: string }[]
+  impact: { metric: string; currentValue: number; projectedValue: number; confidence: number }
+  action: { endpoint: string; method: string; body: Record<string, unknown> }
+  alternatives: unknown[]
+  showDataEndpoint: string
+}
+
+export interface AbTestVerdict {
+  variantA: string
+  variantB: string
+  winner: string | null
+  metric: string
+  aValue: number
+  bValue: number
+  sampleSizeA: number
+  sampleSizeB: number
+  significant: boolean
+}
 
 export class CampaignOptimizer {
   private manager = new CampaignManager()

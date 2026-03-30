@@ -1,5 +1,109 @@
+import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs'
+import { join } from 'path'
+import { homedir } from 'os'
+import yaml from 'js-yaml'
+import { eq } from 'drizzle-orm'
+import { db } from '../db'
+import { frameworks } from '../db/schema'
 import type { GTMFramework } from './types'
 import { IntelligenceStore } from '../intelligence/store'
+
+const FRAMEWORK_PATH = join(homedir(), '.gtm-os', 'framework.yaml')
+
+/**
+ * Load framework from DB, fallback to YAML file.
+ */
+export async function loadFramework(): Promise<GTMFramework | null> {
+  // Try DB first
+  try {
+    const rows = await db.select().from(frameworks).where(eq(frameworks.userId, 'default')).limit(1)
+    if (rows.length > 0) {
+      const data = typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : rows[0].data
+      return data as GTMFramework
+    }
+  } catch {
+    // DB may not have table yet
+  }
+
+  // Fallback to YAML
+  if (existsSync(FRAMEWORK_PATH)) {
+    try {
+      const raw = readFileSync(FRAMEWORK_PATH, 'utf-8')
+      return yaml.load(raw) as GTMFramework
+    } catch {
+      return null
+    }
+  }
+
+  return null
+}
+
+/**
+ * Save framework to both DB and YAML file.
+ */
+export async function saveFramework(framework: GTMFramework): Promise<void> {
+  const now = new Date()
+
+  // Save to DB
+  try {
+    const existing = await db.select().from(frameworks).where(eq(frameworks.userId, 'default')).limit(1)
+    if (existing.length > 0) {
+      await db.update(frameworks).set({
+        data: JSON.stringify(framework),
+        onboardingComplete: framework.onboardingComplete ?? false,
+        updatedAt: now,
+      }).where(eq(frameworks.userId, 'default'))
+    } else {
+      await db.insert(frameworks).values({
+        id: crypto.randomUUID(),
+        userId: 'default',
+        data: JSON.stringify(framework),
+        onboardingComplete: framework.onboardingComplete ?? false,
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
+  } catch (err) {
+    console.error('[framework] DB save failed:', err)
+  }
+
+  // Save to YAML
+  try {
+    const dir = join(homedir(), '.gtm-os')
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    writeFileSync(FRAMEWORK_PATH, yaml.dump(framework))
+  } catch (err) {
+    console.error('[framework] YAML save failed:', err)
+  }
+}
+
+/**
+ * Merge partial updates into existing framework.
+ */
+export async function updateFramework(partial: Partial<GTMFramework>): Promise<GTMFramework> {
+  const existing = await loadFramework()
+  if (!existing) throw new Error('No framework found. Run onboard first.')
+
+  const updated: GTMFramework = {
+    ...existing,
+    ...partial,
+    company: { ...existing.company, ...partial.company },
+    positioning: { ...existing.positioning, ...partial.positioning },
+    signals: { ...existing.signals, ...partial.signals },
+    channels: { ...existing.channels, ...partial.channels },
+    lastUpdated: new Date().toISOString(),
+    version: existing.version + 1,
+  }
+
+  // Merge segments and other arrays only if provided
+  if (partial.segments) updated.segments = partial.segments
+  if (partial.objections) updated.objections = partial.objections
+  if (partial.learnings) updated.learnings = partial.learnings
+  if (partial.connectedProviders) updated.connectedProviders = partial.connectedProviders
+
+  await saveFramework(updated)
+  return updated
+}
 
 /**
  * Build a prompt-ready context string from the GTM Framework.

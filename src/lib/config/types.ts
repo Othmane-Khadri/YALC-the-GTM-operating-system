@@ -27,9 +27,20 @@ export interface DataConfig {
   campaigns_dir: string
 }
 
+export interface CrustdataConfig {
+  max_results_per_query: number
+}
+
+export interface FullEnrichConfig {
+  poll_interval_ms: number
+  poll_timeout_ms: number
+}
+
 export interface GTMOSConfig {
   notion: NotionConfig
   unipile: UnipileConfig
   qualification: QualificationConfig
   data: DataConfig
+  crustdata?: CrustdataConfig
+  fullenrich?: FullEnrichConfig
 }

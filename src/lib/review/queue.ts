@@ -3,7 +3,6 @@ import { eq, and, desc, lt } from 'drizzle-orm'
 import { db } from '../db'
 import { reviewQueue } from '../db/schema'
 import type { ReviewRequest, ReviewStatus, ReviewType, ReviewPriority } from './types'
-import { getCollector } from '../signals/collector'
 import { validateUrl } from '../web/url-validator'
 
 type CreateInput = Omit<ReviewRequest, 'id' | 'status' | 'createdAt'>
@@ -131,13 +130,6 @@ export class ReviewQueue {
       }
     }
 
-    // Emit review decision signal
-    await getCollector().emit({
-      type: 'human_review_decision',
-      category: this.reviewTypeToCategory(entry.type),
-      data: { reviewId: id, type: entry.type, decision: 'approved', notes },
-    })
-
     return { ...entry, status: 'approved', reviewedAt: now, reviewNotes: notes ?? null }
   }
 
@@ -155,13 +147,6 @@ export class ReviewQueue {
         reviewNotes: notes ?? null,
       })
       .where(eq(reviewQueue.id, id))
-
-    // Emit review decision signal
-    await getCollector().emit({
-      type: 'human_review_decision',
-      category: this.reviewTypeToCategory(entry.type),
-      data: { reviewId: id, type: entry.type, decision: 'rejected', notes },
-    })
 
     return { ...entry, status: 'rejected', reviewedAt: now, reviewNotes: notes ?? null }
   }

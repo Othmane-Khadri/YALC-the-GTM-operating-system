@@ -2,11 +2,13 @@ import { eq } from 'drizzle-orm'
 import { db } from '../db'
 import { campaigns, campaignLeads, campaignVariants } from '../db/schema'
 import { notionService } from '../services/notion'
+import { IntelligenceStore } from '../intelligence/store'
 import type { GTMOSConfig } from '../config/types'
 
 interface SyncOptions {
   config: GTMOSConfig
   direction: string // 'push' | 'pull' | 'both'
+  dryRun?: boolean
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -209,6 +211,33 @@ async function pullNotionEdits(config: GTMOSConfig): Promise<void> {
         updatedAt: new Date().toISOString(),
       }).where(eq(campaignLeads.id, lead.id))
       pulled++
+
+      // Wire conversion events to intelligence
+      if (notionStatus === 'Demo_Booked' || notionStatus === 'Closed_Won') {
+        try {
+          const store = new IntelligenceStore()
+          await store.add({
+            category: 'icp',
+            insight: `Lead with profile [${lead.headline ?? 'unknown'}, ${lead.company ?? 'unknown'}] converted to ${notionStatus}`,
+            evidence: [{
+              type: 'campaign_outcome',
+              sourceId: lead.campaignId,
+              metric: notionStatus.toLowerCase(),
+              value: 1,
+              sampleSize: 1,
+              timestamp: new Date().toISOString(),
+            }],
+            segment: null,
+            channel: 'linkedin',
+            confidence: 'validated',
+            source: 'campaign_outcome',
+            biasCheck: null,
+            supersedes: null,
+            validatedAt: new Date().toISOString(),
+            expiresAt: null,
+          })
+        } catch { /* intelligence is best-effort */ }
+      }
     }
   }
 

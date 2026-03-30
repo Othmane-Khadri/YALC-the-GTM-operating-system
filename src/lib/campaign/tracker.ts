@@ -6,6 +6,7 @@ import { syncCampaignMetricsToNotion, syncVariantStatsToNotion } from '../notion
 import { IntelligenceStore } from '../intelligence/store'
 import { shouldPromote as checkShouldPromote } from '../intelligence/confidence'
 import { validateMessage } from '../outbound/validator'
+import { rateLimiter } from '../rate-limiter'
 import type { GTMOSConfig } from '../config/types'
 
 interface TrackerOptions {
@@ -130,20 +131,33 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
         if (!template) continue
 
         const message = personalize(template, lead)
+        if (!message) continue
         console.log(`[tracker] → DM1 to ${lead.firstName} ${lead.lastName} (${variant?.name ?? 'default'})`)
 
         if (!opts.dryRun) {
-          await unipileService.sendMessage(accountId, lead.providerId, message)
-          await db.update(campaignLeads).set({
-            lifecycleStatus: 'DM1_Sent',
-            dm1SentAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }).where(eq(campaignLeads.id, lead.id))
+          if (!await rateLimiter.acquire('linkedin.dm', accountId)) {
+            const remaining = await rateLimiter.getRemaining('linkedin.dm', accountId)
+            console.log(`[tracker] Rate limit hit for linkedin.dm. Remaining: ${remaining}/100. Skipping.`)
+            break
+          }
+          try {
+            await unipileService.sendMessage(accountId, lead.providerId, message)
+            await db.transaction(async (tx) => {
+              await tx.update(campaignLeads).set({
+                lifecycleStatus: 'DM1_Sent',
+                dm1SentAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }).where(eq(campaignLeads.id, lead.id))
 
-          if (variant) {
-            await db.update(campaignVariants).set({
-              dmsSent: (variant.dmsSent ?? 0) + 1,
-            }).where(eq(campaignVariants.id, variant.id))
+              if (variant) {
+                await tx.update(campaignVariants).set({
+                  dmsSent: (variant.dmsSent ?? 0) + 1,
+                }).where(eq(campaignVariants.id, variant.id))
+              }
+            })
+          } catch (err) {
+            console.error(`[tracker] Failed DM1 for ${lead.firstName} ${lead.lastName}:`, err)
+            continue
           }
 
           await delay(opts.config.unipile.rate_limit_ms)
@@ -160,20 +174,33 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
         if (!template) continue
 
         const message = personalize(template, lead)
+        if (!message) continue
         console.log(`[tracker] → DM2 to ${lead.firstName} ${lead.lastName} (${variant?.name ?? 'default'})`)
 
         if (!opts.dryRun) {
-          await unipileService.sendMessage(accountId, lead.providerId, message)
-          await db.update(campaignLeads).set({
-            lifecycleStatus: 'DM2_Sent',
-            dm2SentAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }).where(eq(campaignLeads.id, lead.id))
+          if (!await rateLimiter.acquire('linkedin.dm', accountId)) {
+            const remaining = await rateLimiter.getRemaining('linkedin.dm', accountId)
+            console.log(`[tracker] Rate limit hit for linkedin.dm. Remaining: ${remaining}/100. Skipping.`)
+            break
+          }
+          try {
+            await unipileService.sendMessage(accountId, lead.providerId, message)
+            await db.transaction(async (tx) => {
+              await tx.update(campaignLeads).set({
+                lifecycleStatus: 'DM2_Sent',
+                dm2SentAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }).where(eq(campaignLeads.id, lead.id))
 
-          if (variant) {
-            await db.update(campaignVariants).set({
-              dmsSent: (variant.dmsSent ?? 0) + 1,
-            }).where(eq(campaignVariants.id, variant.id))
+              if (variant) {
+                await tx.update(campaignVariants).set({
+                  dmsSent: (variant.dmsSent ?? 0) + 1,
+                }).where(eq(campaignVariants.id, variant.id))
+              }
+            })
+          } catch (err) {
+            console.error(`[tracker] Failed DM2 for ${lead.firstName} ${lead.lastName}:`, err)
+            continue
           }
 
           await delay(opts.config.unipile.rate_limit_ms)
@@ -204,17 +231,29 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
       console.log(`[tracker] → Connect to ${lead.firstName} ${lead.lastName} (${variant?.name ?? 'default'})`)
 
       if (!opts.dryRun) {
-        await unipileService.sendConnection(accountId, lead.providerId, note)
-        await db.update(campaignLeads).set({
-          lifecycleStatus: 'Connect_Sent',
-          connectSentAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }).where(eq(campaignLeads.id, lead.id))
+        if (!await rateLimiter.acquire('linkedin.connect', accountId)) {
+          const remaining = await rateLimiter.getRemaining('linkedin.connect', accountId)
+          console.log(`[tracker] Rate limit hit for linkedin.connect. Remaining: ${remaining}/30. Skipping.`)
+          break
+        }
+        try {
+          await unipileService.sendConnection(accountId, lead.providerId, note)
+          await db.transaction(async (tx) => {
+            await tx.update(campaignLeads).set({
+              lifecycleStatus: 'Connect_Sent',
+              connectSentAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }).where(eq(campaignLeads.id, lead.id))
 
-        if (variant) {
-          await db.update(campaignVariants).set({
-            sends: (variant.sends ?? 0) + 1,
-          }).where(eq(campaignVariants.id, variant.id))
+            if (variant) {
+              await tx.update(campaignVariants).set({
+                sends: (variant.sends ?? 0) + 1,
+              }).where(eq(campaignVariants.id, variant.id))
+            }
+          })
+        } catch (err) {
+          console.error(`[tracker] Failed connect for ${lead.firstName} ${lead.lastName}:`, err)
+          continue
         }
 
         await delay(opts.config.unipile.rate_limit_ms)
@@ -235,31 +274,44 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
       console.log(`[tracker] ⏳ ${lead.firstName} ${lead.lastName} → ${status}`)
 
       if (!opts.dryRun) {
-        await db.update(campaignLeads).set({
-          lifecycleStatus: status,
-          updatedAt: new Date().toISOString(),
-        }).where(eq(campaignLeads.id, lead.id))
+        try {
+          await db.transaction(async (tx) => {
+            await tx.update(campaignLeads).set({
+              lifecycleStatus: status,
+              updatedAt: new Date().toISOString(),
+            }).where(eq(campaignLeads.id, lead.id))
+          })
+        } catch (err) {
+          console.error(`[tracker] Failed to expire ${lead.firstName} ${lead.lastName}:`, err)
+          continue
+        }
       }
       summary.leadsExpired++
     }
 
     // Phase 7: Recalculate variant metrics
     if (!opts.dryRun) {
-      for (const variant of variants) {
-        const variantLeads = leads.filter(l => l.variantId === variant.id)
-        const sends = variantLeads.filter(l => l.connectSentAt).length
-        const accepts = variantLeads.filter(l => l.connectedAt).length
-        const dms = variantLeads.filter(l => l.dm1SentAt).length
-        const replies = variantLeads.filter(l => l.repliedAt).length
+      try {
+        await db.transaction(async (tx) => {
+          for (const variant of variants) {
+            const variantLeads = leads.filter(l => l.variantId === variant.id)
+            const sends = variantLeads.filter(l => l.connectSentAt).length
+            const accepts = variantLeads.filter(l => l.connectedAt).length
+            const dms = variantLeads.filter(l => l.dm1SentAt).length
+            const replies = variantLeads.filter(l => l.repliedAt).length
 
-        await db.update(campaignVariants).set({
-          sends,
-          accepts,
-          acceptRate: sends > 0 ? accepts / sends : 0,
-          dmsSent: dms,
-          replies,
-          replyRate: dms > 0 ? replies / dms : 0,
-        }).where(eq(campaignVariants.id, variant.id))
+            await tx.update(campaignVariants).set({
+              sends,
+              accepts,
+              acceptRate: sends > 0 ? accepts / sends : 0,
+              dmsSent: dms,
+              replies,
+              replyRate: dms > 0 ? replies / dms : 0,
+            }).where(eq(campaignVariants.id, variant.id))
+          }
+        })
+      } catch (err) {
+        console.error('[tracker] Failed to recalculate variant metrics:', err)
       }
     }
 
@@ -320,11 +372,18 @@ async function checkAcceptances(
       if (connectedIds.has(lead.providerId)) {
         console.log(`[tracker] ✓ ${lead.firstName} ${lead.lastName} accepted connection`)
         if (!dryRun) {
-          await db.update(campaignLeads).set({
-            lifecycleStatus: 'Connected',
-            connectedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }).where(eq(campaignLeads.id, lead.id))
+          try {
+            await db.transaction(async (tx) => {
+              await tx.update(campaignLeads).set({
+                lifecycleStatus: 'Connected',
+                connectedAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }).where(eq(campaignLeads.id, lead.id))
+            })
+          } catch (err) {
+            console.error(`[tracker] Failed to update acceptance for ${lead.firstName} ${lead.lastName}:`, err)
+            continue
+          }
         }
         count++
       }
@@ -363,11 +422,18 @@ async function checkReplies(
       if (repliedProviderIds.has(lead.providerId) && !lead.repliedAt) {
         console.log(`[tracker] 💬 ${lead.firstName} ${lead.lastName} replied!`)
         if (!dryRun) {
-          await db.update(campaignLeads).set({
-            lifecycleStatus: 'Replied',
-            repliedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }).where(eq(campaignLeads.id, lead.id))
+          try {
+            await db.transaction(async (tx) => {
+              await tx.update(campaignLeads).set({
+                lifecycleStatus: 'Replied',
+                repliedAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              }).where(eq(campaignLeads.id, lead.id))
+            })
+          } catch (err) {
+            console.error(`[tracker] Failed to update reply for ${lead.firstName} ${lead.lastName}:`, err)
+            continue
+          }
         }
         count++
       }

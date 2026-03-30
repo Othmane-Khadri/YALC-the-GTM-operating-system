@@ -513,9 +513,43 @@ export const campaignLeadsRelations = relations(campaignLeads, ({ one }) => ({
   }),
 }))
 
+// ─── Lead Blocklist ─────────────────────────────────────────────────────────
+// Permanent or campaign-scoped lead exclusions
+export const leadBlocklist = sqliteTable('lead_blocklist', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  // Identifier — at least one must be set
+  providerId: text('provider_id'),
+  linkedinUrl: text('linkedin_url'),
+  linkedinSlug: text('linkedin_slug'),
+  // What was excluded
+  name: text('name'),
+  headline: text('headline'),
+  company: text('company'),
+  // Scope: 'permanent' persists across all campaigns, 'campaign' applies to one campaign
+  scope: text('scope', { enum: ['permanent', 'campaign'] }).notNull().default('permanent'),
+  campaignId: text('campaign_id'), // only set when scope = 'campaign'
+  reason: text('reason'), // user's notes on why excluded
+  createdAt: text('created_at').default(sql`(datetime('now'))`),
+})
+
+// ─── Rate Limit Buckets ──────────────────────────────────────────────────────
+// Token bucket rate limiter — DB-backed for persistence across runs
+export const rateLimitBuckets = sqliteTable('rate_limit_buckets', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  provider: text('provider').notNull(),      // 'linkedin.connect', 'linkedin.dm', 'instantly.send'
+  accountId: text('account_id').notNull(),   // Provider account identifier
+  tokensRemaining: integer('tokens_remaining').notNull(),
+  maxTokens: integer('max_tokens').notNull(),
+  refillAt: text('refill_at').notNull(),     // ISO timestamp for next refill
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+})
+
+export const rateLimitBucketsRelations = relations(rateLimitBuckets, () => ({}))
+
 export const signalsLogRelations = relations(signalsLog, () => ({}))
 
 export const providerStatsRelations = relations(providerStats, () => ({}))
 export const providerPreferencesRelations = relations(providerPreferences, () => ({}))
 
 export const dataQualityLogRelations = relations(dataQualityLog, () => ({}))
+export const leadBlocklistRelations = relations(leadBlocklist, () => ({}))

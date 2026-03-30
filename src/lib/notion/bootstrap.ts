@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import { db } from '../db'
 import { campaigns, campaignLeads, campaignVariants, conversations } from '../db/schema'
 import { notionService } from '../services/notion'
@@ -5,11 +6,12 @@ import type { GTMOSConfig } from '../config/types'
 
 interface BootstrapOptions {
   config: GTMOSConfig
+  dryRun?: boolean
 }
 
 export async function runBootstrap(opts: BootstrapOptions): Promise<void> {
   const { config } = opts
-  console.log('[bootstrap] Importing existing data from Notion → SQLite...')
+  console.log('[bootstrap] Importing existing data from Notion → SQLite...\n')
 
   // Create a conversation for imported campaigns
   const convId = crypto.randomUUID()
@@ -18,59 +20,89 @@ export async function runBootstrap(opts: BootstrapOptions): Promise<void> {
     title: 'Notion Import',
   })
 
-  // 1. Import campaigns
+  // ── Step 1: Import campaigns ──────────────────────────────────────────────
   console.log('[bootstrap] Fetching campaigns from Notion...')
   const campaignPages = await notionService.queryDatabase(config.notion.campaigns_ds)
   console.log(`[bootstrap] Found ${campaignPages.length} campaign(s)`)
 
+  // Map Notion page ID → SQLite campaign ID, and campaign name → campaign ID
+  const notionToCampaignId = new Map<string, string>()
+  const nameToCampaignId = new Map<string, string>()
+
   for (const page of campaignPages) {
     const p = page as { id: string; properties?: Record<string, unknown> }
     const props = p.properties ?? {}
-    const title = extractTitle(props)
-    const status = extractSelect(props, 'Status') ?? 'active'
 
+    const title = extractTitle(props) // reads "Campaign Name" (title field)
+    const status = extractSelect(props, 'Status') ?? 'Active'
     const campaignId = crypto.randomUUID()
+
     await db.insert(campaigns).values({
       id: campaignId,
       conversationId: convId,
       title: title ?? 'Imported Campaign',
-      hypothesis: extractText(props, 'Hypothesis') ?? '',
+      hypothesis: extractText(props, 'Sequence') ?? '',
       status: mapStatus(status),
-      targetSegment: extractText(props, 'Target Segment'),
+      targetSegment: null,
       channels: JSON.stringify(['linkedin']),
       successMetrics: JSON.stringify([]),
-      metrics: JSON.stringify({}),
+      metrics: JSON.stringify({
+        totalLeads: extractNumber(props, 'Total Leads') ?? 0,
+        qualified: 0,
+        contentGenerated: 0,
+        sent: extractNumber(props, 'Connects Sent') ?? 0,
+        opened: 0,
+        replied: extractNumber(props, 'Replies') ?? 0,
+        converted: extractNumber(props, 'Demos Booked') ?? 0,
+        bounced: 0,
+      }),
       linkedinAccountId: extractText(props, 'LinkedIn Account ID'),
       dailyLimit: extractNumber(props, 'Daily Limit') ?? 30,
-      experimentStatus: extractSelect(props, 'Experiment Status'),
+      sequenceTiming: JSON.stringify({
+        connect_to_dm1_days: extractNumber(props, 'Wait After Accept (days)') ?? 2,
+        dm1_to_dm2_days: extractNumber(props, 'Wait After DM1 (days)') ?? 3,
+      }),
+      experimentStatus: mapExperimentStatus(extractSelect(props, 'Experiment Status')),
       winnerVariant: extractText(props, 'Winner Variant'),
       notionPageId: p.id,
     })
 
-    console.log(`[bootstrap] ✓ Campaign: ${title} (${status})`)
+    notionToCampaignId.set(p.id, campaignId)
+    if (title) nameToCampaignId.set(title, campaignId)
+
+    console.log(`[bootstrap]   ✓ Campaign: ${title} (${status})`)
   }
 
-  // 2. Import variants
+  // ── Step 2: Import variants ───────────────────────────────────────────────
   console.log('\n[bootstrap] Fetching variants from Notion...')
   const variantPages = await notionService.queryDatabase(config.notion.variants_ds)
   console.log(`[bootstrap] Found ${variantPages.length} variant(s)`)
 
+  // Map variant name → variant ID for lead linking
+  const variantNameToCampaignMap = new Map<string, { variantId: string; campaignId: string }>()
+
   for (const page of variantPages) {
     const p = page as { id: string; properties?: Record<string, unknown> }
     const props = p.properties ?? {}
-    const name = extractTitle(props)
 
-    // Find matching campaign by relation or title
-    const campaignName = extractText(props, 'Campaign') ?? extractRelation(props, 'Campaign')
+    const name = extractTitle(props) // "Variant Name" is the title field
+    const campaignName = extractText(props, 'Campaign')
+    const campaignId = campaignName ? nameToCampaignId.get(campaignName) : null
 
+    if (!campaignId) {
+      console.log(`[bootstrap]   ⚠ Variant "${name}" — campaign "${campaignName}" not found, skipping`)
+      continue
+    }
+
+    const variantId = crypto.randomUUID()
     await db.insert(campaignVariants).values({
-      id: crypto.randomUUID(),
-      campaignId: '', // Will need manual linking if relation doesn't resolve
+      id: variantId,
+      campaignId,
       name: name ?? 'Imported Variant',
-      status: extractSelect(props, 'Status') ?? 'active',
+      status: mapVariantStatus(extractSelect(props, 'Status')),
       connectNote: extractText(props, 'Connect Note') ?? '',
-      dm1Template: extractText(props, 'DM1 Template') ?? '',
-      dm2Template: extractText(props, 'DM2 Template') ?? '',
+      dm1Template: extractText(props, 'DM1') ?? '',
+      dm2Template: extractText(props, 'DM2') ?? '',
       sends: extractNumber(props, 'Sends') ?? 0,
       accepts: extractNumber(props, 'Accepts') ?? 0,
       acceptRate: extractNumber(props, 'Accept Rate') ?? 0,
@@ -80,44 +112,79 @@ export async function runBootstrap(opts: BootstrapOptions): Promise<void> {
       notionPageId: p.id,
     })
 
-    console.log(`[bootstrap] ✓ Variant: ${name} (campaign: ${campaignName ?? 'unlinked'})`)
+    if (name) {
+      variantNameToCampaignMap.set(name, { variantId, campaignId })
+    }
+
+    console.log(`[bootstrap]   ✓ Variant: ${name} → ${campaignName}`)
   }
 
-  // 3. Import leads
+  // ── Step 3: Import leads ──────────────────────────────────────────────────
   console.log('\n[bootstrap] Fetching leads from Notion...')
   const leadPages = await notionService.queryDatabase(config.notion.leads_ds)
   console.log(`[bootstrap] Found ${leadPages.length} lead(s)`)
 
   let imported = 0
+  let skipped = 0
+
   for (const page of leadPages) {
     const p = page as { id: string; properties?: Record<string, unknown> }
     const props = p.properties ?? {}
 
     const providerId = extractText(props, 'Provider ID')
-    if (!providerId) continue // Skip leads without provider ID
+    if (!providerId) {
+      skipped++
+      continue
+    }
 
-    const lifecycleStatus = extractSelect(props, 'Lifecycle Status') ?? 'Qualified'
+    // Link to campaign by campaign name
+    const campaignName = extractText(props, 'Campaign')
+    const campaignId = campaignName ? nameToCampaignId.get(campaignName) : null
+
+    if (!campaignId) {
+      skipped++
+      continue
+    }
+
+    // Link to variant by variant name
+    const variantName = extractText(props, 'Variant')
+    const variantInfo = variantName ? variantNameToCampaignMap.get(variantName) : null
+    const variantId = variantInfo?.variantId ?? null
+
+    const lifecycleStatus = extractSelect(props, 'Lifecycle Status') ?? 'Queued'
+    const leadName = extractTitle(props) // "Lead Name" is the title field
 
     await db.insert(campaignLeads).values({
       id: crypto.randomUUID(),
-      campaignId: '', // Will need linking
+      campaignId,
+      variantId,
       providerId,
-      linkedinUrl: extractUrl(props, 'LinkedIn URL') ?? extractUrl(props, 'LinkedIn Profile'),
-      firstName: extractText(props, 'First Name'),
-      lastName: extractText(props, 'Last Name'),
-      headline: extractText(props, 'Headline'),
+      linkedinUrl: extractUrl(props, 'LinkedIn URL'),
+      firstName: leadName?.split(' ')[0] ?? null,
+      lastName: leadName?.split(' ').slice(1).join(' ') ?? null,
+      headline: extractText(props, 'Title'),
       company: extractText(props, 'Company'),
       lifecycleStatus,
-      qualificationScore: extractNumber(props, 'Score') ?? extractNumber(props, 'Qualification Score'),
-      tags: JSON.stringify(extractMultiSelect(props, 'Tags')),
+      qualificationScore: extractNumber(props, 'Score'),
+      tags: JSON.stringify(extractMultiSelect(props, 'Qualification Tags')),
       source: extractSelect(props, 'Source'),
+      connectSentAt: extractDate(props, 'Connect Sent At'),
+      connectedAt: extractDate(props, 'Connected At'),
+      dm1SentAt: extractDate(props, 'DM1 Sent At'),
+      dm2SentAt: extractDate(props, 'DM2 Sent At'),
       notionPageId: p.id,
     })
     imported++
   }
 
-  console.log(`[bootstrap] ✓ Imported ${imported} leads`)
-  console.log('\n[bootstrap] Done! Run `gtm-os notion:sync --direction pull` to finalize linking.')
+  console.log(`[bootstrap]   ✓ Imported ${imported} leads (${skipped} skipped — no provider ID or no campaign match)`)
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  console.log(`\n[bootstrap] Done!`)
+  console.log(`  Campaigns: ${campaignPages.length}`)
+  console.log(`  Variants:  ${variantNameToCampaignMap.size}`)
+  console.log(`  Leads:     ${imported}`)
+  console.log(`\nRun \`gtm-os campaign:dashboard\` to visualize.`)
 }
 
 // ─── Notion Property Extractors ──────────────────────────────────────────────
@@ -160,9 +227,9 @@ function extractUrl(props: Record<string, unknown>, key: string): string | null 
   return prop?.url ?? null
 }
 
-function extractRelation(props: Record<string, unknown>, key: string): string | null {
-  const prop = props[key] as { type?: string; relation?: { id: string }[] } | undefined
-  return prop?.relation?.[0]?.id ?? null
+function extractDate(props: Record<string, unknown>, key: string): string | null {
+  const prop = props[key] as { type?: string; date?: { start?: string } | null } | undefined
+  return prop?.date?.start ?? null
 }
 
 function mapStatus(notionStatus: string): string {
@@ -171,7 +238,27 @@ function mapStatus(notionStatus: string): string {
     'Draft': 'draft',
     'Paused': 'paused',
     'Completed': 'completed',
-    'Failed': 'failed',
   }
   return map[notionStatus] ?? notionStatus.toLowerCase()
+}
+
+function mapVariantStatus(status: string | null): string {
+  if (!status) return 'active'
+  const map: Record<string, string> = {
+    'Active': 'active',
+    'Winner': 'winner',
+    'Retired': 'retired',
+  }
+  return map[status] ?? status.toLowerCase()
+}
+
+function mapExperimentStatus(status: string | null): string | null {
+  if (!status) return null
+  const map: Record<string, string> = {
+    'Running': 'testing',
+    'Winner Declared': 'winner_declared',
+    'Inconclusive': 'inconclusive',
+    'No Test': null!,
+  }
+  return map[status] ?? null
 }

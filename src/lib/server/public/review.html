@@ -87,6 +87,7 @@
           <option value="all">All</option>
           <option value="qualified">Qualified</option>
           <option value="excluded">Excluded</option>
+          <option value="permanent">Permanently Blocked</option>
         </select>
       </div>
       <div class="w-36">
@@ -126,10 +127,20 @@
 
   <script>
     let leads = [];
-    let excluded = new Set();
+    let excluded = new Set();       // campaign-only exclusions
+    let permExcluded = new Set();   // permanent exclusions (always exclude)
+    let existingBlocklist = new Set(); // already in DB blocklist
     let filteredLeads = [];
 
     async function init() {
+      // Load blocklist first
+      const blRes = await fetch('/api/review/blocklist?scope=permanent');
+      const blData = await blRes.json();
+      for (const entry of blData.items) {
+        if (entry.provider_id) existingBlocklist.add(entry.provider_id);
+        if (entry.linkedin_slug) existingBlocklist.add(entry.linkedin_slug);
+      }
+
       const res = await fetch('/api/review/leads?status=pending&type=lead_qualification');
       const data = await res.json();
       leads = data.items.map(item => ({
@@ -139,24 +150,49 @@
         _description: item.description,
         _priority: item.priority,
       }));
+
+      // Auto-mark leads that are already permanently blocklisted
+      for (const l of leads) {
+        const pid = l.provider_id || '';
+        const slug = l.linkedin_slug || '';
+        if (existingBlocklist.has(pid) || existingBlocklist.has(slug)) {
+          permExcluded.add(l.id);
+        }
+      }
+
       document.getElementById('loading').classList.add('hidden');
       applyFilters();
       updateStats();
     }
 
-    function isExcluded(id) { return excluded.has(id); }
+    function isExcluded(id) { return excluded.has(id) || permExcluded.has(id); }
+    function isPermanent(id) { return permExcluded.has(id); }
 
     function toggleExclude(id) {
+      if (permExcluded.has(id)) return; // can't toggle permanent via regular button
       if (excluded.has(id)) excluded.delete(id);
       else excluded.add(id);
       updateStats();
       renderCards();
     }
 
+    function togglePermanentExclude(id) {
+      if (permExcluded.has(id)) {
+        permExcluded.delete(id);
+        excluded.delete(id); // also remove from campaign exclusion
+      } else {
+        permExcluded.add(id);
+        excluded.delete(id); // permanent supersedes campaign
+      }
+      updateStats();
+      renderCards();
+    }
+
     function updateStats() {
+      const totalExcluded = new Set([...excluded, ...permExcluded]).size;
       document.getElementById('stat-total').textContent = leads.length;
-      document.getElementById('stat-qualified').textContent = leads.length - excluded.size;
-      document.getElementById('stat-excluded').textContent = excluded.size;
+      document.getElementById('stat-qualified').textContent = leads.length - totalExcluded;
+      document.getElementById('stat-excluded').textContent = `${totalExcluded}` + (permExcluded.size > 0 ? ` (${permExcluded.size} permanent)` : '');
     }
 
     function applyFilters() {
@@ -167,6 +203,7 @@
       filteredLeads = leads.filter(l => {
         if (status === 'qualified' && isExcluded(l.id)) return false;
         if (status === 'excluded' && !isExcluded(l.id)) return false;
+        if (status === 'permanent' && !isPermanent(l.id)) return false;
         if (search) {
           const h = `${l.name||''} ${l.company||''} ${l.title||''} ${l.headline||''} ${l.location||''}`.toLowerCase();
           if (!h.includes(search)) return false;
@@ -202,8 +239,9 @@
 
       grid.innerHTML = filteredLeads.map(l => {
         const ex = isExcluded(l.id);
+        const perm = isPermanent(l.id);
         return `
-          <div class="card-enter bg-surface-card rounded-lg p-4 border ${ex ? 'border-red-600/60 excluded-card' : 'border-gray-800'} transition-all hover:bg-surface-hover">
+          <div class="card-enter bg-surface-card rounded-lg p-4 border ${perm ? 'border-purple-600/60 excluded-card' : ex ? 'border-red-600/60 excluded-card' : 'border-gray-800'} transition-all hover:bg-surface-hover">
             <div class="flex items-start gap-3 mb-3">
               <div class="score-ring ${scoreColor(l.score||0)} shrink-0">${l.score||'?'}</div>
               <div class="min-w-0 flex-1">
@@ -220,34 +258,64 @@
               ${l.is_premium ? '<span class="badge bg-amber-900/50 text-amber-300">Premium</span>' : ''}
             </div>
             ${l.rationale ? `<p class="text-xs text-gray-500 mb-3 line-clamp-2">${esc(l.rationale)}</p>` : ''}
-            <button onclick="toggleExclude('${l.id}')"
-              class="w-full py-1.5 rounded-md text-sm font-medium transition
-                ${ex ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-gray-800 text-gray-400 hover:bg-red-900/40 hover:text-red-400'}">
-              ${ex ? 'Excluded — click to restore' : 'Exclude'}
-            </button>
+            <div class="flex gap-2">
+              <button onclick="toggleExclude('${l.id}')"
+                class="flex-1 py-1.5 rounded-md text-xs font-medium transition
+                  ${perm ? 'bg-gray-900 text-gray-600 cursor-not-allowed' : ex ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-gray-800 text-gray-400 hover:bg-red-900/40 hover:text-red-400'}"
+                ${perm ? 'disabled' : ''}>
+                ${perm ? 'Permanently blocked' : ex ? 'Restore' : 'Exclude'}
+              </button>
+              <button onclick="togglePermanentExclude('${l.id}')"
+                class="py-1.5 px-3 rounded-md text-xs font-medium transition
+                  ${perm ? 'bg-purple-600 text-white hover:bg-purple-700' : 'bg-gray-800 text-gray-400 hover:bg-purple-900/40 hover:text-purple-400'}"
+                title="${perm ? 'Remove from permanent blocklist' : 'Always exclude from all future campaigns'}">
+                ${perm ? '⊘ Unblock' : '⊘ Always'}
+              </button>
+            </div>
           </div>`;
       }).join('');
     }
 
     function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-    function bulkExclude() { filteredLeads.forEach(l => excluded.add(l.id)); updateStats(); renderCards(); }
-    function clearExclusions() { excluded.clear(); updateStats(); renderCards(); }
+    function bulkExclude() { filteredLeads.forEach(l => { if (!permExcluded.has(l.id)) excluded.add(l.id); }); updateStats(); renderCards(); }
+    function clearExclusions() { excluded.clear(); permExcluded.clear(); updateStats(); renderCards(); }
 
     async function submitReview() {
       const btn = document.getElementById('done-btn');
       btn.disabled = true; btn.textContent = 'Saving...';
 
-      const excludedIds = Array.from(excluded);
-      if (excludedIds.length > 0) {
-        await fetch('/api/review/leads/bulk-reject', {
+      const allExcludedIds = new Set([...excluded, ...permExcluded]);
+
+      // 1. Persist permanent exclusions to blocklist API
+      if (permExcluded.size > 0) {
+        const permLeads = leads.filter(l => permExcluded.has(l.id)).map(l => ({
+          provider_id: l.provider_id || '',
+          linkedin_url: l.profile_url || l.linkedin_url || '',
+          linkedin_slug: l.linkedin_slug || '',
+          name: l.name || l._title || '',
+          headline: l.headline || l.title || '',
+          company: l.company || '',
+          reason: 'Permanently excluded via review dashboard',
+        }));
+        await fetch('/api/review/blocklist', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: excludedIds, notes: 'Excluded via review dashboard' }),
+          body: JSON.stringify({ leads: permLeads, scope: 'permanent' }),
         });
       }
 
-      // Auto-approve remaining
-      const approvedIds = leads.filter(l => !excluded.has(l.id)).map(l => l.id);
+      // 2. Reject all excluded (campaign + permanent) in review queue
+      const excludedArr = Array.from(allExcludedIds);
+      if (excludedArr.length > 0) {
+        await fetch('/api/review/leads/bulk-reject', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: excludedArr, notes: 'Excluded via review dashboard' }),
+        });
+      }
+
+      // 3. Auto-approve remaining
+      const approvedIds = leads.filter(l => !allExcludedIds.has(l.id)).map(l => l.id);
       for (const id of approvedIds) {
         await fetch(`/api/review/leads/${id}/approve`, {
           method: 'POST',
@@ -256,9 +324,9 @@
         });
       }
 
-      const q = leads.length - excludedIds.length;
+      const q = leads.length - allExcludedIds.size;
       document.getElementById('modal-summary').textContent =
-        `${q} qualified, ${excludedIds.length} excluded out of ${leads.length} leads.`;
+        `${q} qualified, ${excluded.size} excluded for this campaign, ${permExcluded.size} permanently blocklisted out of ${leads.length} leads.`;
       document.getElementById('modal').classList.remove('hidden');
     }
 

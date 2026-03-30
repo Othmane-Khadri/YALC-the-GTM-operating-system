@@ -38,10 +38,11 @@ program
   .option('--hypothesis <hypothesis>', 'Campaign hypothesis')
   .option('--auto-copy', 'Generate voice-aware copy via Claude instead of default templates')
   .option('--segment-id <id>', 'ICP segment ID for voice targeting')
+  .option('--dry-run', 'Preview campaign creation without writing to DB')
   .action(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { runCreator } = await import('../lib/campaign/creator')
-    await runCreator({ config, ...opts, autoCopy: opts.autoCopy })
+    await runCreator({ config, ...opts, autoCopy: opts.autoCopy, dryRun: opts.dryRun ?? false })
   })
 
 // ─── campaign:report ────────────────────────────────────────────────────────
@@ -63,6 +64,7 @@ program
   .option('--type <type>', 'What to scrape: both, reactions, comments', 'both')
   .option('--max-pages <n>', 'Max pagination pages per endpoint', '10')
   .option('--output <path>', 'Custom output JSON path')
+  .option('--account <name>', 'Unipile account name or ID to use for scraping')
   .action(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { scrapePostEngagers } = await import('../lib/scraping/post-engagers')
@@ -72,6 +74,7 @@ program
       type: opts.type as 'both' | 'reactions' | 'comments',
       maxPages: parseInt(opts.maxPages, 10),
       output: opts.output,
+      account: opts.account,
     })
     console.log(`\n✓ Scraped ${result.totalEngagers} engagers (${result.reactorCount} reactors, ${result.commenterCount} commenters)`)
     console.log(`  Result set: ${result.resultSetId}`)
@@ -150,10 +153,11 @@ program
   .option('--source <type>', 'Input source: csv, json, notion, visitors, engagers')
   .option('--input <path>', 'Path to input file or Notion DB ID')
   .option('--result-set <id>', 'Existing result set ID to qualify')
+  .option('--dry-run', 'Preview qualification without writing results')
   .action(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { runQualify } = await import('../lib/qualification/pipeline')
-    await runQualify({ config, source: opts.source, input: opts.input, resultSetId: opts.resultSet })
+    await runQualify({ config, source: opts.source, input: opts.input, resultSetId: opts.resultSet, dryRun: opts.dryRun ?? false })
   })
 
 // ─── leads:import ───────────────────────────────────────────────────────────
@@ -162,10 +166,11 @@ program
   .description('Import leads into SQLite from external sources')
   .requiredOption('--source <type>', 'Source type: csv, json, notion, visitors')
   .requiredOption('--input <path>', 'Path to input file')
+  .option('--dry-run', 'Preview import without writing to DB')
   .action(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { runImport } = await import('../lib/qualification/importers')
-    await runImport({ config, source: opts.source, input: opts.input })
+    await runImport({ config, source: opts.source, input: opts.input, dryRun: opts.dryRun ?? false })
   })
 
 // ─── notion:sync ────────────────────────────────────────────────────────────
@@ -173,20 +178,22 @@ program
   .command('notion:sync')
   .description('Bidirectional sync between SQLite and Notion')
   .option('--direction <dir>', 'push | pull | both', 'both')
+  .option('--dry-run', 'Preview sync without writing')
   .action(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { runSync } = await import('../lib/notion/sync')
-    await runSync({ config, direction: opts.direction })
+    await runSync({ config, direction: opts.direction, dryRun: opts.dryRun ?? false })
   })
 
 // ─── notion:bootstrap ───────────────────────────────────────────────────────
 program
   .command('notion:bootstrap')
   .description('Import existing campaigns, leads, and variants from Notion into SQLite')
-  .action(async () => {
+  .option('--dry-run', 'Preview bootstrap without writing to DB')
+  .action(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { runBootstrap } = await import('../lib/notion/bootstrap')
-    await runBootstrap({ config })
+    await runBootstrap({ config, dryRun: opts.dryRun ?? false })
   })
 
 // ─── campaign:dashboard ──────────────────────────────────────────────────────
@@ -235,6 +242,7 @@ program
   .description('Decompose a natural language GTM request into phased skill execution')
   .argument('<query>', 'Natural language request')
   .option('--auto-approve', 'Skip approval gates')
+  .option('--dry-run', 'Preview orchestration without executing skills')
   .action(async (query, opts) => {
     const { orchestrateSkill } = await import('../lib/skills/builtin/orchestrate')
     const context = {
@@ -246,6 +254,7 @@ program
     for await (const event of orchestrateSkill.execute({
       query,
       autoApprove: opts.autoApprove ?? false,
+      dryRun: opts.dryRun ?? false,
     }, context)) {
       if (event.type === 'progress') console.log(`[${event.percent}%] ${event.message}`)
       else if (event.type === 'approval_needed') {

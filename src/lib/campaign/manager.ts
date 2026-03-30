@@ -3,7 +3,6 @@ import { eq, desc } from 'drizzle-orm'
 import { db } from '../db'
 import { campaigns, campaignSteps, campaignContent } from '../db/schema'
 import { ReviewQueue } from '../review/queue'
-import { getCollector } from '../signals/collector'
 import type {
   Campaign,
   CampaignStatus,
@@ -246,14 +245,6 @@ export class CampaignManager {
       }
 
       await this.updateStepStatus(stepId, 'completed')
-
-      // Emit campaign outcome signal
-      await getCollector().emit({
-        type: 'campaign_outcome',
-        category: 'campaign',
-        data: { campaignId, stepId, skillId: step.skillId, resultSetId },
-        campaignId,
-      })
 
       if (campaign.status === 'draft' || campaign.status === 'planning') {
         await db

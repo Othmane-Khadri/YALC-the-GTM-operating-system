@@ -36,6 +36,8 @@ export type {
   UnipileConfig,
   QualificationConfig,
   DataConfig,
+  CrustdataConfig,
+  FullEnrichConfig,
 } from './lib/config/types'
 
 export type {
@@ -51,12 +53,14 @@ export {
   ProviderRegistry,
   registerBuiltinProviders,
   getRegistry,
+  getRegistryReady,
 } from './lib/providers/registry'
 
 export {
   SkillRegistry,
   registerBuiltinSkills,
   getSkillRegistry,
+  getSkillRegistryReady,
 } from './lib/skills/registry'
 
 // ─── Built-in skills ─────────────────────────────────────────────────────────
@@ -72,7 +76,7 @@ export { JsonFileReviewAdapter } from './lib/review/adapters'
 export type { ReviewAdapter } from './lib/review/adapters'
 
 // ─── Framework ───────────────────────────────────────────────────────────────
-export { buildFrameworkContext } from './lib/framework/context'
+export { buildFrameworkContext, loadFramework, saveFramework, updateFramework } from './lib/framework/context'
 export { createEmptyFramework } from './lib/framework/template'
 
 // ─── Config ──────────────────────────────────────────────────────────────────
