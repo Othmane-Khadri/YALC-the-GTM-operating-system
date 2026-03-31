@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
-import { eq, desc, sql } from 'drizzle-orm'
+import { eq, desc, sql, and } from 'drizzle-orm'
 import { db } from '../../db'
-import { campaigns, campaignLeads, campaignVariants } from '../../db/schema'
+import { campaigns, campaignLeads, campaignVariants, campaignContent } from '../../db/schema'
 import { CampaignManager } from '../../campaign/manager'
 import type { CampaignStatus } from '../../campaign/types'
 
@@ -198,6 +198,57 @@ campaignRoutes.get('/:id/leads', async (c) => {
       repliedAt: lead.repliedAt,
       createdAt: lead.createdAt,
       updatedAt: lead.updatedAt,
+    })),
+  })
+})
+
+// Get single lead detail with content (DMs sent)
+campaignRoutes.get('/:id/leads/:leadId', async (c) => {
+  const campaignId = c.req.param('id')
+  const leadId = c.req.param('leadId')
+
+  const leadRows = await db
+    .select()
+    .from(campaignLeads)
+    .where(and(eq(campaignLeads.id, leadId), eq(campaignLeads.campaignId, campaignId)))
+    .limit(1)
+
+  if (leadRows.length === 0) return c.json({ error: 'Lead not found' }, 404)
+  const lead = leadRows[0]
+
+  // Get variant details
+  let variant = null
+  if (lead.variantId) {
+    const variantRows = await db
+      .select()
+      .from(campaignVariants)
+      .where(eq(campaignVariants.id, lead.variantId))
+      .limit(1)
+    if (variantRows.length > 0) {
+      variant = {
+        name: variantRows[0].name,
+        connectNote: variantRows[0].connectNote,
+        dm1Template: variantRows[0].dm1Template,
+        dm2Template: variantRows[0].dm2Template,
+      }
+    }
+  }
+
+  // Get content (actual DMs sent to this lead)
+  const content = await db
+    .select()
+    .from(campaignContent)
+    .where(and(eq(campaignContent.campaignId, campaignId), eq(campaignContent.targetLeadId, leadId)))
+
+  return c.json({
+    ...lead,
+    tags: lead.tags ?? [],
+    variant,
+    content: content.map((c) => ({
+      contentType: c.contentType,
+      content: c.content,
+      status: c.status,
+      sentAt: c.sentAt,
     })),
   })
 })
