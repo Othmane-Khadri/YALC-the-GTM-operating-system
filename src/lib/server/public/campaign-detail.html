@@ -146,6 +146,24 @@
         </div>
         <div id="leads" class="space-y-2"></div>
       </div>
+
+      <!-- Campaign Chat Panel -->
+      <div class="mt-6">
+        <button id="chatToggle" onclick="toggleChat()"
+          class="w-full text-left bg-surface-card rounded-lg p-3 border border-gray-800 hover:border-accent/40 transition text-sm text-gray-400">
+          Ask about this campaign...
+        </button>
+        <div id="chatPanel" class="hidden mt-2 bg-surface-card rounded-lg border border-gray-800">
+          <div id="chatMessages" class="p-4 max-h-80 overflow-y-auto space-y-3"></div>
+          <div class="border-t border-gray-800 p-3 flex gap-2">
+            <input id="chatInput" type="text" placeholder="Ask a question..."
+              onkeydown="if(event.key==='Enter')sendChat()"
+              class="flex-1 bg-surface border border-gray-700 text-sm rounded-lg px-3 py-2 text-gray-200 focus:border-accent outline-none">
+            <button onclick="sendChat()"
+              class="px-4 py-2 bg-accent text-black text-sm font-semibold rounded-lg hover:bg-accent/90 transition">Send</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -700,6 +718,81 @@
         loadCampaign()
       } catch (err) {
         alert('Failed to update status')
+      }
+    }
+
+    // Chat functionality
+    let chatOpen = false
+    let chatHistory = []
+
+    function toggleChat() {
+      chatOpen = !chatOpen
+      document.getElementById('chatPanel').classList.toggle('hidden', !chatOpen)
+      document.getElementById('chatToggle').classList.toggle('hidden', chatOpen)
+      if (chatOpen) {
+        // Restore from sessionStorage
+        const stored = sessionStorage.getItem('chat-' + campaignId)
+        if (stored) {
+          chatHistory = JSON.parse(stored)
+          renderChatMessages()
+        }
+        document.getElementById('chatInput').focus()
+      }
+    }
+
+    function renderChatMessages() {
+      const container = document.getElementById('chatMessages')
+      if (chatHistory.length === 0) {
+        container.innerHTML = '<div class="text-xs text-gray-600 text-center">Ask anything about this campaign</div>'
+        return
+      }
+      container.innerHTML = chatHistory.map(msg => {
+        if (msg.role === 'user') {
+          return `<div class="flex justify-end"><div class="bg-accent/10 text-gray-200 text-sm rounded-lg px-3 py-2 max-w-[80%]">${esc(msg.text)}</div></div>`
+        }
+        return `<div class="flex justify-start"><div class="bg-gray-800 text-gray-300 text-sm rounded-lg px-3 py-2 max-w-[80%] whitespace-pre-wrap">${esc(msg.text)}</div></div>`
+      }).join('')
+      container.scrollTop = container.scrollHeight
+    }
+
+    async function sendChat() {
+      const input = document.getElementById('chatInput')
+      const message = input.value.trim()
+      if (!message) return
+
+      chatHistory.push({ role: 'user', text: message })
+      input.value = ''
+      renderChatMessages()
+
+      // Show loading
+      const container = document.getElementById('chatMessages')
+      container.innerHTML += '<div id="chatLoading" class="flex justify-start"><div class="bg-gray-800 text-gray-500 text-sm rounded-lg px-3 py-2"><span class="animate-pulse">Thinking...</span></div></div>'
+      container.scrollTop = container.scrollHeight
+
+      try {
+        const res = await fetch(`/api/campaigns/${campaignId}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message }),
+        })
+        const data = await res.json()
+
+        const loadEl = document.getElementById('chatLoading')
+        if (loadEl) loadEl.remove()
+
+        if (data.error) {
+          chatHistory.push({ role: 'assistant', text: 'Error: ' + data.error })
+        } else {
+          chatHistory.push({ role: 'assistant', text: data.response })
+        }
+
+        sessionStorage.setItem('chat-' + campaignId, JSON.stringify(chatHistory))
+        renderChatMessages()
+      } catch (err) {
+        const loadEl = document.getElementById('chatLoading')
+        if (loadEl) loadEl.remove()
+        chatHistory.push({ role: 'assistant', text: 'Failed to get response' })
+        renderChatMessages()
       }
     }
 

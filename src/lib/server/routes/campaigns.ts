@@ -336,6 +336,79 @@ campaignRoutes.get('/:id/timeline', async (c) => {
   return c.json({ weeks })
 })
 
+// Campaign Chat — Claude-powered Q&A
+campaignRoutes.post('/:id/chat', async (c) => {
+  const id = c.req.param('id')
+  const body = await c.req.json<{ message: string }>()
+
+  if (!body.message?.trim()) {
+    return c.json({ error: 'Message is required' }, 400)
+  }
+
+  // Load campaign data
+  const campaign = await manager.get(id)
+  if (!campaign) return c.json({ error: 'Campaign not found' }, 404)
+
+  const variants = await db
+    .select()
+    .from(campaignVariants)
+    .where(eq(campaignVariants.campaignId, id))
+
+  const leads = await db
+    .select()
+    .from(campaignLeads)
+    .where(eq(campaignLeads.campaignId, id))
+
+  // Build context string
+  const leadsByStatus: Record<string, number> = {}
+  for (const l of leads) {
+    leadsByStatus[l.lifecycleStatus] = (leadsByStatus[l.lifecycleStatus] || 0) + 1
+  }
+
+  const contextStr = [
+    `Campaign: ${campaign.title}`,
+    `Status: ${campaign.status}`,
+    `Hypothesis: ${campaign.hypothesis}`,
+    `Target Segment: ${campaign.targetSegment || 'N/A'}`,
+    `Total Leads: ${leads.length}`,
+    `Lead Status Breakdown: ${JSON.stringify(leadsByStatus)}`,
+    '',
+    'Variants:',
+    ...variants.map(v =>
+      `- ${v.name}: ${v.sends} sends, ${((v.acceptRate ?? 0) * 100).toFixed(1)}% accept, ${v.dmsSent} DMs, ${((v.replyRate ?? 0) * 100).toFixed(1)}% reply`
+    ),
+    '',
+    'Leads:',
+    ...leads.slice(0, 100).map(l =>
+      `- ${l.firstName} ${l.lastName} | ${l.company || 'N/A'} | ${l.lifecycleStatus} | Score: ${l.qualificationScore ?? 'N/A'} | Replied: ${l.repliedAt || 'No'}`
+    ),
+  ].join('\n')
+
+  try {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default
+    const anthropic = new Anthropic()
+
+    const response = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      system: 'You are a campaign analyst. Answer questions about this LinkedIn outreach campaign using only the data provided. Be concise and specific. Include numbers.',
+      messages: [
+        { role: 'user', content: `Campaign data:\n${contextStr}\n\nQuestion: ${body.message}` },
+      ],
+    })
+
+    const text = response.content
+      .filter(b => b.type === 'text')
+      .map(b => 'text' in b ? b.text : '')
+      .join('')
+
+    return c.json({ response: text })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return c.json({ error: `Chat failed: ${message}` }, 500)
+  }
+})
+
 function getISOWeek(date: Date): string {
   const d = new Date(date.getTime())
   d.setHours(0, 0, 0, 0)
