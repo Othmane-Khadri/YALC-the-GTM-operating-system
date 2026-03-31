@@ -92,6 +92,29 @@
         <div id="funnelBar" class="bg-surface-card rounded-lg p-4 border border-gray-800"></div>
       </div>
 
+      <!-- Analytics Charts -->
+      <div class="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Funnel Visualization -->
+        <div class="bg-surface-card rounded-lg p-4 border border-gray-800">
+          <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Pipeline Funnel</h3>
+          <div id="funnelChart"></div>
+        </div>
+
+        <!-- Variant Comparison Chart -->
+        <div class="bg-surface-card rounded-lg p-4 border border-gray-800">
+          <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Variant Comparison</h3>
+          <div id="variantChart"></div>
+        </div>
+      </div>
+
+      <!-- Reply Timeline -->
+      <div class="mb-6">
+        <div class="bg-surface-card rounded-lg p-4 border border-gray-800">
+          <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Activity Over Time</h3>
+          <div id="timelineChart"></div>
+        </div>
+      </div>
+
       <!-- Lead timeline table -->
       <div>
         <div class="flex items-center justify-between mb-3">
@@ -193,6 +216,9 @@
           renderCampaign()
           renderVariants()
           renderFunnel()
+          renderFunnelChart()
+          renderVariantChart()
+          loadTimelineChart()
           populateVariantFilter()
           renderLeads(allLeads)
 
@@ -360,6 +386,136 @@
         opt.textContent = v.name
         select.appendChild(opt)
       })
+    }
+
+    function renderFunnelChart() {
+      const funnel = campaignData.funnel || {}
+      const total = campaignData.leadCount || 0
+      const container = document.getElementById('funnelChart')
+
+      const stages = [
+        { key: 'Queued', label: 'Queued', color: '#4b5563' },
+        { key: 'Connect_Sent', label: 'Connect Sent', color: '#3b82f6' },
+        { key: 'Connected', label: 'Connected', color: '#6366f1' },
+        { key: 'DM1_Sent', label: 'DM1 Sent', color: '#8b5cf6' },
+        { key: 'DM2_Sent', label: 'DM2 Sent', color: '#a78bfa' },
+        { key: 'Replied', label: 'Replied', color: '#22c55e' },
+        { key: 'Demo_Booked', label: 'Demo Booked', color: '#f5c542' },
+        { key: 'Deal_Created', label: 'Deal Created', color: '#f59e0b' },
+        { key: 'Closed_Won', label: 'Closed Won', color: '#10b981' },
+      ]
+
+      if (total === 0) {
+        container.innerHTML = '<div class="text-xs text-gray-600 text-center py-4">No data</div>'
+        return
+      }
+
+      // Cumulative funnel: each stage width = sum of that stage and all stages after it
+      let cumulative = 0
+      const funnelData = stages.map(s => ({ ...s, count: funnel[s.key] || 0 })).reverse()
+      const cumulativeData = []
+      for (const s of funnelData) {
+        cumulative += s.count
+        cumulativeData.unshift({ ...s, cumulative })
+      }
+
+      container.innerHTML = cumulativeData.filter(s => s.cumulative > 0 || s.count > 0).map(s => {
+        const widthPct = total > 0 ? Math.max((s.cumulative / total) * 100, 8) : 0
+        const pct = total > 0 ? ((s.count / total) * 100).toFixed(1) : '0'
+        return `
+          <div class="flex items-center gap-2 mb-1">
+            <div class="w-20 text-[10px] text-gray-500 text-right shrink-0">${s.label}</div>
+            <div class="flex-1 h-5 rounded overflow-hidden bg-gray-800/50 relative">
+              <div style="width:${widthPct}%; background:${s.color}" class="h-full rounded transition-all duration-300"></div>
+              <span class="absolute inset-y-0 left-2 flex items-center text-[10px] text-white font-medium">${s.count} (${pct}%)</span>
+            </div>
+          </div>
+        `
+      }).join('')
+    }
+
+    function renderVariantChart() {
+      const variants = campaignData.variants || []
+      const container = document.getElementById('variantChart')
+
+      if (variants.length === 0) {
+        container.innerHTML = '<div class="text-xs text-gray-600 text-center py-4">No variants</div>'
+        return
+      }
+
+      container.innerHTML = variants.map(v => {
+        const acceptPct = ((v.acceptRate || 0) * 100).toFixed(0)
+        const replyPct = ((v.replyRate || 0) * 100).toFixed(0)
+        const isWinner = v.status === 'winner' || v.id === campaignData.winnerVariant
+
+        return `
+          <div class="mb-3">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-xs font-medium text-gray-300">${esc(v.name)}</span>
+              ${isWinner ? '<span class="text-[9px] text-accent">(Winner)</span>' : ''}
+              <span class="text-[10px] text-gray-600 ml-auto">${v.sends || 0} sends</span>
+            </div>
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="text-[10px] text-gray-500 w-12">Accept</span>
+              <div class="flex-1 h-3 bg-gray-800 rounded overflow-hidden">
+                <div style="width:${acceptPct}%; background:#6366f1" class="h-full rounded transition-all duration-300"></div>
+              </div>
+              <span class="text-[10px] text-indigo-400 w-8 text-right">${acceptPct}%</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] text-gray-500 w-12">Reply</span>
+              <div class="flex-1 h-3 bg-gray-800 rounded overflow-hidden">
+                <div style="width:${replyPct}%; background:#f5c542" class="h-full rounded transition-all duration-300"></div>
+              </div>
+              <span class="text-[10px] text-accent w-8 text-right">${replyPct}%</span>
+            </div>
+          </div>
+        `
+      }).join('')
+    }
+
+    async function loadTimelineChart() {
+      const container = document.getElementById('timelineChart')
+      try {
+        const res = await fetch(`/api/campaigns/${campaignId}/timeline`)
+        const data = await res.json()
+        const weeks = data.weeks || []
+
+        if (weeks.length === 0) {
+          container.innerHTML = '<div class="text-xs text-gray-600 text-center py-4">No activity data</div>'
+          return
+        }
+
+        const maxReplies = Math.max(...weeks.map(w => w.events.replied || 0), 1)
+        const maxConnected = Math.max(...weeks.map(w => w.events.connected || 0), 1)
+        const maxVal = Math.max(maxReplies, maxConnected, 1)
+
+        container.innerHTML = `
+          <div class="flex items-end gap-1" style="height: 100px;">
+            ${weeks.map(w => {
+              const replied = w.events.replied || 0
+              const connected = w.events.connected || 0
+              const rH = (replied / maxVal) * 80
+              const cH = (connected / maxVal) * 80
+              return `
+                <div class="flex-1 flex flex-col items-center gap-0.5" title="${w.week}: ${connected} connected, ${replied} replied">
+                  <div class="w-full flex items-end justify-center gap-px" style="height:80px;">
+                    <div style="height:${cH}px; min-height:${connected ? 2 : 0}px" class="w-2 bg-indigo-500 rounded-t"></div>
+                    <div style="height:${rH}px; min-height:${replied ? 2 : 0}px" class="w-2 bg-accent rounded-t"></div>
+                  </div>
+                  <div class="text-[8px] text-gray-600 whitespace-nowrap">${w.week.split('-W')[1]}</div>
+                </div>
+              `
+            }).join('')}
+          </div>
+          <div class="flex items-center gap-4 mt-2 text-[10px]">
+            <div class="flex items-center gap-1"><div class="w-2 h-2 rounded bg-indigo-500"></div><span class="text-gray-500">Connected</span></div>
+            <div class="flex items-center gap-1"><div class="w-2 h-2 rounded bg-accent"></div><span class="text-gray-500">Replied</span></div>
+          </div>
+        `
+      } catch (err) {
+        container.innerHTML = '<div class="text-xs text-red-400 text-center py-4">Failed to load</div>'
+      }
     }
 
     function filterLeads() {

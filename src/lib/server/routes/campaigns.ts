@@ -297,3 +297,50 @@ campaignRoutes.patch('/:id/leads/:leadId', async (c) => {
 
   return c.json({ ok: true, leadId, newStatus: body.lifecycleStatus })
 })
+
+// Timeline data grouped by ISO week for charts
+campaignRoutes.get('/:id/timeline', async (c) => {
+  const id = c.req.param('id')
+
+  const leads = await db
+    .select()
+    .from(campaignLeads)
+    .where(eq(campaignLeads.campaignId, id))
+
+  // Group events by ISO week
+  const weekMap = new Map<string, Record<string, number>>()
+  const eventFields = [
+    { key: 'connectSentAt', name: 'connect_sent' },
+    { key: 'connectedAt', name: 'connected' },
+    { key: 'dm1SentAt', name: 'dm1_sent' },
+    { key: 'dm2SentAt', name: 'dm2_sent' },
+    { key: 'repliedAt', name: 'replied' },
+  ] as const
+
+  for (const lead of leads) {
+    for (const field of eventFields) {
+      const val = lead[field.key]
+      if (!val) continue
+      const d = new Date(val)
+      const week = getISOWeek(d)
+      if (!weekMap.has(week)) weekMap.set(week, {})
+      const events = weekMap.get(week)!
+      events[field.name] = (events[field.name] || 0) + 1
+    }
+  }
+
+  const weeks = Array.from(weekMap.entries())
+    .map(([week, events]) => ({ week, events }))
+    .sort((a, b) => a.week.localeCompare(b.week))
+
+  return c.json({ weeks })
+})
+
+function getISOWeek(date: Date): string {
+  const d = new Date(date.getTime())
+  d.setHours(0, 0, 0, 0)
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7))
+  const week1 = new Date(d.getFullYear(), 0, 4)
+  const weekNum = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7)
+  return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`
+}
