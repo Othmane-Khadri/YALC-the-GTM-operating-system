@@ -275,6 +275,63 @@ program
     console.log(`  Bounced:      ${analytics.bounced}`)
   })
 
+// ─── campaign:create-sequence ───────────────────────────────────────────────
+program
+  .command('campaign:create-sequence')
+  .description('Execute a multi-channel sequence (LinkedIn + email) from YAML')
+  .requiredOption('--sequence <path>', 'Path to multi-channel sequence YAML')
+  .requiredOption('--source <path>', 'CSV/JSON file of leads')
+  .option('--linkedin-account <id>', 'Unipile LinkedIn account ID')
+  .option('--dry-run', 'Preview actions without sending', false)
+  .action(async (opts) => {
+    const { readFileSync } = await import('fs')
+
+    // Parse leads
+    const leadsRaw = readFileSync(opts.source, 'utf-8')
+    let leads: Array<Record<string, unknown>>
+    if (opts.source.endsWith('.json')) {
+      leads = JSON.parse(leadsRaw)
+    } else {
+      const lines = leadsRaw.split('\n').filter(Boolean)
+      const headers = lines[0].split(',').map(h => h.trim())
+      leads = lines.slice(1).map((line, idx) => {
+        const cols = line.split(',')
+        const obj: Record<string, unknown> = { id: `lead-${idx}` }
+        for (let i = 0; i < headers.length; i++) {
+          const key = headers[i]
+            .replace(/\s+/g, '_')
+            .replace(/([A-Z])/g, '_$1')
+            .toLowerCase()
+            .replace(/^_/, '')
+          obj[key] = cols[i]?.trim() ?? ''
+        }
+        return obj
+      })
+    }
+
+    const { multiChannelCampaignSkill } = await import('../lib/skills/builtin/multi-channel-campaign')
+    const context = {
+      framework: null as any,
+      intelligence: [],
+      providers: { resolve: () => ({ id: 'mock', name: 'mock', execute: async function*() {} }) } as any,
+      userId: 'default',
+    }
+
+    for await (const event of multiChannelCampaignSkill.execute({
+      sequencePath: opts.sequence,
+      leads,
+      linkedinAccountId: opts.linkedinAccount,
+      dryRun: opts.dryRun,
+    }, context)) {
+      if (event.type === 'progress') console.log(`[${event.percent}%] ${event.message}`)
+      else if (event.type === 'error') console.error(`ERROR: ${event.message}`)
+      else if (event.type === 'result') {
+        const data = event.data as { processed: number; total: number; actions: unknown[] }
+        console.log(`\nProcessed: ${data.processed}/${data.total}`)
+      }
+    }
+  })
+
 // ─── leads:qualify ──────────────────────────────────────────────────────────
 program
   .command('leads:qualify')

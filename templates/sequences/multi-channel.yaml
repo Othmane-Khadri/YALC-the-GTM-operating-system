@@ -1,0 +1,66 @@
+# Multi-Channel Sequence — LinkedIn + Email (7 touches, 21 days)
+# Adapted from outbound-agents framework: https://github.com/janskuba/outbound-agents
+#
+# Conditions use AND/OR/NOT with these tokens:
+#   replied_email, replied_linkedin, replied_any, connected_linkedin,
+#   connect_sent_linkedin, opened_email, bounced_email, sent_email,
+#   dm_sent_linkedin
+#
+# Usage:
+#   npx tsx src/cli/index.ts campaign:create-sequence \
+#     --sequence templates/sequences/multi-channel.yaml \
+#     --source data/leads/qualified.csv \
+#     --linkedin-account <id> \
+#     --dry-run
+
+name: "LinkedIn + Email — 7 Touch, 21 Day"
+description: "Warm on LinkedIn first, then email. If they connect, DM. If they open email but don't reply, follow up on LinkedIn."
+
+steps:
+  # Day 1: LinkedIn warm-up
+  - day: 1
+    channel: linkedin
+    action: view_profile
+
+  # Day 2: Connect on LinkedIn
+  - day: 2
+    channel: linkedin
+    action: connect
+    template: "Hey {{first_name}}, saw {{company}} is growing the team. I work with similar companies on outbound, thought it'd be worth connecting."
+
+  # Day 3: First cold email
+  - day: 3
+    channel: email
+    action: send
+    subject: "quick question"
+    template: "Hey {{first_name}}, saw {{company}} is scaling right now.\n\nI help companies in your space build pipeline without adding headcount. One of them added 40 meetings last month from cold email alone, team of 2.\n\nI put together a quick breakdown for {{company}}. Took me 10 minutes, yours to keep either way.\n\nWant me to send it over?"
+
+  # Day 5: Email follow-up (only if they opened but didn't reply, and didn't reply on LinkedIn)
+  - day: 5
+    channel: email
+    action: send
+    subject: "re: quick question"
+    condition: "opened_email AND !replied_email AND !replied_linkedin"
+    template: "Forgot to mention, the 40 meetings came from a team of 2, not 20. Small team, right channel, right offer.\n\nHappy to share exactly what we did if useful."
+
+  # Day 8: LinkedIn DM (only if connected and haven't replied anywhere)
+  - day: 8
+    channel: linkedin
+    action: dm
+    condition: "connected_linkedin AND !replied_any"
+    template: "Hey {{first_name}}, thanks for connecting. I sent you an email a few days ago about outbound for {{company}}. Did it land?"
+
+  # Day 14: New email thread, different angle (only if no reply and email didn't bounce)
+  - day: 14
+    channel: email
+    action: send
+    subject: "{{company}} + outbound"
+    condition: "!replied_any AND !bounced_email"
+    template: "Hey {{first_name}}, different angle here.\n\nMost teams I talk to spend $15-20K/month per SDR when you factor in salary, tools, and ramp time. The ones cutting that in half run cold email in parallel, not instead of, their existing motion.\n\nWorth a 10-min look at what that could look like for {{company}}?"
+
+  # Day 21: Final LinkedIn DM (only if connected, no reply, last chance)
+  - day: 21
+    channel: linkedin
+    action: dm
+    condition: "connected_linkedin AND !replied_any AND !dm_sent_linkedin"
+    template: "Hey {{first_name}}, last one from me. If outbound isn't a priority right now, totally get it. But if it ever becomes one, happy to share what's working for companies like {{company}}. No hard feelings either way."
