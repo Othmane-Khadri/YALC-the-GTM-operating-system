@@ -4,6 +4,7 @@ import { db } from '../../db'
 import { campaigns, campaignLeads, campaignVariants, campaignContent } from '../../db/schema'
 import { CampaignManager } from '../../campaign/manager'
 import type { CampaignStatus } from '../../campaign/types'
+import { fireWebhooks } from '../../services/webhooks'
 
 const manager = new CampaignManager()
 
@@ -290,10 +291,15 @@ campaignRoutes.patch('/:id/leads/:leadId', async (c) => {
 
   if (leadRows.length === 0) return c.json({ error: 'Lead not found' }, 404)
 
+  const oldStatus = leadRows[0].lifecycleStatus
+
   await db
     .update(campaignLeads)
     .set({ lifecycleStatus: body.lifecycleStatus, updatedAt: new Date().toISOString() })
     .where(eq(campaignLeads.id, leadId))
+
+  // Fire webhooks
+  fireWebhooks('lead.status_changed', { campaignId, leadId, oldStatus, newStatus: body.lifecycleStatus })
 
   return c.json({ ok: true, leadId, newStatus: body.lifecycleStatus })
 })

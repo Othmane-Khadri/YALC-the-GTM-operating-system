@@ -546,6 +546,19 @@ export const rateLimitBuckets = sqliteTable('rate_limit_buckets', {
 
 export const rateLimitBucketsRelations = relations(rateLimitBuckets, () => ({}))
 
+// ─── Webhooks ──────────────────────────────────────────────────────────────
+// Registered webhook URLs that fire on status changes
+export const webhooks = sqliteTable('webhooks', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  url: text('url').notNull(),
+  event: text('event').notNull(), // 'lead.status_changed' | 'campaign.completed' | 'reply.received'
+  campaignId: text('campaign_id'), // null = all campaigns
+  active: integer('active').default(1),
+  createdAt: text('created_at').default(sql`(datetime('now'))`),
+})
+
+export const webhooksRelations = relations(webhooks, () => ({}))
+
 export const signalsLogRelations = relations(signalsLog, () => ({}))
 
 export const providerStatsRelations = relations(providerStats, () => ({}))

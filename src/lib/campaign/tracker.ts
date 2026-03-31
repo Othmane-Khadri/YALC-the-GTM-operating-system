@@ -8,6 +8,7 @@ import { shouldPromote as checkShouldPromote } from '../intelligence/confidence'
 import { validateMessage } from '../outbound/validator'
 import { rateLimiter } from '../rate-limiter'
 import type { GTMOSConfig } from '../config/types'
+import { fireWebhooks } from '../services/webhooks'
 
 interface TrackerOptions {
   config: GTMOSConfig
@@ -84,6 +85,14 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
       console.log(`[tracker] Checking ${dmSentLeads.length} leads for replies...`)
       const replied = await checkReplies(accountId, dmSentLeads, opts.dryRun)
       summary.repliesDetected += replied
+
+      // Fire webhooks for replies
+      if (!opts.dryRun && replied > 0) {
+        for (const lead of dmSentLeads) {
+          if (lead.repliedAt) continue
+          fireWebhooks('reply.received', { campaignId: campaign.id, leadId: lead.id })
+        }
+      }
 
       // Wire replies to intelligence
       if (!opts.dryRun && replied > 0) {

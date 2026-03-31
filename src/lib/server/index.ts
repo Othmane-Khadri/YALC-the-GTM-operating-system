@@ -8,6 +8,7 @@ import { reviewRoutes } from './routes/review'
 import { learningRoutes } from './routes/learning'
 import { campaignRoutes } from './routes/campaigns'
 import { swipeRoutes } from './routes/swipe'
+import { webhookRoutes } from './routes/webhooks'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -21,6 +22,7 @@ export function createApp() {
   app.route('/api/learning', learningRoutes)
   app.route('/api/campaigns', campaignRoutes)
   app.route('/api/swipe', swipeRoutes)
+  app.route('/api/webhooks', webhookRoutes)
 
   // Serve static HTML pages
   app.get('/review', (c) => {
