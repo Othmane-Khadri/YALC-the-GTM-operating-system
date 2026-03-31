@@ -53,7 +53,15 @@
 
       <!-- Back + header -->
       <div class="mb-6">
-        <a href="/campaigns" class="text-xs text-gray-500 hover:text-accent transition">&larr; Back to campaigns</a>
+        <div class="flex items-center justify-between">
+          <a href="/campaigns" class="text-xs text-gray-500 hover:text-accent transition">&larr; Back to campaigns</a>
+          <div class="flex items-center gap-2">
+            <span id="lastUpdated" class="text-[10px] text-gray-600"></span>
+            <button id="pauseToggle" onclick="togglePause()"
+              class="text-xs text-gray-500 hover:text-accent transition px-2 py-1 rounded border border-gray-700 hover:border-accent/40"
+              title="Pause/resume auto-refresh">&#9208; Live</button>
+          </div>
+        </div>
         <div class="flex items-start justify-between mt-3">
           <div>
             <h1 id="campaignTitle" class="text-xl font-bold"></h1>
@@ -116,6 +124,10 @@
   <script>
     let campaignData = null
     let allLeads = []
+    let refreshInterval = null
+    let lastDataHash = null
+    let isPaused = false
+    let lastFetchTime = null
 
     const STATUS_COLORS = {
       active:    { bg: 'rgba(34,197,94,0.12)', text: '#22c55e' },
@@ -164,22 +176,52 @@
           return
         }
 
-        campaignData = await campaignRes.json()
-        const leadsData = await leadsRes.json()
-        allLeads = leadsData.leads || []
+        const newCampaignData = await campaignRes.json()
+        const newLeadsData = await leadsRes.json()
+        const hash = JSON.stringify({ c: newCampaignData, l: newLeadsData })
 
-        renderCampaign()
-        renderVariants()
-        renderFunnel()
-        populateVariantFilter()
-        renderLeads(allLeads)
+        if (hash !== lastDataHash) {
+          lastDataHash = hash
+          campaignData = newCampaignData
+          allLeads = newLeadsData.leads || []
 
-        document.getElementById('loading').classList.add('hidden')
-        document.getElementById('content').classList.remove('hidden')
+          renderCampaign()
+          renderVariants()
+          renderFunnel()
+          populateVariantFilter()
+          renderLeads(allLeads)
+
+          document.getElementById('loading').classList.add('hidden')
+          document.getElementById('content').classList.remove('hidden')
+        }
+
+        lastFetchTime = Date.now()
+        updateLastUpdated()
       } catch (err) {
         document.getElementById('loading').innerHTML = '<span class="text-red-400">Failed to load campaign</span>'
       }
     }
+
+    function startPolling() {
+      if (refreshInterval) clearInterval(refreshInterval)
+      refreshInterval = setInterval(() => { if (!isPaused) loadCampaign() }, 30000)
+    }
+
+    function togglePause() {
+      isPaused = !isPaused
+      const btn = document.getElementById('pauseToggle')
+      btn.innerHTML = isPaused ? '&#9654; Paused' : '&#9208; Live'
+      btn.style.color = isPaused ? '#eab308' : ''
+    }
+
+    function updateLastUpdated() {
+      const el = document.getElementById('lastUpdated')
+      if (!lastFetchTime) return
+      const secs = Math.floor((Date.now() - lastFetchTime) / 1000)
+      el.textContent = secs < 5 ? 'Just now' : `${secs}s ago`
+    }
+
+    setInterval(updateLastUpdated, 5000)
 
     function renderCampaign() {
       const c = campaignData
@@ -463,7 +505,7 @@
       return el.innerHTML
     }
 
-    loadCampaign()
+    loadCampaign().then(startPolling)
   </script>
 </body>
 </html>

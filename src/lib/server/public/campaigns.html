@@ -38,6 +38,10 @@
         <p class="text-sm text-gray-500 mt-1">Overview of all outreach campaigns</p>
       </div>
       <div class="flex items-center gap-3">
+        <span id="lastUpdated" class="text-[10px] text-gray-600"></span>
+        <button id="pauseToggle" onclick="togglePause()"
+          class="text-xs text-gray-500 hover:text-accent transition px-2 py-1 rounded border border-gray-700 hover:border-accent/40"
+          title="Pause/resume auto-refresh">&#9208; Live</button>
         <select id="statusFilter" onchange="filterCampaigns()"
           class="bg-surface-card border border-gray-700 text-sm rounded-lg px-3 py-1.5 text-gray-300 focus:border-accent outline-none">
           <option value="">All</option>
@@ -80,6 +84,10 @@
 
   <script>
     let allCampaigns = []
+    let refreshInterval = null
+    let lastDataHash = null
+    let isPaused = false
+    let lastFetchTime = null
 
     const STATUS_COLORS = {
       active:    { bg: 'rgba(34,197,94,0.12)', text: '#22c55e' },
@@ -109,14 +117,41 @@
       try {
         const res = await fetch('/api/campaigns')
         const data = await res.json()
-        allCampaigns = data.campaigns || []
-        renderCampaigns(allCampaigns)
-        renderSummary(allCampaigns)
+        const hash = JSON.stringify(data)
+        if (hash !== lastDataHash) {
+          lastDataHash = hash
+          allCampaigns = data.campaigns || []
+          renderCampaigns(allCampaigns)
+          renderSummary(allCampaigns)
+        }
+        lastFetchTime = Date.now()
+        updateLastUpdated()
       } catch (err) {
         document.getElementById('campaigns').innerHTML =
           '<div class="text-red-400 text-sm col-span-full text-center py-12">Failed to load campaigns</div>'
       }
     }
+
+    function startPolling() {
+      if (refreshInterval) clearInterval(refreshInterval)
+      refreshInterval = setInterval(() => { if (!isPaused) loadCampaigns() }, 30000)
+    }
+
+    function togglePause() {
+      isPaused = !isPaused
+      const btn = document.getElementById('pauseToggle')
+      btn.innerHTML = isPaused ? '&#9654; Paused' : '&#9208; Live'
+      btn.style.color = isPaused ? '#eab308' : ''
+    }
+
+    function updateLastUpdated() {
+      const el = document.getElementById('lastUpdated')
+      if (!lastFetchTime) return
+      const secs = Math.floor((Date.now() - lastFetchTime) / 1000)
+      el.textContent = secs < 5 ? 'Just now' : `${secs}s ago`
+    }
+
+    setInterval(updateLastUpdated, 5000)
 
     function filterCampaigns() {
       const status = document.getElementById('statusFilter').value
@@ -238,7 +273,7 @@
       return el.innerHTML
     }
 
-    loadCampaigns()
+    loadCampaigns().then(startPolling)
   </script>
 </body>
 </html>
