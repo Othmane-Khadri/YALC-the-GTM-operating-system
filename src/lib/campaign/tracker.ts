@@ -8,6 +8,7 @@ import { shouldPromote as checkShouldPromote } from '../intelligence/confidence'
 import { validateMessage } from '../outbound/validator'
 import { rateLimiter } from '../rate-limiter'
 import { instantlyService } from '../services/instantly'
+import { calculateSignificance } from './significance'
 import type { GTMOSConfig } from '../config/types'
 import { fireWebhooks } from '../services/webhooks'
 import { sendSlackNotification, setSlackConfig } from '../services/slack'
@@ -334,6 +335,40 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
         })
       } catch (err) {
         console.error('[tracker] Failed to recalculate variant metrics:', err)
+      }
+
+      // Phase 7 (cont.): A/B significance check — auto-pause losing variant
+      if (variants.length >= 2) {
+        const activeVariants = variants.filter(v => v.status === 'active')
+        for (let i = 0; i < activeVariants.length; i++) {
+          for (let j = i + 1; j < activeVariants.length; j++) {
+            const vA = activeVariants[i]
+            const vB = activeVariants[j]
+            const result = calculateSignificance(
+              { sends: vA.sends ?? 0, conversions: vA.replies ?? 0 },
+              { sends: vB.sends ?? 0, conversions: vB.replies ?? 0 },
+            )
+            if (result.significant && result.winner) {
+              const loser = result.winner === 'A' ? vB : vA
+              const winner = result.winner === 'A' ? vA : vB
+              console.log(`[tracker] A/B significant: "${winner.name}" beats "${loser.name}" (p=${result.pValue.toFixed(4)}, lift=${result.liftPercent.toFixed(1)}%). Retiring loser.`)
+              await db.update(campaignVariants).set({ status: 'retired' }).where(eq(campaignVariants.id, loser.id))
+              await db.update(campaignVariants).set({ status: 'winner' }).where(eq(campaignVariants.id, winner.id))
+              await db.update(campaigns).set({
+                experimentStatus: 'winner_declared',
+                winnerVariant: winner.name,
+              }).where(eq(campaigns.id, campaign.id))
+
+              fireWebhooks('campaign.completed', { campaignId: campaign.id, winner: winner.name, pValue: result.pValue })
+              sendSlackNotification('winner_declared', {
+                campaignId: campaign.id,
+                campaignTitle: campaign.title,
+                leadName: `${winner.name} vs ${loser.name}`,
+                leadId: winner.id,
+              })
+            }
+          }
+        }
       }
     }
 

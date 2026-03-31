@@ -275,6 +275,78 @@ program
     console.log(`  Bounced:      ${analytics.bounced}`)
   })
 
+// ─── personalize ───────────────────────────────────────────────────────────
+program
+  .command('personalize')
+  .description('Auto-personalize a message for a lead using LinkedIn, Firecrawl, Crustdata, and intelligence')
+  .requiredOption('--template <text>', 'Message template to personalize')
+  .requiredOption('--email <email>', 'Lead email')
+  .option('--first-name <name>', 'Lead first name')
+  .option('--last-name <name>', 'Lead last name')
+  .option('--company <name>', 'Lead company name')
+  .option('--linkedin-url <url>', 'Lead LinkedIn profile URL')
+  .option('--linkedin-account <id>', 'Unipile account ID for LinkedIn lookups')
+  .option('--channel <channel>', 'email | linkedin | any', 'email')
+  .option('--enrich', 'Pull additional signals from Crustdata (costs credits)')
+  .option('--segment-id <id>', 'ICP segment for intelligence matching')
+  .option('--dry-run', 'Preview without side effects', true)
+  .action(async (opts) => {
+    const { personalizeSkill } = await import('../lib/skills/builtin/personalize')
+    const context = {
+      framework: null as any,
+      intelligence: [],
+      providers: { resolve: () => ({ id: 'mock', name: 'mock', execute: async function*() {} }) } as any,
+      userId: 'default',
+    }
+    for await (const event of personalizeSkill.execute({
+      lead: {
+        email: opts.email,
+        firstName: opts.firstName,
+        lastName: opts.lastName,
+        company: opts.company,
+        companyDomain: opts.email.split('@')[1],
+        linkedinUrl: opts.linkedinUrl,
+      },
+      template: opts.template,
+      channel: opts.channel,
+      enrichWithCrustdata: opts.enrich ?? false,
+      linkedinAccountId: opts.linkedinAccount,
+      segmentId: opts.segmentId,
+      dryRun: opts.dryRun ?? true,
+    }, context)) {
+      if (event.type === 'progress') console.log(`[${event.percent}%] ${event.message}`)
+      else if (event.type === 'error') console.error(`ERROR: ${event.message}`)
+      else if (event.type === 'result') {
+        const data = event.data as { personalizedMessage: string; sourcesUsed: string[]; confidenceScore: number }
+        console.log(`\nSources: ${data.sourcesUsed.join(', ')}`)
+        console.log(`Confidence: ${data.confidenceScore}/100`)
+      }
+    }
+  })
+
+// ─── competitive-intel ─────────────────────────────────────────────────────
+program
+  .command('competitive-intel')
+  .description('Research a competitor: scrape, enrich, analyze, output profile')
+  .requiredOption('--competitor <url-or-name>', 'Competitor URL or company name')
+  .option('--enrich', 'Pull company data from Crustdata')
+  .action(async (opts) => {
+    const { competitiveIntelSkill } = await import('../lib/skills/builtin/competitive-intel')
+    const context = {
+      framework: null as any,
+      intelligence: [],
+      providers: { resolve: () => ({ id: 'mock', name: 'mock', execute: async function*() {} }) } as any,
+      userId: 'default',
+    }
+    for await (const event of competitiveIntelSkill.execute({
+      competitor: opts.competitor,
+      enrichWithCrustdata: opts.enrich ?? false,
+    }, context)) {
+      if (event.type === 'progress') console.log(`[${event.percent}%] ${event.message}`)
+      else if (event.type === 'error') console.error(`ERROR: ${event.message}`)
+    }
+  })
+
 // ─── campaign:create-sequence ───────────────────────────────────────────────
 program
   .command('campaign:create-sequence')
