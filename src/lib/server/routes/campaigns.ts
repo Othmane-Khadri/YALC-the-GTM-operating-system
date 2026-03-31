@@ -252,3 +252,48 @@ campaignRoutes.get('/:id/leads/:leadId', async (c) => {
     })),
   })
 })
+
+// Pause a campaign
+campaignRoutes.post('/:id/pause', async (c) => {
+  const id = c.req.param('id')
+  const campaign = await manager.get(id)
+  if (!campaign) return c.json({ error: 'Campaign not found' }, 404)
+  await manager.pause(id)
+  return c.json({ ok: true })
+})
+
+// Resume a campaign
+campaignRoutes.post('/:id/resume', async (c) => {
+  const id = c.req.param('id')
+  const campaign = await manager.get(id)
+  if (!campaign) return c.json({ error: 'Campaign not found' }, 404)
+  await manager.resume(id)
+  return c.json({ ok: true })
+})
+
+// Update lead lifecycle status (manual statuses only)
+campaignRoutes.patch('/:id/leads/:leadId', async (c) => {
+  const campaignId = c.req.param('id')
+  const leadId = c.req.param('leadId')
+  const body = await c.req.json<{ lifecycleStatus: string }>()
+
+  const allowed = ['Demo_Booked', 'Deal_Created', 'Closed_Won', 'Closed_Lost']
+  if (!allowed.includes(body.lifecycleStatus)) {
+    return c.json({ error: `Status must be one of: ${allowed.join(', ')}` }, 400)
+  }
+
+  const leadRows = await db
+    .select()
+    .from(campaignLeads)
+    .where(and(eq(campaignLeads.id, leadId), eq(campaignLeads.campaignId, campaignId)))
+    .limit(1)
+
+  if (leadRows.length === 0) return c.json({ error: 'Lead not found' }, 404)
+
+  await db
+    .update(campaignLeads)
+    .set({ lifecycleStatus: body.lifecycleStatus, updatedAt: new Date().toISOString() })
+    .where(eq(campaignLeads.id, leadId))
+
+  return c.json({ ok: true, leadId, newStatus: body.lifecycleStatus })
+})

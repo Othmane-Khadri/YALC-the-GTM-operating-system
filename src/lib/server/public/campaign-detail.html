@@ -426,10 +426,18 @@
                 ${timeline}
               </div>
 
-              <!-- Status badge -->
+              <!-- Status badge + action -->
               <span class="badge shrink-0" style="background:${lc.bg}; color:${lc.text}">
                 ${lead.lifecycleStatus.replace(/_/g, ' ')}
               </span>
+              <select onchange="updateLeadStatus('${lead.id}', this.value); this.value=''" onclick="event.stopPropagation()"
+                class="bg-surface-card border border-gray-700 text-[10px] rounded px-1 py-0.5 text-gray-500 focus:border-accent outline-none shrink-0">
+                <option value="">Set...</option>
+                <option value="Demo_Booked">Demo Booked</option>
+                <option value="Deal_Created">Deal Created</option>
+                <option value="Closed_Won">Closed Won</option>
+                <option value="Closed_Lost">Closed Lost</option>
+              </select>
             </div>
           </div>
           <div id="detail-${lead.id}" class="hidden"></div>
@@ -520,6 +528,22 @@
         `
       } catch (err) {
         panel.innerHTML = '<div class="p-4 text-xs text-red-400">Error loading details</div>'
+      }
+    }
+
+    async function updateLeadStatus(leadId, newStatus) {
+      if (!newStatus) return
+      if (!confirm(`Change lead status to "${newStatus.replace(/_/g, ' ')}"?`)) return
+      try {
+        await fetch(`/api/campaigns/${campaignId}/leads/${leadId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lifecycleStatus: newStatus }),
+        })
+        lastDataHash = null
+        loadCampaign()
+      } catch (err) {
+        alert('Failed to update status')
       }
     }
 

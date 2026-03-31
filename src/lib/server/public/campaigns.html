@@ -153,6 +153,22 @@
 
     setInterval(updateLastUpdated, 5000)
 
+    async function pauseCampaign(id, e) {
+      e.preventDefault(); e.stopPropagation()
+      if (!confirm('Pause this campaign?')) return
+      await fetch(`/api/campaigns/${id}/pause`, { method: 'POST' })
+      lastDataHash = null
+      loadCampaigns()
+    }
+
+    async function resumeCampaign(id, e) {
+      e.preventDefault(); e.stopPropagation()
+      if (!confirm('Resume this campaign?')) return
+      await fetch(`/api/campaigns/${id}/resume`, { method: 'POST' })
+      lastDataHash = null
+      loadCampaigns()
+    }
+
     function filterCampaigns() {
       const status = document.getElementById('statusFilter').value
       const filtered = status
@@ -228,7 +244,11 @@
             ${funnelSegments}
             <div class="flex items-center justify-between mt-3 text-[10px] text-gray-600">
               <span>${c.variantCount || 0} variant${(c.variantCount || 0) !== 1 ? 's' : ''}</span>
-              <span>${timeAgo}</span>
+              <div class="flex items-center gap-2">
+                ${c.status === 'active' ? `<button onclick="pauseCampaign('${c.id}', event)" class="px-2 py-0.5 rounded border border-gray-700 hover:border-yellow-500/50 text-yellow-500 hover:text-yellow-400 transition">Pause</button>` : ''}
+                ${c.status === 'paused' ? `<button onclick="resumeCampaign('${c.id}', event)" class="px-2 py-0.5 rounded border border-gray-700 hover:border-green-500/50 text-green-500 hover:text-green-400 transition">Resume</button>` : ''}
+                <span>${timeAgo}</span>
+              </div>
             </div>
           </a>
         `
