@@ -33,9 +33,12 @@ function tokenize(expr: string): ConditionToken[] {
     else if (word === 'OR') tokens.push({ type: 'or' })
     else if (word === '(') tokens.push({ type: 'lparen' })
     else if (word === ')') tokens.push({ type: 'rparen' })
-    else if (word.startsWith('!')) {
+    else if (word === '!') {
+      // Bare NOT — must be followed by a variable in the next word
       tokens.push({ type: 'not' })
-      if (word.length > 1) tokens.push({ type: 'var', name: word.slice(1) })
+    } else if (word.startsWith('!')) {
+      tokens.push({ type: 'not' })
+      tokens.push({ type: 'var', name: word.slice(1) })
     } else {
       tokens.push({ type: 'var', name: word })
     }
@@ -137,6 +140,13 @@ export class SequenceEngine {
   evaluateCondition(states: ChannelStates, condition?: string): boolean {
     if (!condition || condition.trim() === '') return true
     const tokens = tokenize(condition)
+    // Validate: NOT must not be followed by AND/OR
+    for (let i = 0; i < tokens.length - 1; i++) {
+      if (tokens[i].type === 'not' && (tokens[i + 1].type === 'and' || tokens[i + 1].type === 'or')) {
+        console.error(`[sequence-engine] Malformed condition: NOT followed by ${tokens[i + 1].type.toUpperCase()} in "${condition}"`)
+        return false
+      }
+    }
     const pos = { i: 0 }
     return parseOr(tokens, pos, states)
   }
@@ -149,7 +159,7 @@ export class SequenceEngine {
     state: LeadSequenceState,
     sequence: SequenceDefinition,
     daysSinceStart: number,
-  ): SequenceStep | null {
+  ): { step: SequenceStep; stepIndex: number } | null {
     // Already completed or paused
     if (state.completedAt || state.pausedAt) return null
 
@@ -173,7 +183,7 @@ export class SequenceEngine {
       // Evaluate condition
       if (!this.evaluateCondition(state.channelStates, step.condition)) continue
 
-      return step
+      return { step, stepIndex: i }
     }
 
     return null // sequence complete

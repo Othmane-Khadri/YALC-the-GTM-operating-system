@@ -91,13 +91,13 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
     )
     if (dmSentLeads.length > 0) {
       console.log(`[tracker] Checking ${dmSentLeads.length} leads for replies...`)
-      const replied = await checkReplies(accountId, dmSentLeads, opts.dryRun)
+      const { count: replied, repliedLeadIds } = await checkReplies(accountId, dmSentLeads, opts.dryRun)
       summary.repliesDetected += replied
 
-      // Fire webhooks + Slack for replies
+      // Fire webhooks + Slack only for leads that ACTUALLY newly replied
       if (!opts.dryRun && replied > 0) {
         for (const lead of dmSentLeads) {
-          if (lead.repliedAt) continue
+          if (!repliedLeadIds.has(lead.id)) continue
           fireWebhooks('reply.received', { campaignId: campaign.id, leadId: lead.id })
           sendSlackNotification('reply', {
             campaignId: campaign.id,
@@ -108,11 +108,11 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
         }
       }
 
-      // Wire replies to intelligence
+      // Wire replies to intelligence — only for newly replied leads
       if (!opts.dryRun && replied > 0) {
         const store = new IntelligenceStore()
         for (const lead of dmSentLeads) {
-          if (lead.repliedAt) continue // already tracked
+          if (!repliedLeadIds.has(lead.id)) continue
           const variant = lead.variantId ? variantMap.get(lead.variantId) : null
           if (!variant) continue
           try {
@@ -450,7 +450,7 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
               changed = true
             } else if (status.status === 'active' && lead.emailStatus !== 'sent') {
               updates.emailStatus = 'sent'
-              updates.emailSentAt = updates.emailSentAt ?? new Date().toISOString()
+              updates.emailSentAt = lead.emailSentAt ?? new Date().toISOString()
               changed = true
             }
 
@@ -536,8 +536,9 @@ async function checkReplies(
   accountId: string,
   leads: typeof campaignLeads.$inferSelect[],
   dryRun: boolean
-): Promise<number> {
+): Promise<{ count: number; repliedLeadIds: Set<string> }> {
   let count = 0
+  const repliedLeadIds = new Set<string>()
   try {
     const chats = await unipileService.listChats(accountId)
     const chatItems = (chats as { items?: { attendees?: { provider_id?: string }[], messages?: { sender_id?: string, text?: string }[] }[] })?.items ?? []
@@ -573,13 +574,14 @@ async function checkReplies(
             continue
           }
         }
+        repliedLeadIds.add(lead.id)
         count++
       }
     }
   } catch (err) {
     console.error('[tracker] Error checking replies:', err)
   }
-  return count
+  return { count, repliedLeadIds }
 }
 
 function personalize(template: string, lead: typeof campaignLeads.$inferSelect): string {

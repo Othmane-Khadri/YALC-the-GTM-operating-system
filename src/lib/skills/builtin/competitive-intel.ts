@@ -60,7 +60,11 @@ export const competitiveIntelSkill: Skill = {
     // Determine if input is URL or name
     const isUrl = competitor.startsWith('http') || competitor.includes('.')
     const url = isUrl ? (competitor.startsWith('http') ? competitor : `https://${competitor}`) : null
-    const domain = url ? new URL(url).hostname.replace('www.', '') : null
+    let domain: string | null = null
+    if (url) {
+      try { domain = new URL(url).hostname.replace('www.', '') }
+      catch { domain = null }
+    }
 
     yield { type: 'progress', message: `Researching competitor: ${competitor}...`, percent: 5 }
 
@@ -167,7 +171,13 @@ Return JSON:
       return
     }
 
-    const profile = JSON.parse(jsonMatch[0]) as CompetitorProfile
+    let profile: CompetitorProfile
+    try {
+      profile = JSON.parse(jsonMatch[0]) as CompetitorProfile
+    } catch (err) {
+      yield { type: 'error', message: `Failed to parse competitor profile JSON: ${err instanceof Error ? err.message : err}` }
+      return
+    }
 
     // ── Output ─────────────────────────────────────────────────────────
     console.log(`\n── Competitor Profile: ${profile.name} ──`)

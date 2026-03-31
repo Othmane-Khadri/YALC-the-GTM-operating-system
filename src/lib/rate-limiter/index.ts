@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm'
+import { eq, and, sql, gte } from 'drizzle-orm'
 import { db } from '../db'
 import { rateLimitBuckets } from '../db/schema'
 
@@ -29,7 +29,6 @@ export class RateLimiter {
     const maxTokens = RATE_LIMITS[provider] ?? 100
 
     if (rows.length === 0) {
-      // Create new bucket
       await db.insert(rateLimitBuckets).values({
         provider,
         accountId,
@@ -45,7 +44,6 @@ export class RateLimiter {
     const refillAt = new Date(bucket.refillAt)
 
     if (now >= refillAt) {
-      // Refill bucket
       await db.update(rateLimitBuckets).set({
         tokensRemaining: maxTokens,
         maxTokens,
@@ -54,28 +52,25 @@ export class RateLimiter {
     }
   }
 
+  /**
+   * Atomically acquire tokens. Uses a single UPDATE with WHERE tokens_remaining >= count
+   * to prevent race conditions between concurrent callers.
+   */
   async acquire(provider: string, accountId: string, count = 1): Promise<boolean> {
     await this.refillIfNeeded(provider, accountId)
 
-    const rows = await db
-      .select()
-      .from(rateLimitBuckets)
-      .where(and(
-        eq(rateLimitBuckets.provider, provider),
-        eq(rateLimitBuckets.accountId, accountId),
-      ))
-      .limit(1)
+    // Atomic: decrement only if enough tokens remain
+    const result = await db.update(rateLimitBuckets).set({
+      tokensRemaining: sql`${rateLimitBuckets.tokensRemaining} - ${count}`,
+    }).where(and(
+      eq(rateLimitBuckets.provider, provider),
+      eq(rateLimitBuckets.accountId, accountId),
+      gte(rateLimitBuckets.tokensRemaining, count),
+    ))
 
-    if (rows.length === 0) return false
-
-    const bucket = rows[0]
-    if (bucket.tokensRemaining < count) return false
-
-    await db.update(rateLimitBuckets).set({
-      tokensRemaining: bucket.tokensRemaining - count,
-    }).where(eq(rateLimitBuckets.id, bucket.id))
-
-    return true
+    // Drizzle returns { changes: number } for SQLite updates
+    const changes = (result as unknown as { changes?: number })?.changes ?? 0
+    return changes > 0
   }
 
   async getRemaining(provider: string, accountId: string): Promise<number> {

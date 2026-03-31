@@ -118,8 +118,8 @@ export const personalizeSkill: Skill = {
       }
     }
 
-    // ── Source 3: Crustdata Enrichment (optional, costs credits) ────────
-    if (opts.enrichWithCrustdata && domain) {
+    // ── Source 3: Crustdata Enrichment (optional, costs credits — skipped in dry-run)
+    if (opts.enrichWithCrustdata && domain && !opts.dryRun) {
       try {
         const { crustdataService } = await import('../../services/crustdata')
         if (crustdataService.isAvailable()) {

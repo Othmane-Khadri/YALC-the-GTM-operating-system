@@ -67,7 +67,12 @@ Return JSON:
   const jsonMatch = text.match(/\{[\s\S]*\}/)
   if (!jsonMatch) throw new Error('Failed to parse company research JSON from Claude response')
 
-  const research = JSON.parse(jsonMatch[0]) as CompanyResearch
+  let research: CompanyResearch
+  try {
+    research = JSON.parse(jsonMatch[0]) as CompanyResearch
+  } catch (err) {
+    throw new Error(`Failed to parse company research JSON: ${err instanceof Error ? err.message : err}`)
+  }
   return { research, rawMarkdown: truncated }
 }
 
@@ -143,7 +148,12 @@ Note: Follow-up 1 has NO subject (it's a threaded reply).`
   const jsonMatch = text.match(/\[[\s\S]*\]/)
   if (!jsonMatch) throw new Error('Failed to parse sequence JSON from Claude response')
 
-  const raw = JSON.parse(jsonMatch[0]) as ColdEmailStep[]
+  let raw: ColdEmailStep[]
+  try {
+    raw = JSON.parse(jsonMatch[0]) as ColdEmailStep[]
+  } catch (err) {
+    throw new Error(`Failed to parse sequence JSON: ${err instanceof Error ? err.message : err}`)
+  }
 
   // Validate and fix each email body
   return raw.map((step, i) => {

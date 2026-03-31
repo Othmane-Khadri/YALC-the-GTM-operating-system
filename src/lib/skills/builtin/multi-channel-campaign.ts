@@ -103,9 +103,9 @@ export const multiChannelCampaignSkill: Skill = {
       }
 
       const daysSinceStart = sequenceEngine.getDaysSinceStart(state.startedAt)
-      const nextStep = sequenceEngine.getNextStep(state, sequence, daysSinceStart)
+      const nextResult = sequenceEngine.getNextStep(state, sequence, daysSinceStart)
 
-      if (!nextStep) {
+      if (!nextResult) {
         actions.push({
           leadId: lead.id,
           day: daysSinceStart,
@@ -116,6 +116,7 @@ export const multiChannelCampaignSkill: Skill = {
         continue
       }
 
+      const nextStep = nextResult.step
       const leadName = [lead.firstName, lead.lastName].filter(Boolean).join(' ') || lead.email || lead.id
       const message = nextStep.template
         ? nextStep.template
@@ -184,7 +185,9 @@ export const multiChannelCampaignSkill: Skill = {
         }
 
         actions.push({ leadId: lead.id, day: nextStep.day, channel: nextStep.channel, action: nextStep.action, status })
-        processed++
+        if (status === 'sent' || status === 'logged' || status === 'queued_email') {
+          processed++
+        }
       } catch (err) {
         console.error(`[multi-channel] Failed ${nextStep.channel}/${nextStep.action} for ${leadName}:`, err)
         actions.push({ leadId: lead.id, day: nextStep.day, channel: nextStep.channel, action: nextStep.action, status: 'error' })
