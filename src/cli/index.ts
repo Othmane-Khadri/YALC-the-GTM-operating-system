@@ -152,12 +152,19 @@ program
   .description('Send cold email sequence via Instantly.ai')
   .requiredOption('--campaign-name <name>', 'Campaign name')
   .requiredOption('--source <path>', 'CSV/JSON file of qualified leads')
-  .requiredOption('--sequence <path>', 'Sequence template (YAML with subject, body, delay_days per step)')
+  .option('--sequence <path>', 'Sequence template YAML (or use --generate-from)')
+  .option('--generate-from <url>', 'Generate sequence from target company URL (ColdIQ framework)')
+  .option('--save-sequence <path>', 'Save generated sequence to YAML file')
   .option('--from <accountId>', 'Instantly email account ID')
   .option('--dry-run', 'Preview without sending', false)
   .action(async (opts) => {
-    const { readFileSync } = await import('fs')
+    const { readFileSync, writeFileSync } = await import('fs')
     const yaml = (await import('js-yaml')).default
+
+    if (!opts.sequence && !opts.generateFrom) {
+      console.error('Error: provide --sequence <path> or --generate-from <url>')
+      process.exit(1)
+    }
 
     // Parse leads
     const leadsRaw = readFileSync(opts.source, 'utf-8')
@@ -168,10 +175,39 @@ program
           return { email: cols[0], first_name: cols[1], last_name: cols[2], company: cols[3] }
         })
 
-    // Parse sequence
-    const sequenceRaw = readFileSync(opts.sequence, 'utf-8')
-    const sequenceData = yaml.load(sequenceRaw) as { steps: Array<{ subject?: string; body: string; delay_days?: number }> }
-    const sequence = sequenceData.steps ?? sequenceData
+    // Get sequence — either from YAML file or generate from URL
+    let sequence: Array<{ subject?: string; body: string; delay_days?: number }>
+
+    if (opts.generateFrom) {
+      console.log(`\n[generate] Researching ${opts.generateFrom}...`)
+      const { generateFromUrl } = await import('../lib/email/cold-email-generator')
+      const result = await generateFromUrl(opts.generateFrom)
+
+      console.log(`\n── Company Research ──`)
+      console.log(`  Company:        ${result.research.name}`)
+      console.log(`  Sells:          ${result.research.sells}`)
+      console.log(`  ICP:            ${result.research.icp}`)
+      console.log(`  Key Proof:      ${result.research.keyProof}`)
+      console.log(`  Differentiator: ${result.research.differentiator}`)
+
+      console.log(`\n── Generated Sequence (${result.steps.length} steps) ──`)
+      for (const [i, step] of result.steps.entries()) {
+        const words = step.body.split(/\s+/).length
+        console.log(`  Step ${i + 1}: ${step.subject ?? '(threaded reply)'} — ${words} words, delay ${step.delay_days}d`)
+      }
+
+      sequence = result.steps
+
+      // Optionally save to YAML
+      if (opts.saveSequence) {
+        writeFileSync(opts.saveSequence, yaml.dump({ steps: sequence }))
+        console.log(`\n[generate] Sequence saved to ${opts.saveSequence}`)
+      }
+    } else {
+      const sequenceRaw = readFileSync(opts.sequence, 'utf-8')
+      const sequenceData = yaml.load(sequenceRaw) as { steps: Array<{ subject?: string; body: string; delay_days?: number }> }
+      sequence = sequenceData.steps ?? sequenceData
+    }
 
     const { sendEmailSequenceSkill } = await import('../lib/skills/builtin/send-email-sequence')
     const context = {
@@ -192,6 +228,51 @@ program
       else if (event.type === 'error') console.error(`ERROR: ${event.message}`)
       else if (event.type === 'result') console.log('\nResult:', JSON.stringify(event.data, null, 2))
     }
+  })
+
+// ─── email:accounts ────────────────────────────────────────────────────────
+program
+  .command('email:accounts')
+  .description('List Instantly email sending accounts')
+  .action(async () => {
+    const { instantlyService } = await import('../lib/services/instantly')
+    if (!instantlyService.isAvailable()) {
+      const { INSTANTLY_SIGNUP_URL } = await import('../lib/constants')
+      console.error(`INSTANTLY_API_KEY not set. Get your key at ${INSTANTLY_SIGNUP_URL}`)
+      process.exit(1)
+    }
+    const accounts = await instantlyService.listEmailAccounts()
+    if (accounts.length === 0) {
+      console.log('No email accounts found in Instantly.')
+      return
+    }
+    console.log('\n── Instantly Email Accounts ──')
+    for (const acc of accounts) {
+      console.log(`  ${acc.id}  ${acc.email}  [${acc.status}]`)
+    }
+    console.log(`\nUse --from <id> with email:send to select a sending account.`)
+  })
+
+// ─── email:status ──────────────────────────────────────────────────────────
+program
+  .command('email:status')
+  .description('Check Instantly campaign analytics')
+  .requiredOption('--campaign-id <id>', 'Instantly campaign ID')
+  .action(async (opts) => {
+    const { instantlyService } = await import('../lib/services/instantly')
+    if (!instantlyService.isAvailable()) {
+      const { INSTANTLY_SIGNUP_URL } = await import('../lib/constants')
+      console.error(`INSTANTLY_API_KEY not set. Get your key at ${INSTANTLY_SIGNUP_URL}`)
+      process.exit(1)
+    }
+    const analytics = await instantlyService.getCampaignAnalytics(opts.campaignId)
+    console.log('\n── Campaign Analytics ──')
+    console.log(`  Total leads:  ${analytics.total_leads}`)
+    console.log(`  Contacted:    ${analytics.contacted}`)
+    console.log(`  Emails sent:  ${analytics.emails_sent}`)
+    console.log(`  Opened:       ${analytics.emails_read}`)
+    console.log(`  Replied:      ${analytics.replies}`)
+    console.log(`  Bounced:      ${analytics.bounced}`)
   })
 
 // ─── leads:qualify ──────────────────────────────────────────────────────────
