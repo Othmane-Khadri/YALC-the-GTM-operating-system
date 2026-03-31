@@ -128,6 +128,7 @@ export async function registerBuiltinProviders(registry: ProviderRegistry): Prom
   const { NotionProvider } = await import('./builtin/notion-provider')
   const { CrustdataProvider } = await import('./builtin/crustdata-provider')
   const { FullEnrichProvider } = await import('./builtin/fullenrich-provider')
+  const { InstantlyProvider } = await import('./builtin/instantly-provider')
 
   registry.register(new MockProvider())
   registry.register(new QualifyProvider())
@@ -136,6 +137,7 @@ export async function registerBuiltinProviders(registry: ProviderRegistry): Prom
   registry.register(new NotionProvider())
   registry.register(new CrustdataProvider())
   registry.register(new FullEnrichProvider())
+  registry.register(new InstantlyProvider())
 }
 
 // Lazy default instance for CLI backward compatibility

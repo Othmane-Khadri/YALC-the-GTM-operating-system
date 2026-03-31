@@ -7,6 +7,7 @@ import { IntelligenceStore } from '../intelligence/store'
 import { shouldPromote as checkShouldPromote } from '../intelligence/confidence'
 import { validateMessage } from '../outbound/validator'
 import { rateLimiter } from '../rate-limiter'
+import { instantlyService } from '../services/instantly'
 import type { GTMOSConfig } from '../config/types'
 import { fireWebhooks } from '../services/webhooks'
 import { sendSlackNotification, setSlackConfig } from '../services/slack'
@@ -25,6 +26,7 @@ interface TrackerSummary {
   dm2sSent: number
   connectionsSent: number
   leadsExpired: number
+  emailsTracked: number
 }
 
 export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> {
@@ -36,6 +38,7 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
     dm2sSent: 0,
     connectionsSent: 0,
     leadsExpired: 0,
+    emailsTracked: 0,
   }
 
   console.log(`[tracker] Starting campaign tracker${opts.dryRun ? ' (DRY RUN)' : ''}`)
@@ -356,7 +359,87 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
     }
   }
 
-  // Phase 8: Log summary
+  // Phase 8: Email campaign tracking (Instantly)
+  if (!opts.dryRun && instantlyService.isAvailable()) {
+    // Find leads with Instantly campaign IDs
+    for (const campaign of activeCampaigns) {
+      const leads = await db.select().from(campaignLeads)
+        .where(eq(campaignLeads.campaignId, campaign.id))
+      const emailLeads = leads.filter(l => l.instantlyCampaignId && l.email)
+
+      if (emailLeads.length === 0) continue
+
+      // Group by Instantly campaign ID
+      const byCampaign = new Map<string, typeof emailLeads>()
+      for (const lead of emailLeads) {
+        const cid = lead.instantlyCampaignId!
+        if (!byCampaign.has(cid)) byCampaign.set(cid, [])
+        byCampaign.get(cid)!.push(lead)
+      }
+
+      for (const [instantlyCampaignId, campaignEmailLeads] of byCampaign) {
+        try {
+          const analytics = await instantlyService.getCampaignAnalytics(instantlyCampaignId)
+          const leadStatuses = await instantlyService.listLeads(instantlyCampaignId, 1000)
+          const statusMap = new Map(leadStatuses.map(l => [l.email, l]))
+
+          for (const lead of campaignEmailLeads) {
+            const status = statusMap.get(lead.email!)
+            if (!status) continue
+
+            const updates: Record<string, unknown> = { updatedAt: new Date().toISOString() }
+            let changed = false
+
+            if (status.status === 'bounced' && !lead.emailBouncedAt) {
+              updates.emailBouncedAt = status.bounced_at ?? new Date().toISOString()
+              updates.emailStatus = 'bounced'
+              changed = true
+            }
+            if (status.replied_at && !lead.emailRepliedAt) {
+              updates.emailRepliedAt = status.replied_at
+              updates.emailStatus = 'replied'
+              updates.lifecycleStatus = 'Replied'
+              updates.repliedAt = status.replied_at
+              changed = true
+
+              fireWebhooks('reply.received', { campaignId: campaign.id, leadId: lead.id, channel: 'email' })
+              sendSlackNotification('reply', {
+                campaignId: campaign.id,
+                campaignTitle: campaign.title,
+                leadName: [lead.firstName, lead.lastName].filter(Boolean).join(' '),
+                leadId: lead.id,
+              })
+            } else if (status.opened_at && !lead.emailOpenedAt) {
+              updates.emailOpenedAt = status.opened_at
+              updates.emailStatus = 'opened'
+              changed = true
+            } else if (status.status === 'active' && lead.emailStatus !== 'sent') {
+              updates.emailStatus = 'sent'
+              updates.emailSentAt = updates.emailSentAt ?? new Date().toISOString()
+              changed = true
+            }
+
+            if (changed) {
+              try {
+                await db.transaction(async (tx) => {
+                  await tx.update(campaignLeads).set(updates).where(eq(campaignLeads.id, lead.id))
+                })
+                summary.emailsTracked++
+              } catch (err) {
+                console.error(`[tracker] Failed email update for ${lead.email}:`, err)
+              }
+            }
+          }
+
+          console.log(`[tracker] Email tracking: ${analytics.emails_sent} sent, ${analytics.emails_read} opened, ${analytics.replies} replies, ${analytics.bounced} bounced`)
+        } catch (err) {
+          console.error(`[tracker] Failed to poll Instantly campaign ${instantlyCampaignId}:`, err)
+        }
+      }
+    }
+  }
+
+  // Phase 9: Log summary
   console.log('\n─── Tracker Summary ───')
   console.log(`Campaigns processed:    ${summary.campaignsProcessed}`)
   console.log(`Connections accepted:    ${summary.connectionsAccepted}`)
@@ -365,6 +448,7 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
   console.log(`DM2s sent:              ${summary.dm2sSent}`)
   console.log(`Connections sent:       ${summary.connectionsSent}`)
   console.log(`Leads expired:          ${summary.leadsExpired}`)
+  console.log(`Emails tracked:         ${summary.emailsTracked}`)
 
   return summary
 }

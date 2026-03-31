@@ -343,12 +343,20 @@ export const campaignLeads = sqliteTable('campaign_leads', {
   qualificationScore: integer('qualification_score'),
   tags: text('tags', { mode: 'json' }), // string[]
   source: text('source'), // content_engager | profile_visitor | csv | notion | pre_scored
-  // Timestamps for sequence tracking
+  // Timestamps for sequence tracking (LinkedIn)
   connectSentAt: text('connect_sent_at'),
   connectedAt: text('connected_at'),
   dm1SentAt: text('dm1_sent_at'),
   dm2SentAt: text('dm2_sent_at'),
   repliedAt: text('replied_at'),
+  // Email tracking (Instantly)
+  email: text('email'),
+  instantlyCampaignId: text('instantly_campaign_id'),
+  emailSentAt: text('email_sent_at'),
+  emailOpenedAt: text('email_opened_at'),
+  emailRepliedAt: text('email_replied_at'),
+  emailBouncedAt: text('email_bounced_at'),
+  emailStatus: text('email_status'), // queued | sent | opened | replied | bounced
   // Notion sync
   notionPageId: text('notion_page_id'),
   createdAt: text('created_at').default(sql`(datetime('now'))`),

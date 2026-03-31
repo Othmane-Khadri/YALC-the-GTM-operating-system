@@ -146,6 +146,54 @@ program
     }
   })
 
+// ─── email:send ────────────────────────────────────────────────────────────
+program
+  .command('email:send')
+  .description('Send cold email sequence via Instantly.ai')
+  .requiredOption('--campaign-name <name>', 'Campaign name')
+  .requiredOption('--source <path>', 'CSV/JSON file of qualified leads')
+  .requiredOption('--sequence <path>', 'Sequence template (YAML with subject, body, delay_days per step)')
+  .option('--from <accountId>', 'Instantly email account ID')
+  .option('--dry-run', 'Preview without sending', false)
+  .action(async (opts) => {
+    const { readFileSync } = await import('fs')
+    const yaml = (await import('js-yaml')).default
+
+    // Parse leads
+    const leadsRaw = readFileSync(opts.source, 'utf-8')
+    const leads = opts.source.endsWith('.json')
+      ? JSON.parse(leadsRaw)
+      : leadsRaw.split('\n').slice(1).filter(Boolean).map(line => {
+          const cols = line.split(',')
+          return { email: cols[0], first_name: cols[1], last_name: cols[2], company: cols[3] }
+        })
+
+    // Parse sequence
+    const sequenceRaw = readFileSync(opts.sequence, 'utf-8')
+    const sequenceData = yaml.load(sequenceRaw) as { steps: Array<{ subject?: string; body: string; delay_days?: number }> }
+    const sequence = sequenceData.steps ?? sequenceData
+
+    const { sendEmailSequenceSkill } = await import('../lib/skills/builtin/send-email-sequence')
+    const context = {
+      framework: null as any,
+      intelligence: [],
+      providers: { resolve: () => ({ id: 'mock', name: 'mock', execute: async function*() {} }) } as any,
+      userId: 'default',
+    }
+
+    for await (const event of sendEmailSequenceSkill.execute({
+      campaignName: opts.campaignName,
+      leads,
+      sequence,
+      fromAccountId: opts.from,
+      dryRun: opts.dryRun,
+    }, context)) {
+      if (event.type === 'progress') console.log(`[${event.percent}%] ${event.message}`)
+      else if (event.type === 'error') console.error(`ERROR: ${event.message}`)
+      else if (event.type === 'result') console.log('\nResult:', JSON.stringify(event.data, null, 2))
+    }
+  })
+
 // ─── leads:qualify ──────────────────────────────────────────────────────────
 program
   .command('leads:qualify')
