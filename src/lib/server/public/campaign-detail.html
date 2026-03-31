@@ -118,9 +118,12 @@
       <!-- Lead timeline table -->
       <div>
         <div class="flex items-center justify-between mb-3">
-          <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide">
-            Leads <span id="leadCount" class="text-gray-600"></span>
-          </h2>
+          <div class="flex items-center gap-3">
+            <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide">
+              Leads <span id="leadCount" class="text-gray-600"></span>
+            </h2>
+            <a id="exportCsv" class="text-[10px] px-2 py-0.5 rounded border border-gray-700 text-gray-500 hover:text-accent hover:border-accent/40 transition cursor-pointer">Export CSV</a>
+          </div>
           <div class="flex items-center gap-2">
             <input id="searchInput" type="text" placeholder="Search name..."
               oninput="filterLeads()"
@@ -304,6 +307,7 @@
       `
 
       document.getElementById('leadCount').textContent = `(${allLeads.length})`
+      document.getElementById('exportCsv').href = `/api/campaigns/${campaignId}/export?format=csv`
     }
 
     function renderVariants() {

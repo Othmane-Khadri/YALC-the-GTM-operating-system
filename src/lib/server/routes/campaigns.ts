@@ -409,6 +409,63 @@ campaignRoutes.post('/:id/chat', async (c) => {
   }
 })
 
+// CSV Export
+campaignRoutes.get('/:id/export', async (c) => {
+  const id = c.req.param('id')
+  const format = c.req.query('format')
+  if (format !== 'csv') return c.json({ error: 'Only format=csv is supported' }, 400)
+
+  const campaign = await manager.get(id)
+  if (!campaign) return c.json({ error: 'Campaign not found' }, 404)
+
+  const leads = await db
+    .select()
+    .from(campaignLeads)
+    .where(eq(campaignLeads.campaignId, id))
+    .orderBy(desc(campaignLeads.updatedAt))
+
+  const variants = await db
+    .select()
+    .from(campaignVariants)
+    .where(eq(campaignVariants.campaignId, id))
+
+  const variantMap = new Map(variants.map((v) => [v.id, v.name]))
+
+  const csvEsc = (val: string | null | undefined) => {
+    if (!val) return ''
+    if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+      return `"${val.replace(/"/g, '""')}"`
+    }
+    return val
+  }
+
+  const header = 'Name,Company,Headline,LinkedIn URL,Variant,Lifecycle Status,Score,Connect Sent,Connected,DM1 Sent,DM2 Sent,Replied'
+  const rows = leads.map(l => [
+    csvEsc([l.firstName, l.lastName].filter(Boolean).join(' ')),
+    csvEsc(l.company),
+    csvEsc(l.headline),
+    csvEsc(l.linkedinUrl),
+    csvEsc(l.variantId ? variantMap.get(l.variantId) ?? '' : ''),
+    csvEsc(l.lifecycleStatus),
+    l.qualificationScore ?? '',
+    l.connectSentAt ?? '',
+    l.connectedAt ?? '',
+    l.dm1SentAt ?? '',
+    l.dm2SentAt ?? '',
+    l.repliedAt ?? '',
+  ].join(','))
+
+  const csv = [header, ...rows].join('\n')
+  const safeTitle = campaign.title.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 50)
+
+  return new Response(csv, {
+    headers: {
+      'Content-Type': 'text/csv',
+      'Content-Disposition': `attachment; filename="campaign-${safeTitle}-leads.csv"`,
+    },
+  })
+})
+
 function getISOWeek(date: Date): string {
   const d = new Date(date.getTime())
   d.setHours(0, 0, 0, 0)
