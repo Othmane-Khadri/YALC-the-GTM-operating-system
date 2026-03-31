@@ -9,6 +9,7 @@ import { validateMessage } from '../outbound/validator'
 import { rateLimiter } from '../rate-limiter'
 import type { GTMOSConfig } from '../config/types'
 import { fireWebhooks } from '../services/webhooks'
+import { sendSlackNotification, setSlackConfig } from '../services/slack'
 
 interface TrackerOptions {
   config: GTMOSConfig
@@ -38,6 +39,9 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
   }
 
   console.log(`[tracker] Starting campaign tracker${opts.dryRun ? ' (DRY RUN)' : ''}`)
+
+  // Initialize Slack config if available
+  setSlackConfig(opts.config.slack)
 
   // Phase 1: Load active campaigns
   const activeCampaigns = opts.campaignId
@@ -86,11 +90,17 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
       const replied = await checkReplies(accountId, dmSentLeads, opts.dryRun)
       summary.repliesDetected += replied
 
-      // Fire webhooks for replies
+      // Fire webhooks + Slack for replies
       if (!opts.dryRun && replied > 0) {
         for (const lead of dmSentLeads) {
           if (lead.repliedAt) continue
           fireWebhooks('reply.received', { campaignId: campaign.id, leadId: lead.id })
+          sendSlackNotification('reply', {
+            campaignId: campaign.id,
+            campaignTitle: campaign.title,
+            leadName: [lead.firstName, lead.lastName].filter(Boolean).join(' '),
+            leadId: lead.id,
+          })
         }
       }
 

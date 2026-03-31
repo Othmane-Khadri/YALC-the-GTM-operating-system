@@ -5,6 +5,7 @@ import { campaigns, campaignLeads, campaignVariants, campaignContent } from '../
 import { CampaignManager } from '../../campaign/manager'
 import type { CampaignStatus } from '../../campaign/types'
 import { fireWebhooks } from '../../services/webhooks'
+import { sendSlackNotification } from '../../services/slack'
 
 const manager = new CampaignManager()
 
@@ -298,8 +299,26 @@ campaignRoutes.patch('/:id/leads/:leadId', async (c) => {
     .set({ lifecycleStatus: body.lifecycleStatus, updatedAt: new Date().toISOString() })
     .where(eq(campaignLeads.id, leadId))
 
-  // Fire webhooks
+  // Fire webhooks + Slack
   fireWebhooks('lead.status_changed', { campaignId, leadId, oldStatus, newStatus: body.lifecycleStatus })
+
+  const slackEventMap: Record<string, string> = {
+    Demo_Booked: 'demo_booked',
+    Deal_Created: 'deal_created',
+    Closed_Won: 'closed_won',
+    Closed_Lost: 'closed_lost',
+  }
+  const slackEvent = slackEventMap[body.lifecycleStatus]
+  if (slackEvent) {
+    const lead = leadRows[0]
+    sendSlackNotification(slackEvent, {
+      campaignId,
+      leadId,
+      leadName: [lead.firstName, lead.lastName].filter(Boolean).join(' '),
+      oldStatus,
+      newStatus: body.lifecycleStatus,
+    })
+  }
 
   return c.json({ ok: true, leadId, newStatus: body.lifecycleStatus })
 })
