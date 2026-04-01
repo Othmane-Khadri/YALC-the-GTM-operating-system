@@ -1,13 +1,17 @@
 # YALC — The Open-Source GTM Operating System
 
-AI plans your campaigns, qualifies your leads, and learns from every interaction.
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Node](https://img.shields.io/badge/Node-%3E%3D18-brightgreen.svg)](https://nodejs.org/)
 
-YALC is a TypeScript CLI library for AI-native go-to-market. It orchestrates lead discovery, qualification, campaign execution, and intelligence accumulation across LinkedIn, email, and CRM channels.
+> AI plans your campaigns, qualifies your leads, and learns from every interaction.
+
+YALC is an open-source, AI-native operating system for running any GTM campaign. CLI-first. Intelligence compounds from every interaction.
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/earleads/gtm-os.git
+git clone https://github.com/Othmane-Khadri/YALC-the-GTM-operating-system.git
 cd gtm-os
 pnpm install
 cp .env.example .env.local  # Add your API keys
@@ -24,6 +28,23 @@ pnpm cli -- campaign:create --title "Q2 Outbound" --hypothesis "VP Eng responds 
 # Track campaign progress
 pnpm cli -- campaign:track --dry-run
 ```
+
+## Features at a Glance
+
+- **16 built-in skills** — qualify, scrape, campaign, orchestrate, personalize, competitive-intel, and more
+- **7 providers** — Unipile, Crustdata, Firecrawl, Notion, FullEnrich, Instantly, Mock
+- **Multi-channel campaigns** — LinkedIn + Email with A/B variant testing
+- **Intelligence store** — learns from every campaign outcome (hypothesis → validated → proven)
+- **Statistical significance** — chi-squared testing to pick variant winners
+- **Campaign dashboard** — real-time analytics, funnel views, Claude-powered Q&A
+- **Rate limiting** — DB-backed token bucket on all external sends
+- **Outbound validation** — every message checked before send, hard blocks on violations
+- **Background agents** — launchd-integrated for automated campaign tracking
+- **Natural language orchestration** — describe what you want, YALC plans the workflow
+
+<!-- ## Demo
+![YALC Demo](demo.gif)
+Demo GIF will be added here -->
 
 ## Architecture
 
