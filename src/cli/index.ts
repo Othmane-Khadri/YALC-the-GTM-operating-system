@@ -4,6 +4,7 @@ loadEnv({ path: '.env.local' })
 
 import { Command } from 'commander'
 import { loadConfig } from '../lib/config/loader'
+import { withDiagnostics } from '../lib/diagnostics/error-handler'
 
 const program = new Command()
 
@@ -19,7 +20,7 @@ program
   .description('Run daily campaign tracker — poll Unipile, advance sequences, sync Notion')
   .option('--dry-run', 'Show what would happen without sending anything')
   .option('--campaign-id <id>', 'Track a specific campaign only')
-  .action(async (opts) => {
+  .action(withDiagnostics(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { runTracker } = await import('../lib/campaign/tracker')
     await runTracker({
@@ -27,7 +28,7 @@ program
       dryRun: opts.dryRun ?? false,
       campaignId: opts.campaignId,
     })
-  })
+  }))
 
 // ─── campaign:create ────────────────────────────────────────────────────────
 program
@@ -38,11 +39,89 @@ program
   .option('--hypothesis <hypothesis>', 'Campaign hypothesis')
   .option('--auto-copy', 'Generate voice-aware copy via Claude instead of default templates')
   .option('--segment-id <id>', 'ICP segment ID for voice targeting')
+  .option('--timezone <tz>', 'IANA timezone for send window (default: Europe/Paris)')
+  .option('--start-at <date>', 'ISO date to auto-activate campaign (e.g. 2026-04-03)')
+  .option('--send-window <range>', 'Send window HH:mm-HH:mm (default: 09:00-18:00)')
+  .option('--active-days <days>', 'Active days 1=Mon..7=Sun comma-separated (default: 1,2,3,4,5)')
+  .option('--delay-mode <mode>', 'Step delay counting: business or calendar (default: business)')
   .option('--dry-run', 'Preview campaign creation without writing to DB')
-  .action(async (opts) => {
+  .action(withDiagnostics(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { runCreator } = await import('../lib/campaign/creator')
-    await runCreator({ config, ...opts, autoCopy: opts.autoCopy, dryRun: opts.dryRun ?? false })
+    const { buildScheduleFromOptions } = await import('../lib/campaign/schedule')
+
+    const schedule = buildScheduleFromOptions({
+      timezone: opts.timezone,
+      startAt: opts.startAt,
+      sendWindow: opts.sendWindow,
+      activeDays: opts.activeDays,
+      delayMode: opts.delayMode,
+    })
+
+    // If --start-at is set, campaign starts as 'scheduled' instead of 'active'
+    const initialStatus = opts.startAt ? 'scheduled' : undefined
+
+    await runCreator({
+      config,
+      ...opts,
+      autoCopy: opts.autoCopy,
+      dryRun: opts.dryRun ?? false,
+      schedule,
+      initialStatus,
+    })
+  }))
+
+// ─── campaign:schedule ──────────────────────────────────────────────────────
+program
+  .command('campaign:schedule')
+  .description('Update schedule settings on an existing campaign')
+  .requiredOption('--campaign-id <id>', 'Campaign ID to update')
+  .option('--timezone <tz>', 'IANA timezone for send window')
+  .option('--start-at <date>', 'ISO date to auto-activate (set "none" to clear)')
+  .option('--send-window <range>', 'Send window HH:mm-HH:mm')
+  .option('--active-days <days>', 'Active days 1=Mon..7=Sun comma-separated')
+  .option('--delay-mode <mode>', 'Step delay counting: business or calendar')
+  .option('--pace <seconds>', 'Seconds between sends')
+  .action(async (opts) => {
+    const { eq } = await import('drizzle-orm')
+    const { db } = await import('../lib/db')
+    const { campaigns } = await import('../lib/db/schema')
+    const { parseSchedule, DEFAULT_SCHEDULE, buildScheduleFromOptions } = await import('../lib/campaign/schedule')
+
+    const [campaign] = await db.select().from(campaigns).where(eq(campaigns.id, opts.campaignId))
+    if (!campaign) {
+      console.error(`Campaign not found: ${opts.campaignId}`)
+      process.exit(1)
+    }
+
+    // Merge existing schedule with provided options
+    const existing = parseSchedule(campaign.schedule) ?? { ...DEFAULT_SCHEDULE }
+    const updated = buildScheduleFromOptions({
+      timezone: opts.timezone ?? existing.timezone,
+      startAt: opts.startAt === 'none' ? undefined : (opts.startAt ?? existing.startAt ?? undefined),
+      sendWindow: opts.sendWindow ?? `${existing.sendWindow.start}-${existing.sendWindow.end}`,
+      activeDays: opts.activeDays ?? existing.activeDays.join(','),
+      delayMode: opts.delayMode ?? existing.delayMode,
+      secondsBetweenSends: opts.pace ? parseInt(opts.pace, 10) : existing.sendingPace.secondsBetweenSends,
+    })
+
+    // If startAt was cleared, make sure it's null
+    if (opts.startAt === 'none') updated.startAt = null
+
+    await db.update(campaigns).set({
+      schedule: updated as any,
+      // If setting a future startAt and campaign is draft/active, switch to scheduled
+      ...(updated.startAt && campaign.status === 'draft' ? { status: 'scheduled' } : {}),
+      updatedAt: new Date().toISOString(),
+    }).where(eq(campaigns.id, opts.campaignId))
+
+    console.log(`[schedule] Updated campaign "${campaign.title}"`)
+    console.log(`  Timezone:      ${updated.timezone}`)
+    console.log(`  Start at:      ${updated.startAt ?? 'immediate'}`)
+    console.log(`  Send window:   ${updated.sendWindow.start}-${updated.sendWindow.end}`)
+    console.log(`  Active days:   ${updated.activeDays.join(',')}`)
+    console.log(`  Delay mode:    ${updated.delayMode}`)
+    console.log(`  Pace:          ${updated.sendingPace.secondsBetweenSends}s between sends`)
   })
 
 // ─── campaign:report ────────────────────────────────────────────────────────
@@ -50,11 +129,11 @@ program
   .command('campaign:report')
   .description('Generate weekly intelligence report')
   .option('--week <date>', 'Report week (ISO date, defaults to current)')
-  .action(async (opts) => {
+  .action(withDiagnostics(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { runReport } = await import('../lib/campaign/intelligence-report')
     await runReport({ config, week: opts.week })
-  })
+  }))
 
 // ─── leads:scrape-post ──────────────────────────────────────────────────────
 program
@@ -65,7 +144,7 @@ program
   .option('--max-pages <n>', 'Max pagination pages per endpoint', '10')
   .option('--output <path>', 'Custom output JSON path')
   .option('--account <name>', 'Unipile account name or ID to use for scraping')
-  .action(async (opts) => {
+  .action(withDiagnostics(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { scrapePostEngagers } = await import('../lib/scraping/post-engagers')
     const result = await scrapePostEngagers({
@@ -80,7 +159,7 @@ program
     console.log(`  Result set: ${result.resultSetId}`)
     console.log(`  Output: ${result.outputPath}`)
     console.log(`\nNext: npx tsx src/cli/index.ts leads:qualify --result-set ${result.resultSetId}`)
-  })
+  }))
 
 // ─── linkedin:answer-comments ───────────────────────────────────────────────
 program
@@ -92,6 +171,7 @@ program
   .option('--max <n>', 'Max replies', '50')
   .option('--dry-run', 'Preview without sending', true)
   .option('--send', 'Actually send replies (disables dry-run)')
+  .option('--exclude <names...>', 'Author names to skip (partial match)')
   .action(async (opts) => {
     const { answerCommentsSkill } = await import('../lib/skills/builtin/answer-comments')
     const { getSkillRegistryReady } = await import('../lib/skills/registry')
@@ -110,6 +190,41 @@ program
       url: opts.url,
       mode: opts.mode,
       replyTemplate: opts.template,
+      maxReplies: parseInt(opts.max, 10),
+      dryRun,
+      exclude: opts.exclude ?? [],
+    }, context)) {
+      if (event.type === 'progress') console.log(`[${event.percent}%] ${event.message}`)
+      else if (event.type === 'error') console.error(`ERROR: ${event.message}`)
+      else if (event.type === 'result') console.log('\nResult:', JSON.stringify(event.data, null, 2))
+    }
+  })
+
+// ─── linkedin:reply-to-comments ─────────────────────────────────────────────
+program
+  .command('linkedin:reply-to-comments')
+  .description('Send threaded replies under LinkedIn post comments (never top-level)')
+  .requiredOption('--url <url>', 'LinkedIn post URL')
+  .requiredOption('--template <text>', 'Reply text (use {{name}} for first name)')
+  .option('--max <n>', 'Max replies', '100')
+  .option('--dry-run', 'Preview without sending', true)
+  .option('--send', 'Actually send replies (disables dry-run)')
+  .option('--exclude <names...>', 'Author names to skip (partial match)')
+  .action(async (opts) => {
+    const { replyToCommentsSkill } = await import('../lib/skills/builtin/reply-to-comments')
+    const dryRun = opts.send ? false : (opts.dryRun ?? true)
+
+    const context = {
+      framework: null as any,
+      intelligence: [],
+      providers: { resolve: () => ({ id: 'mock', name: 'mock', execute: async function*() {} }) } as any,
+      userId: 'default',
+    }
+
+    for await (const event of replyToCommentsSkill.execute({
+      url: opts.url,
+      template: opts.template,
+      exclude: opts.exclude ?? [],
       maxReplies: parseInt(opts.max, 10),
       dryRun,
     }, context)) {
@@ -412,11 +527,11 @@ program
   .option('--input <path>', 'Path to input file or Notion DB ID')
   .option('--result-set <id>', 'Existing result set ID to qualify')
   .option('--dry-run', 'Preview qualification without writing results')
-  .action(async (opts) => {
+  .action(withDiagnostics(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { runQualify } = await import('../lib/qualification/pipeline')
     await runQualify({ config, source: opts.source, input: opts.input, resultSetId: opts.resultSet, dryRun: opts.dryRun ?? false })
-  })
+  }))
 
 // ─── leads:import ───────────────────────────────────────────────────────────
 program
@@ -425,11 +540,11 @@ program
   .requiredOption('--source <type>', 'Source type: csv, json, notion, visitors')
   .requiredOption('--input <path>', 'Path to input file')
   .option('--dry-run', 'Preview import without writing to DB')
-  .action(async (opts) => {
+  .action(withDiagnostics(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { runImport } = await import('../lib/qualification/importers')
     await runImport({ config, source: opts.source, input: opts.input, dryRun: opts.dryRun ?? false })
-  })
+  }))
 
 // ─── notion:sync ────────────────────────────────────────────────────────────
 program
@@ -437,22 +552,22 @@ program
   .description('Bidirectional sync between SQLite and Notion')
   .option('--direction <dir>', 'push | pull | both', 'both')
   .option('--dry-run', 'Preview sync without writing')
-  .action(async (opts) => {
+  .action(withDiagnostics(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { runSync } = await import('../lib/notion/sync')
     await runSync({ config, direction: opts.direction, dryRun: opts.dryRun ?? false })
-  })
+  }))
 
 // ─── notion:bootstrap ───────────────────────────────────────────────────────
 program
   .command('notion:bootstrap')
   .description('Import existing campaigns, leads, and variants from Notion into SQLite')
   .option('--dry-run', 'Preview bootstrap without writing to DB')
-  .action(async (opts) => {
+  .action(withDiagnostics(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { runBootstrap } = await import('../lib/notion/bootstrap')
     await runBootstrap({ config, dryRun: opts.dryRun ?? false })
-  })
+  }))
 
 // ─── campaign:dashboard ──────────────────────────────────────────────────────
 program
@@ -501,7 +616,7 @@ program
   .argument('<query>', 'Natural language request')
   .option('--auto-approve', 'Skip approval gates')
   .option('--dry-run', 'Preview orchestration without executing skills')
-  .action(async (query, opts) => {
+  .action(withDiagnostics(async (query: string, opts: any) => {
     const { orchestrateSkill } = await import('../lib/skills/builtin/orchestrate')
     const context = {
       framework: null as any,
@@ -523,16 +638,16 @@ program
       else if (event.type === 'error') console.error(`ERROR: ${event.message}`)
       else if (event.type === 'result') console.log('\nResult:', JSON.stringify(event.data, null, 2))
     }
-  })
+  }))
 
 // ─── setup ──────────────────────────────────────────────────────────────────
 program
   .command('setup')
   .description('Check configuration, API keys, and provider connectivity')
-  .action(async () => {
+  .action(withDiagnostics(async () => {
     const { runSetup } = await import('../lib/config/setup')
     await runSetup()
-  })
+  }))
 
 // ─── onboard ────────────────────────────────────────────────────────────────
 program
@@ -541,16 +656,16 @@ program
   .option('--linkedin <url>', 'LinkedIn profile URL')
   .option('--website <url>', 'Company website URL')
   .option('--knowledge <paths...>', 'Paths to knowledge files (PDFs, docs)')
-  .action(async (opts) => {
+  .action(withDiagnostics(async (opts) => {
     const { buildProfile } = await import('../lib/onboarding/profile-builder')
     await buildProfile({ linkedin: opts.linkedin, website: opts.website, knowledge: opts.knowledge })
-  })
+  }))
 
 // ─── configure ──────────────────────────────────────────────────────────────
 program
   .command('configure')
   .description('Set GTM goals and configure skills based on your framework')
-  .action(async () => {
+  .action(withDiagnostics(async () => {
     const { loadFramework } = await import('../lib/framework/context')
     const { setGoals } = await import('../lib/onboarding/goal-setter')
     const { configureSkills } = await import('../lib/onboarding/skill-configurator')
@@ -561,18 +676,18 @@ program
     }
     const goals = await setGoals(framework)
     await configureSkills(framework, goals)
-  })
+  }))
 
 // ─── test-run ───────────────────────────────────────────────────────────────
 program
   .command('test-run')
   .description('Run a test batch: find → enrich → qualify → review')
   .option('--count <n>', 'Number of test leads', '10')
-  .action(async (opts) => {
+  .action(withDiagnostics(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { runTestBatch } = await import('../lib/execution/test-runner')
     await runTestBatch(config, parseInt(opts.count, 10))
-  })
+  }))
 
 // ─── results:review ─────────────────────────────────────────────────────────
 program
@@ -666,6 +781,16 @@ program
         console.log(`  ${agentId.padEnd(30)} never run`)
       }
     }
+  })
+
+// ─── doctor ────────────────────────────────────────────────────────────────
+program
+  .command('doctor')
+  .description('Run full system health check across all 5 diagnostic layers')
+  .option('--report', 'Save a diagnostic report file (no secrets) for bug reports')
+  .action(async (opts) => {
+    const { runDoctor } = await import('../lib/diagnostics/doctor')
+    await runDoctor({ report: opts.report })
   })
 
 program.parse()

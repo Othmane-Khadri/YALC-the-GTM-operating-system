@@ -43,12 +43,14 @@ export const answerCommentsSkill: Skill = {
       replyTemplate,
       maxReplies = 50,
       dryRun = true,
+      exclude = [],
     } = input as {
       url: string
       mode?: 'lead-magnet' | 'general'
       replyTemplate?: string
       maxReplies?: number
       dryRun?: boolean
+      exclude?: string[]
     }
 
     yield { type: 'progress', message: 'Resolving LinkedIn post...', percent: 5 }
@@ -67,7 +69,7 @@ export const answerCommentsSkill: Skill = {
     const accountId = String(linkedinAccount.id)
 
     // Extract post ID
-    const activityMatch = url.match(/activity[/-](\d+)/)
+    const activityMatch = url.match(/activity[/:-](\d+)/)
     const ugcMatch = url.match(/urn:li:ugcPost:(\d+)/)
     const postId = activityMatch?.[1] ?? (ugcMatch ? `urn:li:ugcPost:${ugcMatch[1]}` : null)
     if (!postId) {
@@ -86,7 +88,8 @@ export const answerCommentsSkill: Skill = {
     const { CommentManager } = await import('../../linkedin/comment-manager')
     const manager = new CommentManager()
     const comments = await manager.getComments(accountId, socialId)
-    const unreplied = comments.filter((c) => !c.isOwnComment && !c.hasReply)
+    const excludeLower = exclude.map((n: string) => n.toLowerCase())
+    const unreplied = comments.filter((c) => !c.isOwnComment && !c.hasReply && !excludeLower.some((ex: string) => (c.authorName ?? '').toLowerCase().includes(ex)))
 
     yield {
       type: 'progress',

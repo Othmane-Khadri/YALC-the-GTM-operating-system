@@ -421,7 +421,24 @@ After every operation, check for signal opportunities:
 
 ---
 
-### 11. Rules
+### 11. Error Handling — Auto-Debugger
+
+**When any CLI command fails with an error, activate the debugger skill (`.claude/skills/debugger/SKILL.md`) before attempting any manual fix.** This ensures the structured 5-layer diagnostic funnel runs instead of ad-hoc troubleshooting.
+
+**Three-layer debugging system:**
+
+1. **CLI Error Handler** (`src/lib/diagnostics/error-handler.ts`) — Every CLI command is wrapped with `withDiagnostics()`. When a command fails, it classifies the error against known patterns and prints a structured diagnostic (error code, cause, fix) instead of a raw stack trace. Works without Claude Code.
+
+2. **`gtm-os doctor` command** (`src/lib/diagnostics/doctor.ts`) — Proactive health check users can run anytime. Checks all 5 layers: Environment → Database → Configuration → Provider connectivity → Runtime state. Optionally generates a diagnostic report file (`--report`) for bug reports.
+
+3. **Claude Code Debugger Skill** (`.claude/skills/debugger/SKILL.md`) — Deep diagnosis layer for Claude Code users. Contains the full error catalog, diagnostic procedures, and auto-fix workflows with approval gates.
+
+**Skill router:** "debug" / "fix" / "not working" / "broken" / "troubleshoot" → `.claude/skills/debugger/SKILL.md`
+**CLI command:** `gtm-os doctor` / `gtm-os doctor --report`
+
+---
+
+### 12. Rules
 
 1. **Always read `gtm-os.yaml` before any GTM operation** — it's the source of truth for ICP, voice, and positioning
 2. **Never hallucinate lead data** — only use real API results from real providers

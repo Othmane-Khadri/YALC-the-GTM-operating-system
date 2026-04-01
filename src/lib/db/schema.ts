@@ -263,6 +263,8 @@ export const campaigns = sqliteTable('campaigns', {
   experimentStatus: text('experiment_status'), // testing | winner_declared | inconclusive
   winnerVariant: text('winner_variant'),
   notionPageId: text('notion_page_id'), // for Notion sync
+  // Scheduling config — JSON blob: { timezone, startAt, sendWindow, activeDays, sendingPace, delayMode }
+  schedule: text('schedule', { mode: 'json' }),
   createdAt: text('created_at').default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').default(sql`(datetime('now'))`),
 })

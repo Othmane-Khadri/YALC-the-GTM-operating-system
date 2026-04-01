@@ -15,6 +15,8 @@ interface CreatorOptions {
   variants?: string // JSON string of variant definitions
   autoCopy?: boolean
   segmentId?: string
+  schedule?: Record<string, unknown> // CampaignSchedule
+  initialStatus?: string // 'scheduled' | 'active'
 }
 
 interface CreatorResult {
@@ -170,9 +172,11 @@ export async function runCreator(opts: CreatorOptions): Promise<CreatorResult> {
 
   console.log(`[creator] Assigned ${leads.length} leads to campaign (round-robin across ${createdVariants.length} variants)`)
 
-  // 5. Activate campaign
+  // 5. Activate campaign (or set to 'scheduled' if startAt is in the future)
+  const finalStatus = opts.initialStatus ?? 'active'
   await db.update(campaigns).set({
-    status: 'active',
+    status: finalStatus,
+    ...(opts.schedule ? { schedule: opts.schedule as any } : {}),
     updatedAt: new Date().toISOString(),
   }).where(eq(campaigns.id, campaign.id))
 
@@ -198,7 +202,12 @@ export async function runCreator(opts: CreatorOptions): Promise<CreatorResult> {
   console.log(`Title:         ${title}`)
   console.log(`Leads:         ${leads.length}`)
   console.log(`Variants:      ${createdVariants.length}`)
-  console.log(`Status:        active`)
+  console.log(`Status:        ${finalStatus}`)
+  if (opts.schedule) {
+    const s = opts.schedule as { timezone?: string; startAt?: string; sendWindow?: { start: string; end: string }; activeDays?: number[]; delayMode?: string }
+    console.log(`Schedule:      ${s.timezone ?? 'Europe/Paris'} ${s.sendWindow?.start ?? '09:00'}-${s.sendWindow?.end ?? '18:00'} ${s.delayMode ?? 'business'}-day delays`)
+    if (s.startAt) console.log(`Start at:      ${s.startAt}`)
+  }
 
   return {
     campaignId: campaign.id,

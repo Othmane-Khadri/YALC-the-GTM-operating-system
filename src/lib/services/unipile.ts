@@ -147,7 +147,7 @@ export class UnipileService {
     const apiKey = process.env.UNIPILE_API_KEY!
     const url = `${dsn}/api/v1/posts/${encodeURIComponent(postId)}/comments`
     const body: Record<string, string> = { account_id: accountId, text }
-    if (replyToCommentId) body.reply_to_comment_id = replyToCommentId
+    if (replyToCommentId) body.comment_id = replyToCommentId
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },

@@ -18,6 +18,17 @@ const ENRICH_COLUMNS: ColumnDef[] = [
   { key: 'founded_year', label: 'Founded Year', type: 'number' },
 ]
 
+const PEOPLE_COLUMNS: ColumnDef[] = [
+  { key: 'name', label: 'Name', type: 'text' },
+  { key: 'title', label: 'Title', type: 'text' },
+  { key: 'company_name', label: 'Company', type: 'text' },
+  { key: 'linkedin_url', label: 'LinkedIn URL', type: 'url' },
+  { key: 'location', label: 'Location', type: 'text' },
+  { key: 'seniority', label: 'Seniority', type: 'badge' },
+  { key: 'headline', label: 'Headline', type: 'text' },
+  { key: 'company_domain', label: 'Company Domain', type: 'text' },
+]
+
 export class CrustdataProvider implements StepExecutor {
   id = 'crustdata'
   name = 'Crustdata'
@@ -31,14 +42,20 @@ export class CrustdataProvider implements StepExecutor {
 
   canExecute(step: WorkflowStepInput): boolean {
     if (step.provider === 'crustdata') return true
-    // Claim search/enrich steps that don't mention LinkedIn
     const desc = (step.description ?? '').toLowerCase()
     const isLinkedIn = desc.includes('linkedin')
-    return !isLinkedIn && (step.stepType === 'search' || step.stepType === 'enrich')
+    if (isLinkedIn) return false
+    const isPeopleSearch = desc.includes('people') || desc.includes('person') || desc.includes('contact')
+    return step.stepType === 'search' || step.stepType === 'enrich' || isPeopleSearch
   }
 
   async *execute(step: WorkflowStepInput, context: ExecutionContext): AsyncIterable<RowBatch> {
-    if (step.stepType === 'search') {
+    const desc = (step.description ?? '').toLowerCase()
+    const isPeopleSearch = desc.includes('people') || desc.includes('person') || desc.includes('contact')
+
+    if (isPeopleSearch && step.stepType === 'search') {
+      yield* this.executePeopleSearch(step, context)
+    } else if (step.stepType === 'search') {
       yield* this.executeSearch(step, context)
     } else if (step.stepType === 'enrich') {
       yield* this.executeEnrich(step, context)
@@ -66,6 +83,38 @@ export class CrustdataProvider implements StepExecutor {
     }))
 
     // Yield in batches
+    const batchSize = context.batchSize || 25
+    for (let i = 0; i < rows.length; i += batchSize) {
+      const batch = rows.slice(i, i + batchSize)
+      yield {
+        rows: batch,
+        batchIndex: Math.floor(i / batchSize),
+        totalSoFar: Math.min(i + batchSize, rows.length),
+      }
+    }
+  }
+
+  private async *executePeopleSearch(step: WorkflowStepInput, context: ExecutionContext): AsyncIterable<RowBatch> {
+    const config = step.config ?? {}
+    const tracked = await crustdataService.searchPeople({
+      companyNames: config.companyNames as string[] | undefined,
+      titles: config.titles as string[] | undefined,
+      seniorityLevels: config.seniorityLevels as string[] | undefined,
+      location: config.location as string | undefined,
+      limit: context.totalRequested || 100,
+    })
+
+    const rows = tracked.result.people.map(p => ({
+      name: p.name,
+      title: p.title,
+      company_name: p.company_name,
+      company_domain: p.company_domain,
+      linkedin_url: p.linkedin_url,
+      location: p.location,
+      seniority: p.seniority,
+      headline: p.headline,
+    }))
+
     const batchSize = context.batchSize || 25
     for (let i = 0; i < rows.length; i += batchSize) {
       const batch = rows.slice(i, i + batchSize)
@@ -119,6 +168,9 @@ export class CrustdataProvider implements StepExecutor {
   }
 
   getColumnDefinitions(step: WorkflowStepInput): ColumnDef[] {
+    const desc = (step.description ?? '').toLowerCase()
+    const isPeople = desc.includes('people') || desc.includes('person') || desc.includes('contact')
+    if (isPeople) return PEOPLE_COLUMNS
     return step.stepType === 'enrich' ? ENRICH_COLUMNS : SEARCH_COLUMNS
   }
 }

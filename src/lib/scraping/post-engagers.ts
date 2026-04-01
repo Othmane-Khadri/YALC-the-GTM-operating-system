@@ -30,7 +30,7 @@ interface ScrapePostResult {
  */
 function extractActivityId(url: string): string {
   // Pattern 1: /posts/...-activity-{id}-...
-  const activityMatch = url.match(/activity[/-](\d+)/)
+  const activityMatch = url.match(/activity[/:-](\d+)/)
   if (activityMatch) return activityMatch[1]
 
   // Pattern 2: urn:li:ugcPost:{id}
