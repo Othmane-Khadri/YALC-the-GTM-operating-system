@@ -126,11 +126,14 @@ export async function runSetup(): Promise<void> {
   console.log('\n── Provider Validation ──')
   const validations: ProviderValidation[] = []
 
-  // Unipile — lightweight getAccounts() call
+  // Unipile — lightweight getAccounts() call with timeout
   if (process.env.UNIPILE_API_KEY && process.env.UNIPILE_DSN) {
     const { unipileService } = await import('../services/unipile')
     validations.push(await validateProvider('Unipile', async () => {
-      await unipileService.getAccounts()
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Unipile validation timed out after 5s')), 5000)
+      )
+      await Promise.race([unipileService.getAccounts(), timeoutPromise])
     }))
   } else {
     validations.push({ provider: 'Unipile', valid: false, error: 'missing key' })
@@ -140,23 +143,29 @@ export async function runSetup(): Promise<void> {
   if (process.env.FIRECRAWL_API_KEY) {
     const { firecrawlService } = await import('../services/firecrawl')
     validations.push(await validateProvider('Firecrawl', async () => {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 5000)
-      try {
-        await firecrawlService.scrape('https://example.com')
-      } finally {
-        clearTimeout(timeout)
-      }
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Firecrawl validation timed out after 5s')), 5000)
+      )
+      await Promise.race([
+        firecrawlService.scrape('https://example.com'),
+        timeoutPromise,
+      ])
     }))
   } else {
     validations.push({ provider: 'Firecrawl', valid: false, error: 'missing key' })
   }
 
-  // Notion — lightweight search
+  // Notion — lightweight search with timeout
   if (process.env.NOTION_API_KEY) {
     const { notionService } = await import('../services/notion')
     validations.push(await validateProvider('Notion', async () => {
-      await notionService.search('', { property: 'object', value: 'page' })
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Notion validation timed out after 5s')), 5000)
+      )
+      await Promise.race([
+        notionService.search('', { property: 'object', value: 'page' }),
+        timeoutPromise,
+      ])
     }))
   } else {
     validations.push({ provider: 'Notion', valid: false, error: 'missing key' })

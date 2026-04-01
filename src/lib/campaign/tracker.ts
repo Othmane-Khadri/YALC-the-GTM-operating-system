@@ -12,6 +12,7 @@ import { calculateSignificance } from './significance'
 import type { GTMOSConfig } from '../config/types'
 import { fireWebhooks } from '../services/webhooks'
 import { sendSlackNotification, setSlackConfig } from '../services/slack'
+import { parseSchedule, shouldAutoActivate, isWithinSendWindow, isBusinessDaysAgo } from './schedule'
 
 interface TrackerOptions {
   config: GTMOSConfig
@@ -21,6 +22,8 @@ interface TrackerOptions {
 
 interface TrackerSummary {
   campaignsProcessed: number
+  campaignsActivated: number
+  campaignsSkipped: number
   connectionsAccepted: number
   repliesDetected: number
   dm1sSent: number
@@ -33,6 +36,8 @@ interface TrackerSummary {
 export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> {
   const summary: TrackerSummary = {
     campaignsProcessed: 0,
+    campaignsActivated: 0,
+    campaignsSkipped: 0,
     connectionsAccepted: 0,
     repliesDetected: 0,
     dm1sSent: 0,
@@ -47,6 +52,24 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
   // Initialize Slack config if available
   setSlackConfig(opts.config.slack)
 
+  // ── Gate A: Auto-activate scheduled campaigns ──────────────────────────────
+  if (!opts.campaignId) {
+    const scheduledCampaigns = await db.select().from(campaigns).where(eq(campaigns.status, 'scheduled'))
+    for (const camp of scheduledCampaigns) {
+      const schedule = parseSchedule(camp.schedule)
+      if (schedule && shouldAutoActivate(schedule)) {
+        console.log(`[tracker] Auto-activating scheduled campaign: ${camp.title} (startAt: ${schedule.startAt})`)
+        if (!opts.dryRun) {
+          await db.update(campaigns).set({
+            status: 'active',
+            updatedAt: new Date().toISOString(),
+          }).where(eq(campaigns.id, camp.id))
+        }
+        summary.campaignsActivated++
+      }
+    }
+  }
+
   // Phase 1: Load active campaigns
   const activeCampaigns = opts.campaignId
     ? await db.select().from(campaigns).where(eq(campaigns.id, opts.campaignId))
@@ -60,8 +83,30 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
   console.log(`[tracker] Found ${activeCampaigns.length} active campaign(s)`)
 
   for (const campaign of activeCampaigns) {
+    const schedule = parseSchedule(campaign.schedule)
+
+    // ── Gate B: Send window check ──────────────────────────────────────────
+    if (schedule) {
+      if (schedule.activeDays.length === 0) {
+        console.log(`[tracker] Campaign "${campaign.title}" has no active days — skipping`)
+        summary.campaignsSkipped++
+        continue
+      }
+      const windowCheck = isWithinSendWindow(schedule)
+      if (!windowCheck.allowed) {
+        console.log(`[tracker] Campaign "${campaign.title}" outside send window (${windowCheck.reason}) — skipping`)
+        summary.campaignsSkipped++
+        continue
+      }
+    }
+
     console.log(`\n[tracker] Processing: ${campaign.title}`)
     summary.campaignsProcessed++
+
+    // ── Gate C helper: per-campaign send pace ────────────────────────────────
+    const paceDelayMs = schedule
+      ? schedule.sendingPace.secondsBetweenSends * 1000
+      : opts.config.unipile.rate_limit_ms
 
     const accountId = campaign.linkedinAccountId
     if (!accountId) {
@@ -148,7 +193,7 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
 
     const connectedLeads = leads.filter(l => l.lifecycleStatus === 'Connected')
     for (const lead of connectedLeads) {
-      if (isDaysAgo(lead.connectedAt, timing.connect_to_dm1_days)) {
+      if (isBusinessDaysAgo(lead.connectedAt, timing.connect_to_dm1_days, schedule)) {
         const variant = lead.variantId ? variantMap.get(lead.variantId) : null
         const template = variant?.dm1Template ?? ''
         if (!template) continue
@@ -164,7 +209,14 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
             break
           }
           try {
+            // Mark pending BEFORE external call to prevent duplicate sends on retry
+            await db.update(campaignLeads).set({
+              lifecycleStatus: 'DM1_Pending',
+              updatedAt: new Date().toISOString(),
+            }).where(eq(campaignLeads.id, lead.id))
+
             await unipileService.sendMessage(accountId, lead.providerId, message)
+
             await db.transaction(async (tx) => {
               await tx.update(campaignLeads).set({
                 lifecycleStatus: 'DM1_Sent',
@@ -179,11 +231,16 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
               }
             })
           } catch (err) {
+            // Revert pending status on failure so lead can be retried
+            await db.update(campaignLeads).set({
+              lifecycleStatus: 'Connected',
+              updatedAt: new Date().toISOString(),
+            }).where(eq(campaignLeads.id, lead.id)).catch(() => {})
             console.error(`[tracker] Failed DM1 for ${lead.firstName} ${lead.lastName}:`, err)
             continue
           }
 
-          await delay(opts.config.unipile.rate_limit_ms)
+          await delay(paceDelayMs)
         }
         summary.dm1sSent++
       }
@@ -191,7 +248,7 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
 
     const dm1SentLeads = leads.filter(l => l.lifecycleStatus === 'DM1_Sent')
     for (const lead of dm1SentLeads) {
-      if (isDaysAgo(lead.dm1SentAt, timing.dm1_to_dm2_days)) {
+      if (isBusinessDaysAgo(lead.dm1SentAt, timing.dm1_to_dm2_days, schedule)) {
         const variant = lead.variantId ? variantMap.get(lead.variantId) : null
         const template = variant?.dm2Template ?? ''
         if (!template) continue
@@ -207,7 +264,14 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
             break
           }
           try {
+            // Mark pending BEFORE external call to prevent duplicate sends on retry
+            await db.update(campaignLeads).set({
+              lifecycleStatus: 'DM2_Pending',
+              updatedAt: new Date().toISOString(),
+            }).where(eq(campaignLeads.id, lead.id))
+
             await unipileService.sendMessage(accountId, lead.providerId, message)
+
             await db.transaction(async (tx) => {
               await tx.update(campaignLeads).set({
                 lifecycleStatus: 'DM2_Sent',
@@ -222,11 +286,16 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
               }
             })
           } catch (err) {
+            // Revert pending status on failure so lead can be retried
+            await db.update(campaignLeads).set({
+              lifecycleStatus: 'DM1_Sent',
+              updatedAt: new Date().toISOString(),
+            }).where(eq(campaignLeads.id, lead.id)).catch(() => {})
             console.error(`[tracker] Failed DM2 for ${lead.firstName} ${lead.lastName}:`, err)
             continue
           }
 
-          await delay(opts.config.unipile.rate_limit_ms)
+          await delay(paceDelayMs)
         }
         summary.dm2sSent++
       }
@@ -260,7 +329,14 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
           break
         }
         try {
+          // Mark pending BEFORE external call to prevent duplicate sends on retry
+          await db.update(campaignLeads).set({
+            lifecycleStatus: 'Connect_Pending',
+            updatedAt: new Date().toISOString(),
+          }).where(eq(campaignLeads.id, lead.id))
+
           await unipileService.sendConnection(accountId, lead.providerId, note)
+
           await db.transaction(async (tx) => {
             await tx.update(campaignLeads).set({
               lifecycleStatus: 'Connect_Sent',
@@ -275,16 +351,21 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
             }
           })
         } catch (err) {
+          // Revert pending status on failure so lead can be retried
+          await db.update(campaignLeads).set({
+            lifecycleStatus: 'Queued',
+            updatedAt: new Date().toISOString(),
+          }).where(eq(campaignLeads.id, lead.id)).catch(() => {})
           console.error(`[tracker] Failed connect for ${lead.firstName} ${lead.lastName}:`, err)
           continue
         }
 
-        await delay(opts.config.unipile.rate_limit_ms)
+        await delay(paceDelayMs)
       }
       summary.connectionsSent++
     }
 
-    // Phase 6: Auto-complete stale leads
+    // Phase 6: Auto-complete stale leads (always calendar days — staleness isn't business-sensitive)
     const staleConnects = leads.filter(l =>
       l.lifecycleStatus === 'Connect_Sent' && isDaysAgo(l.connectSentAt, 30)
     )
@@ -476,6 +557,8 @@ export async function runTracker(opts: TrackerOptions): Promise<TrackerSummary> 
 
   // Phase 9: Log summary
   console.log('\n─── Tracker Summary ───')
+  console.log(`Campaigns activated:    ${summary.campaignsActivated}`)
+  console.log(`Campaigns skipped:      ${summary.campaignsSkipped}`)
   console.log(`Campaigns processed:    ${summary.campaignsProcessed}`)
   console.log(`Connections accepted:    ${summary.connectionsAccepted}`)
   console.log(`Replies detected:       ${summary.repliesDetected}`)
