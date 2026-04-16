@@ -7,9 +7,13 @@ export const learningRoutes = new Hono()
 
 const SESSION_DIR = join(tmpdir(), 'gtm-os-rl-sessions')
 
+function sanitizeId(id: string): string {
+  return id.replace(/[^a-zA-Z0-9_-]/g, '')
+}
+
 // Get samples for a session
 learningRoutes.get('/sessions/:id/samples', (c) => {
-  const sessionDir = join(SESSION_DIR, c.req.param('id'))
+  const sessionDir = join(SESSION_DIR, sanitizeId(c.req.param('id')))
   const samplesPath = join(sessionDir, 'samples.json')
 
   if (!existsSync(samplesPath)) {
@@ -22,7 +26,7 @@ learningRoutes.get('/sessions/:id/samples', (c) => {
 
 // Save swipe results for a session
 learningRoutes.post('/sessions/:id/results', async (c) => {
-  const sessionId = c.req.param('id')
+  const sessionId = sanitizeId(c.req.param('id'))
   const sessionDir = join(SESSION_DIR, sessionId)
   mkdirSync(sessionDir, { recursive: true })
 
@@ -35,10 +39,11 @@ learningRoutes.post('/sessions/:id/results', async (c) => {
 
 // Create a new session (called by the optimize-skill)
 learningRoutes.post('/sessions', async (c) => {
-  const { sessionId, samples } = await c.req.json() as {
+  const { sessionId: rawId, samples } = await c.req.json() as {
     sessionId: string
     samples: unknown[]
   }
+  const sessionId = sanitizeId(rawId)
 
   const sessionDir = join(SESSION_DIR, sessionId)
   mkdirSync(sessionDir, { recursive: true })
@@ -53,7 +58,7 @@ learningRoutes.post('/sessions', async (c) => {
 
 // Get results for analysis
 learningRoutes.get('/sessions/:id/results', (c) => {
-  const resultsPath = join(SESSION_DIR, c.req.param('id'), 'results.json')
+  const resultsPath = join(SESSION_DIR, sanitizeId(c.req.param('id')), 'results.json')
 
   if (!existsSync(resultsPath)) {
     return c.json({ error: 'Results not found' }, 404)

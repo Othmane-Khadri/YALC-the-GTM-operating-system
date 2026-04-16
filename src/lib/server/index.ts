@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { bearerAuth } from 'hono/bearer-auth'
 import { serve } from '@hono/node-server'
 import { readFileSync } from 'fs'
 import { join, dirname } from 'path'
@@ -15,7 +16,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 export function createApp() {
   const app = new Hono()
 
-  app.use('*', cors())
+  app.use('*', cors({ origin: ['http://localhost:3847', 'http://127.0.0.1:3847'] }))
+
+  // Protect API routes with bearer token (GTM_OS_API_TOKEN)
+  const apiToken = process.env.GTM_OS_API_TOKEN
+  if (apiToken) {
+    app.use('/api/*', bearerAuth({ token: apiToken }))
+  }
 
   // API routes
   app.route('/api/review', reviewRoutes)

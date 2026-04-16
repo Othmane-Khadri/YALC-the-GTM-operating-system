@@ -7,9 +7,13 @@ const SESSION_DIR = join(tmpdir(), 'gtm-os-rl-sessions')
 
 export const swipeRoutes = new Hono()
 
+function sanitizeId(id: string): string {
+  return id.replace(/[^a-zA-Z0-9_-]/g, '')
+}
+
 // Get samples for a swipe session
 swipeRoutes.get('/:sessionId', async (c) => {
-  const sessionId = c.req.param('sessionId')
+  const sessionId = sanitizeId(c.req.param('sessionId'))
   const samplesPath = join(SESSION_DIR, sessionId, 'samples.json')
 
   if (!existsSync(samplesPath)) {
@@ -22,7 +26,7 @@ swipeRoutes.get('/:sessionId', async (c) => {
 
 // Submit swipe results
 swipeRoutes.post('/:sessionId/results', async (c) => {
-  const sessionId = c.req.param('sessionId')
+  const sessionId = sanitizeId(c.req.param('sessionId'))
   const sessionDir = join(SESSION_DIR, sessionId)
   const resultsPath = join(sessionDir, 'results.json')
 

@@ -155,8 +155,8 @@ async function startAndOpen(port: number, path: string): Promise<string> {
     const res = await fetch(`http://localhost:${port}/`)
     if (res.ok) {
       // Server already running, just open browser
-      const { exec } = await import('child_process')
-      exec(`open ${url}`)
+      const { execFile } = await import('child_process')
+      execFile('open', [url])
       return url
     }
   } catch {
@@ -166,8 +166,8 @@ async function startAndOpen(port: number, path: string): Promise<string> {
   const { startServer } = await import('../../server/index')
   startServer(port)
 
-  const { exec } = await import('child_process')
-  exec(`open ${url}`)
+  const { execFile } = await import('child_process')
+  execFile('open', [url])
 
   return url
 }

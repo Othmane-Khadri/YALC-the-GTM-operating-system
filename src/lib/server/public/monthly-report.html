@@ -69,9 +69,11 @@ async function loadReport(m) {
     const report = await res.json();
     renderReport(report);
   } catch (e) {
-    content.innerHTML = `<div class="loading" style="color:#e74c3c">Error: ${e.message}</div>`;
+    content.innerHTML = `<div class="loading" style="color:#e74c3c">Error: ${esc(e.message)}</div>`;
   }
 }
+
+function esc(s) { const d = document.createElement('div'); d.textContent = String(s ?? ''); return d.innerHTML; }
 
 function renderReport(r) {
   const o = r.overview;
@@ -101,7 +103,7 @@ function renderReport(r) {
       <tr><th>Campaign</th><th>Leads</th><th>Accept %</th><th>Reply %</th><th>Demos</th></tr>
       ${r.campaignComparison.map(c => `
         <tr>
-          <td>${c.title}</td>
+          <td>${esc(c.title)}</td>
           <td>${c.leads}</td>
           <td>${c.acceptRate}%</td>
           <td>${c.replyRate}%</td>

@@ -296,7 +296,7 @@
       }
 
       const channels = (c.channels || []).map(ch =>
-        `<span class="inline-block text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">${ch}</span>`
+        `<span class="inline-block text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">${esc(ch)}</span>`
       ).join(' ')
 
       document.getElementById('campaignMeta').innerHTML = `
