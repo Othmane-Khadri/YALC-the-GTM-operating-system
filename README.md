@@ -32,6 +32,16 @@ The `start` command walks you through 4 steps:
 
 You'll end with a readiness report showing what's unlocked and a suggested first command.
 
+### Updating
+
+Already set up? One command to pull the latest:
+
+```bash
+yalc-gtm update
+```
+
+This stashes any local changes, pulls from origin, reinstalls deps, and restores your changes. Your `~/.gtm-os/` config is never touched.
+
 ### After Setup
 
 ```bash

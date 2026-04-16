@@ -921,6 +921,15 @@ program
     }
   })
 
+// ─── update ─────────────────────────────────────────────────────────────────
+program
+  .command('update')
+  .description('Pull latest YALC updates without breaking your config')
+  .action(async () => {
+    const { runUpdate } = await import('./commands/update')
+    await runUpdate()
+  })
+
 // ─── doctor ────────────────────────────────────────────────────────────────
 program
   .command('doctor')
