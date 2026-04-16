@@ -1,0 +1,59 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Next.js
+.next
+out
+
+# Environment variables — NEVER commit these
+.env*
+!.env.example
+
+# Credential files — NEVER commit these
+client_secret*.json
+*.credentials.json
+service-account*.json
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode
+.idea
+*.swp
+
+# Build cache
+tsconfig.tsbuildinfo
+
+# Project instructions (private)
+CLAUDE.md
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.vercel
+
+# Local development artifacts
+.reply-tracking/
+gtmos-day30-review.html
+templates/luma-onboarding.json
+
+# Lead data and intelligence (may contain sensitive info)
+data/leads/*
+data/intelligence/*
+data/campaigns/*
+data/content/*
+!data/leads/.gitkeep
+!data/intelligence/.gitkeep
+!data/intelligence/README.md
+!data/campaigns/.gitkeep
+!data/content/.gitkeep
+gtm-os.db.bak

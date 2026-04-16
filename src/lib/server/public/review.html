@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GTM-OS — Lead Review</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            surface: { DEFAULT: '#0f0f0f', card: '#1a1a1a', hover: '#242424' },
+            accent: { DEFAULT: '#f5c542', dim: '#a68a2a' },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background: #0f0f0f; }
+    .card-enter { animation: fadeUp 0.2s ease-out; }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .score-ring {
+      width: 44px; height: 44px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 14px;
+    }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 9999px; font-weight: 500; }
+    .excluded-card { opacity: 0.45; }
+    .excluded-card .lead-name { text-decoration: line-through; }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 16px; height: 16px;
+      border-radius: 50%; background: #f5c542; cursor: pointer;
+    }
+    input[type="range"] {
+      -webkit-appearance: none; height: 4px; background: #333;
+      border-radius: 2px; outline: none;
+    }
+  </style>
+</head>
+<body class="dark text-gray-100 min-h-screen">
+  <div id="app" class="max-w-7xl mx-auto px-4 py-6">
+
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-2xl font-bold text-white">Lead Review</h1>
+        <p class="text-sm text-gray-500 mt-1">GTM-OS — Review and exclude leads before outreach</p>
+      </div>
+      <button onclick="submitReview()" id="done-btn"
+        class="bg-accent text-black font-semibold px-6 py-2.5 rounded-lg hover:bg-yellow-400 transition disabled:opacity-40 disabled:cursor-not-allowed">
+        Done Reviewing
+      </button>
+    </div>
+
+    <div class="grid grid-cols-3 gap-3 mb-6">
+      <div class="bg-surface-card rounded-lg p-4 text-center">
+        <div id="stat-total" class="text-2xl font-bold text-white">-</div>
+        <div class="text-xs text-gray-500 mt-1">Total</div>
+      </div>
+      <div class="bg-surface-card rounded-lg p-4 text-center">
+        <div id="stat-qualified" class="text-2xl font-bold text-emerald-400">-</div>
+        <div class="text-xs text-gray-500 mt-1">Qualified</div>
+      </div>
+      <div class="bg-surface-card rounded-lg p-4 text-center">
+        <div id="stat-excluded" class="text-2xl font-bold text-red-400">0</div>
+        <div class="text-xs text-gray-500 mt-1">Excluded</div>
+      </div>
+    </div>
+
+    <div class="bg-surface-card rounded-lg p-4 mb-6 flex flex-wrap gap-4 items-end">
+      <div class="flex-1 min-w-[200px]">
+        <label class="text-xs text-gray-500 block mb-1">Search</label>
+        <input type="text" id="filter-search" placeholder="Name, company, headline..."
+          class="w-full bg-surface rounded-md px-3 py-2 text-sm text-white border border-gray-700 focus:border-accent focus:outline-none"
+          oninput="applyFilters()">
+      </div>
+      <div class="w-36">
+        <label class="text-xs text-gray-500 block mb-1">Status</label>
+        <select id="filter-status"
+          class="w-full bg-surface rounded-md px-3 py-2 text-sm text-white border border-gray-700 focus:border-accent focus:outline-none"
+          onchange="applyFilters()">
+          <option value="all">All</option>
+          <option value="qualified">Qualified</option>
+          <option value="excluded">Excluded</option>
+          <option value="permanent">Permanently Blocked</option>
+        </select>
+      </div>
+      <div class="w-36">
+        <label class="text-xs text-gray-500 block mb-1">Sort</label>
+        <select id="filter-sort"
+          class="w-full bg-surface rounded-md px-3 py-2 text-sm text-white border border-gray-700 focus:border-accent focus:outline-none"
+          onchange="applyFilters()">
+          <option value="score-desc">Score (High)</option>
+          <option value="score-asc">Score (Low)</option>
+          <option value="name-asc">Name (A-Z)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="flex gap-3 mb-4 items-center">
+      <span id="visible-count" class="text-sm text-gray-500"></span>
+      <button onclick="bulkExclude()" class="text-sm px-3 py-1.5 rounded-md bg-red-900/40 text-red-400 hover:bg-red-900/60 transition">
+        Exclude All Visible
+      </button>
+      <button onclick="clearExclusions()" class="text-sm px-3 py-1.5 rounded-md bg-gray-800 text-gray-400 hover:bg-gray-700 transition">
+        Clear Exclusions
+      </button>
+    </div>
+
+    <div id="grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"></div>
+    <div id="empty" class="hidden text-center py-16 text-gray-500">No leads match your filters.</div>
+    <div id="loading" class="text-center py-16 text-gray-500">Loading leads...</div>
+  </div>
+
+  <div id="modal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+    <div class="bg-surface-card rounded-xl p-8 max-w-md w-full mx-4 text-center">
+      <div class="text-4xl mb-4">&#10003;</div>
+      <h2 class="text-xl font-bold text-white mb-2">Review Complete</h2>
+      <p id="modal-summary" class="text-gray-400 mb-6"></p>
+    </div>
+  </div>
+
+  <script>
+    let leads = [];
+    let excluded = new Set();       // campaign-only exclusions
+    let permExcluded = new Set();   // permanent exclusions (always exclude)
+    let existingBlocklist = new Set(); // already in DB blocklist
+    let filteredLeads = [];
+
+    async function init() {
+      // Load blocklist first
+      const blRes = await fetch('/api/review/blocklist?scope=permanent');
+      const blData = await blRes.json();
+      for (const entry of blData.items) {
+        if (entry.provider_id) existingBlocklist.add(entry.provider_id);
+        if (entry.linkedin_slug) existingBlocklist.add(entry.linkedin_slug);
+      }
+
+      const res = await fetch('/api/review/leads?status=pending&type=lead_qualification');
+      const data = await res.json();
+      leads = data.items.map(item => ({
+        id: item.id,
+        ...item.payload,
+        _title: item.title,
+        _description: item.description,
+        _priority: item.priority,
+      }));
+
+      // Auto-mark leads that are already permanently blocklisted
+      for (const l of leads) {
+        const pid = l.provider_id || '';
+        const slug = l.linkedin_slug || '';
+        if (existingBlocklist.has(pid) || existingBlocklist.has(slug)) {
+          permExcluded.add(l.id);
+        }
+      }
+
+      document.getElementById('loading').classList.add('hidden');
+      applyFilters();
+      updateStats();
+    }
+
+    function isExcluded(id) { return excluded.has(id) || permExcluded.has(id); }
+    function isPermanent(id) { return permExcluded.has(id); }
+
+    function toggleExclude(id) {
+      if (permExcluded.has(id)) return; // can't toggle permanent via regular button
+      if (excluded.has(id)) excluded.delete(id);
+      else excluded.add(id);
+      updateStats();
+      renderCards();
+    }
+
+    function togglePermanentExclude(id) {
+      if (permExcluded.has(id)) {
+        permExcluded.delete(id);
+        excluded.delete(id); // also remove from campaign exclusion
+      } else {
+        permExcluded.add(id);
+        excluded.delete(id); // permanent supersedes campaign
+      }
+      updateStats();
+      renderCards();
+    }
+
+    function updateStats() {
+      const totalExcluded = new Set([...excluded, ...permExcluded]).size;
+      document.getElementById('stat-total').textContent = leads.length;
+      document.getElementById('stat-qualified').textContent = leads.length - totalExcluded;
+      document.getElementById('stat-excluded').textContent = `${totalExcluded}` + (permExcluded.size > 0 ? ` (${permExcluded.size} permanent)` : '');
+    }
+
+    function applyFilters() {
+      const search = document.getElementById('filter-search').value.toLowerCase();
+      const status = document.getElementById('filter-status').value;
+      const sort = document.getElementById('filter-sort').value;
+
+      filteredLeads = leads.filter(l => {
+        if (status === 'qualified' && isExcluded(l.id)) return false;
+        if (status === 'excluded' && !isExcluded(l.id)) return false;
+        if (status === 'permanent' && !isPermanent(l.id)) return false;
+        if (search) {
+          const h = `${l.name||''} ${l.company||''} ${l.title||''} ${l.headline||''} ${l.location||''}`.toLowerCase();
+          if (!h.includes(search)) return false;
+        }
+        return true;
+      });
+
+      const [field, dir] = sort.split('-');
+      filteredLeads.sort((a, b) => {
+        let va, vb;
+        if (field === 'score') { va = a.score||0; vb = b.score||0; }
+        else if (field === 'name') { va = (a.name||'').toLowerCase(); vb = (b.name||'').toLowerCase(); }
+        if (va < vb) return dir === 'asc' ? -1 : 1;
+        if (va > vb) return dir === 'asc' ? 1 : -1;
+        return 0;
+      });
+
+      document.getElementById('visible-count').textContent = `${filteredLeads.length} of ${leads.length} leads`;
+      renderCards();
+    }
+
+    function scoreColor(s) {
+      if (s >= 95) return 'bg-emerald-900/50 text-emerald-300 border border-emerald-700/50';
+      if (s >= 85) return 'bg-yellow-900/50 text-yellow-300 border border-yellow-700/50';
+      return 'bg-orange-900/50 text-orange-300 border border-orange-700/50';
+    }
+
+    function renderCards() {
+      const grid = document.getElementById('grid');
+      const empty = document.getElementById('empty');
+      if (filteredLeads.length === 0) { grid.innerHTML = ''; empty.classList.remove('hidden'); return; }
+      empty.classList.add('hidden');
+
+      grid.innerHTML = filteredLeads.map(l => {
+        const ex = isExcluded(l.id);
+        const perm = isPermanent(l.id);
+        return `
+          <div class="card-enter bg-surface-card rounded-lg p-4 border ${perm ? 'border-purple-600/60 excluded-card' : ex ? 'border-red-600/60 excluded-card' : 'border-gray-800'} transition-all hover:bg-surface-hover">
+            <div class="flex items-start gap-3 mb-3">
+              <div class="score-ring ${scoreColor(l.score||0)} shrink-0">${l.score||'?'}</div>
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <span class="font-semibold text-white text-sm truncate lead-name">${esc(l.name||l._title)}</span>
+                  ${l.profile_url ? `<a href="${esc(l.profile_url)}" target="_blank" class="text-blue-400 hover:text-blue-300 shrink-0"><svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg></a>` : ''}
+                </div>
+                <div class="text-xs text-gray-400 truncate mt-0.5">${esc(l._description||'')}</div>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-1.5 mb-3">
+              ${l.location ? `<span class="badge bg-gray-800 text-gray-400">${esc(l.location.split(',').slice(0,2).join(','))}</span>` : ''}
+              ${l.network_distance === 'FIRST_DEGREE' ? '<span class="badge bg-blue-900/50 text-blue-300">1st</span>' : l.network_distance ? '<span class="badge bg-gray-800 text-gray-500">2nd</span>' : ''}
+              ${l.is_premium ? '<span class="badge bg-amber-900/50 text-amber-300">Premium</span>' : ''}
+            </div>
+            ${l.rationale ? `<p class="text-xs text-gray-500 mb-3 line-clamp-2">${esc(l.rationale)}</p>` : ''}
+            <div class="flex gap-2">
+              <button onclick="toggleExclude('${l.id}')"
+                class="flex-1 py-1.5 rounded-md text-xs font-medium transition
+                  ${perm ? 'bg-gray-900 text-gray-600 cursor-not-allowed' : ex ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-gray-800 text-gray-400 hover:bg-red-900/40 hover:text-red-400'}"
+                ${perm ? 'disabled' : ''}>
+                ${perm ? 'Permanently blocked' : ex ? 'Restore' : 'Exclude'}
+              </button>
+              <button onclick="togglePermanentExclude('${l.id}')"
+                class="py-1.5 px-3 rounded-md text-xs font-medium transition
+                  ${perm ? 'bg-purple-600 text-white hover:bg-purple-700' : 'bg-gray-800 text-gray-400 hover:bg-purple-900/40 hover:text-purple-400'}"
+                title="${perm ? 'Remove from permanent blocklist' : 'Always exclude from all future campaigns'}">
+                ${perm ? '⊘ Unblock' : '⊘ Always'}
+              </button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function bulkExclude() { filteredLeads.forEach(l => { if (!permExcluded.has(l.id)) excluded.add(l.id); }); updateStats(); renderCards(); }
+    function clearExclusions() { excluded.clear(); permExcluded.clear(); updateStats(); renderCards(); }
+
+    async function submitReview() {
+      const btn = document.getElementById('done-btn');
+      btn.disabled = true; btn.textContent = 'Saving...';
+
+      const allExcludedIds = new Set([...excluded, ...permExcluded]);
+
+      // 1. Persist permanent exclusions to blocklist API
+      if (permExcluded.size > 0) {
+        const permLeads = leads.filter(l => permExcluded.has(l.id)).map(l => ({
+          provider_id: l.provider_id || '',
+          linkedin_url: l.profile_url || l.linkedin_url || '',
+          linkedin_slug: l.linkedin_slug || '',
+          name: l.name || l._title || '',
+          headline: l.headline || l.title || '',
+          company: l.company || '',
+          reason: 'Permanently excluded via review dashboard',
+        }));
+        await fetch('/api/review/blocklist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leads: permLeads, scope: 'permanent' }),
+        });
+      }
+
+      // 2. Reject all excluded (campaign + permanent) in review queue
+      const excludedArr = Array.from(allExcludedIds);
+      if (excludedArr.length > 0) {
+        await fetch('/api/review/leads/bulk-reject', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: excludedArr, notes: 'Excluded via review dashboard' }),
+        });
+      }
+
+      // 3. Auto-approve remaining
+      const approvedIds = leads.filter(l => !allExcludedIds.has(l.id)).map(l => l.id);
+      for (const id of approvedIds) {
+        await fetch(`/api/review/leads/${id}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+      }
+
+      const q = leads.length - allExcludedIds.size;
+      document.getElementById('modal-summary').textContent =
+        `${q} qualified, ${excluded.size} excluded for this campaign, ${permExcluded.size} permanently blocklisted out of ${leads.length} leads.`;
+      document.getElementById('modal').classList.remove('hidden');
+    }
+
+    init();
+  </script>
+</body>
+</html>

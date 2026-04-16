@@ -1,0 +1,31 @@
+# 3-Step Cold Email Sequence — ColdIQ Framework
+# Structure: Full pitch → Threaded reply → New thread
+# Merge fields: {{first_name}}, {{company}}, {{title}}
+# Paste into: email:send --sequence templates/sequences/cold-email-3step.yaml
+
+steps:
+  - subject: "quick question"
+    body: |
+      Hey {{first_name}}, saw {{company}} is scaling the team right now.
+
+      I help companies in your space build pipeline without adding headcount. One of them added 40 meetings last month from cold email alone, team of 2.
+
+      I put together a quick breakdown of how I'd structure outbound for {{company}}. Took me 10 minutes, yours to keep either way.
+
+      Want me to send it over?
+    delay_days: 0
+
+  - body: |
+      Forgot to mention, the 40 meetings came from a team of 2, not 20. Small team, right channel, right offer.
+
+      Happy to share exactly what we did if useful.
+    delay_days: 3
+
+  - subject: "{{company}} + outbound"
+    body: |
+      Hey {{first_name}}, different angle here.
+
+      Most teams I talk to spend $15-20K/month per SDR when you factor in salary, tools, and ramp time. The ones cutting that in half run cold email in parallel, not instead of, their existing motion.
+
+      Worth a 10-min look at what that could look like for {{company}}?
+    delay_days: 7

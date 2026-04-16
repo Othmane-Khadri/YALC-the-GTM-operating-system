@@ -1,0 +1,33 @@
+# Outreach Email: {target_company} — {target_name}
+**Date:** {YYYY-MM-DD}
+**Segment:** {segment_id}
+
+## Subject Line Options
+1. {subject_1}
+2. {subject_2}
+3. {subject_3}
+
+## Email Body
+
+{personalized_first_line — reference something specific about the prospect: recent news, hiring, product launch, or LinkedIn post}
+
+{pain_point_bridge — connect their situation to a pain point from gtm-os.yaml segments[].pain_points}
+
+{value_bridge — show how you solve this, using segments[].messaging.key_messages}
+
+{soft_cta — question or low-friction next step, never "book a demo"}
+
+{signature}
+
+---
+
+## Template Rules
+- Under 150 words total
+- Personalized first line is mandatory — never start with "I hope this finds you well"
+- Reference specific pain points from gtm-os.yaml segments[].pain_points
+- Use tone from segments[].voice.tone and segments[].voice.style
+- Use key phrases from segments[].voice.key_phrases
+- Avoid phrases from segments[].voice.avoid_phrases
+- No mention of attachments
+- Soft CTA only — ask a question, don't push a meeting
+- If research brief exists for target, reference specific findings

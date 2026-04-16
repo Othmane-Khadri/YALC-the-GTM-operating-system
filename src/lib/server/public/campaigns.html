@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GTM-OS — Campaign Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            surface: { DEFAULT: '#0f0f0f', card: '#1a1a1a', hover: '#242424' },
+            accent: { DEFAULT: '#f5c542', dim: '#a68a2a' },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background: #0f0f0f; }
+    .card-enter { animation: fadeUp 0.2s ease-out; }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 9999px; font-weight: 500; }
+  </style>
+</head>
+<body class="dark text-gray-100 min-h-screen">
+  <div id="app" class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-xl font-bold">Campaign Dashboard</h1>
+        <p class="text-sm text-gray-500 mt-1">Overview of all outreach campaigns</p>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="lastUpdated" class="text-[10px] text-gray-600"></span>
+        <button id="pauseToggle" onclick="togglePause()"
+          class="text-xs text-gray-500 hover:text-accent transition px-2 py-1 rounded border border-gray-700 hover:border-accent/40"
+          title="Pause/resume auto-refresh">&#9208; Live</button>
+        <select id="statusFilter" onchange="filterCampaigns()"
+          class="bg-surface-card border border-gray-700 text-sm rounded-lg px-3 py-1.5 text-gray-300 focus:border-accent outline-none">
+          <option value="">All</option>
+          <option value="active">Active</option>
+          <option value="paused">Paused</option>
+          <option value="draft">Draft</option>
+          <option value="completed">Completed</option>
+        </select>
+        <a href="/" class="text-xs text-gray-500 hover:text-accent transition">&larr; Home</a>
+      </div>
+    </div>
+
+    <!-- Summary stats -->
+    <div id="summary" class="grid grid-cols-3 gap-4 mb-6">
+      <div class="bg-surface-card rounded-lg p-4 border border-gray-800">
+        <div class="text-xs text-gray-500 uppercase tracking-wide">Total Campaigns</div>
+        <div id="totalCampaigns" class="text-2xl font-bold mt-1">—</div>
+      </div>
+      <div class="bg-surface-card rounded-lg p-4 border border-gray-800">
+        <div class="text-xs text-gray-500 uppercase tracking-wide">Total Leads</div>
+        <div id="totalLeads" class="text-2xl font-bold mt-1">—</div>
+      </div>
+      <div class="bg-surface-card rounded-lg p-4 border border-gray-800">
+        <div class="text-xs text-gray-500 uppercase tracking-wide">Avg Reply Rate</div>
+        <div id="avgReply" class="text-2xl font-bold mt-1 text-accent">—</div>
+      </div>
+    </div>
+
+    <!-- Campaign cards grid -->
+    <div id="campaigns" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div class="text-gray-500 text-sm col-span-full text-center py-12">Loading campaigns...</div>
+    </div>
+
+    <!-- Empty state -->
+    <div id="empty" class="hidden text-center py-16">
+      <div class="text-gray-600 text-lg">No campaigns found</div>
+      <p class="text-gray-700 text-sm mt-2">Create one with <code class="text-accent">gtm-os campaign:create</code></p>
+    </div>
+  </div>
+
+  <script>
+    let allCampaigns = []
+    let refreshInterval = null
+    let lastDataHash = null
+    let isPaused = false
+    let lastFetchTime = null
+
+    const STATUS_COLORS = {
+      active:    { bg: 'rgba(34,197,94,0.12)', text: '#22c55e' },
+      paused:    { bg: 'rgba(234,179,8,0.12)',  text: '#eab308' },
+      draft:     { bg: 'rgba(156,163,175,0.12)', text: '#9ca3af' },
+      completed: { bg: 'rgba(59,130,246,0.12)',  text: '#3b82f6' },
+      planning:  { bg: 'rgba(168,85,247,0.12)',  text: '#a855f7' },
+      failed:    { bg: 'rgba(239,68,68,0.12)',   text: '#ef4444' },
+    }
+
+    const FUNNEL_COLORS = {
+      Queued:       '#4b5563',
+      Connect_Sent: '#3b82f6',
+      Connected:    '#6366f1',
+      DM1_Sent:     '#8b5cf6',
+      DM2_Sent:     '#a78bfa',
+      Replied:      '#22c55e',
+      Demo_Booked:  '#f5c542',
+      Deal_Created: '#f59e0b',
+      Closed_Won:   '#10b981',
+      Closed_Lost:  '#ef4444',
+      Expired:      '#6b7280',
+      No_Reply:     '#374151',
+    }
+
+    async function loadCampaigns() {
+      try {
+        const res = await fetch('/api/campaigns')
+        const data = await res.json()
+        const hash = JSON.stringify(data)
+        if (hash !== lastDataHash) {
+          lastDataHash = hash
+          allCampaigns = data.campaigns || []
+          renderCampaigns(allCampaigns)
+          renderSummary(allCampaigns)
+        }
+        lastFetchTime = Date.now()
+        updateLastUpdated()
+      } catch (err) {
+        document.getElementById('campaigns').innerHTML =
+          '<div class="text-red-400 text-sm col-span-full text-center py-12">Failed to load campaigns</div>'
+      }
+    }
+
+    function startPolling() {
+      if (refreshInterval) clearInterval(refreshInterval)
+      refreshInterval = setInterval(() => { if (!isPaused) loadCampaigns() }, 30000)
+    }
+
+    function togglePause() {
+      isPaused = !isPaused
+      const btn = document.getElementById('pauseToggle')
+      btn.innerHTML = isPaused ? '&#9654; Paused' : '&#9208; Live'
+      btn.style.color = isPaused ? '#eab308' : ''
+    }
+
+    function updateLastUpdated() {
+      const el = document.getElementById('lastUpdated')
+      if (!lastFetchTime) return
+      const secs = Math.floor((Date.now() - lastFetchTime) / 1000)
+      el.textContent = secs < 5 ? 'Just now' : `${secs}s ago`
+    }
+
+    setInterval(updateLastUpdated, 5000)
+
+    async function pauseCampaign(id, e) {
+      e.preventDefault(); e.stopPropagation()
+      if (!confirm('Pause this campaign?')) return
+      await fetch(`/api/campaigns/${id}/pause`, { method: 'POST' })
+      lastDataHash = null
+      loadCampaigns()
+    }
+
+    async function resumeCampaign(id, e) {
+      e.preventDefault(); e.stopPropagation()
+      if (!confirm('Resume this campaign?')) return
+      await fetch(`/api/campaigns/${id}/resume`, { method: 'POST' })
+      lastDataHash = null
+      loadCampaigns()
+    }
+
+    function filterCampaigns() {
+      const status = document.getElementById('statusFilter').value
+      const filtered = status
+        ? allCampaigns.filter(c => c.status === status)
+        : allCampaigns
+      renderCampaigns(filtered)
+    }
+
+    function renderSummary(campaigns) {
+      document.getElementById('totalCampaigns').textContent = campaigns.length
+      const totalLeads = campaigns.reduce((sum, c) => sum + (c.leadCount || 0), 0)
+      document.getElementById('totalLeads').textContent = totalLeads
+
+      // Weighted average reply rate
+      const activeCampaigns = campaigns.filter(c => c.leadCount > 0)
+      if (activeCampaigns.length > 0) {
+        const totalReplied = activeCampaigns.reduce((sum, c) => sum + (c.funnel?.Replied || 0), 0)
+        const totalSent = activeCampaigns.reduce((sum, c) => {
+          return sum + (c.leadCount - (c.funnel?.Queued || 0))
+        }, 0)
+        const avgRate = totalSent > 0 ? ((totalReplied / totalSent) * 100).toFixed(1) : '0'
+        document.getElementById('avgReply').textContent = avgRate + '%'
+      } else {
+        document.getElementById('avgReply').textContent = '—'
+      }
+    }
+
+    function renderCampaigns(campaigns) {
+      const container = document.getElementById('campaigns')
+      const empty = document.getElementById('empty')
+
+      if (campaigns.length === 0) {
+        container.innerHTML = ''
+        empty.classList.remove('hidden')
+        return
+      }
+      empty.classList.add('hidden')
+
+      container.innerHTML = campaigns.map((c, i) => {
+        const sc = STATUS_COLORS[c.status] || STATUS_COLORS.draft
+        const acceptRate = c.leadCount > 0
+          ? ((c.funnel?.Connected || 0) + (c.funnel?.DM1_Sent || 0) + (c.funnel?.DM2_Sent || 0) + (c.funnel?.Replied || 0) + (c.funnel?.Demo_Booked || 0)) / c.leadCount * 100
+          : 0
+        const replyRate = c.leadCount > 0
+          ? ((c.funnel?.Replied || 0) + (c.funnel?.Demo_Booked || 0)) / c.leadCount * 100
+          : 0
+        const demos = (c.funnel?.Demo_Booked || 0) + (c.funnel?.Deal_Created || 0) + (c.funnel?.Closed_Won || 0)
+
+        // Build funnel bar segments
+        const funnelSegments = buildFunnelBar(c.funnel, c.leadCount)
+
+        const timeAgo = formatTimeAgo(c.updatedAt)
+        const channels = (c.channels || []).map(ch =>
+          `<span class="inline-block text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">${ch}</span>`
+        ).join('')
+
+        return `
+          <a href="/campaigns/${c.id}"
+            class="card-enter block bg-surface-card rounded-lg p-5 border border-gray-800 hover:border-accent/40 transition cursor-pointer"
+            style="animation-delay: ${i * 50}ms">
+            <div class="flex items-start justify-between mb-3">
+              <h3 class="font-semibold text-sm leading-tight pr-2">${esc(c.title)}</h3>
+              <span class="badge shrink-0" style="background:${sc.bg}; color:${sc.text}">${c.status}</span>
+            </div>
+            <p class="text-xs text-gray-500 line-clamp-2 mb-3">${esc(c.hypothesis || '')}</p>
+            <div class="flex gap-1 mb-3">${channels}</div>
+            <div class="flex items-center gap-4 text-xs text-gray-400 mb-3">
+              <span><b class="text-gray-200">${c.leadCount}</b> leads</span>
+              <span><b class="text-gray-200">${acceptRate.toFixed(0)}%</b> accept</span>
+              <span class="text-accent"><b>${replyRate.toFixed(0)}%</b> reply</span>
+              <span><b class="text-gray-200">${demos}</b> demos</span>
+            </div>
+            ${funnelSegments}
+            <div class="flex items-center justify-between mt-3 text-[10px] text-gray-600">
+              <span>${c.variantCount || 0} variant${(c.variantCount || 0) !== 1 ? 's' : ''}</span>
+              <div class="flex items-center gap-2">
+                ${c.status === 'active' ? `<button onclick="pauseCampaign('${c.id}', event)" class="px-2 py-0.5 rounded border border-gray-700 hover:border-yellow-500/50 text-yellow-500 hover:text-yellow-400 transition">Pause</button>` : ''}
+                ${c.status === 'paused' ? `<button onclick="resumeCampaign('${c.id}', event)" class="px-2 py-0.5 rounded border border-gray-700 hover:border-green-500/50 text-green-500 hover:text-green-400 transition">Resume</button>` : ''}
+                <span>${timeAgo}</span>
+              </div>
+            </div>
+          </a>
+        `
+      }).join('')
+    }
+
+    function buildFunnelBar(funnel, total) {
+      if (!total || total === 0) return '<div class="h-1.5 bg-gray-800 rounded-full"></div>'
+
+      const stages = [
+        'Queued', 'Connect_Sent', 'Connected', 'DM1_Sent',
+        'DM2_Sent', 'Replied', 'Demo_Booked', 'Deal_Created',
+        'Closed_Won', 'Expired', 'No_Reply'
+      ]
+
+      const segments = stages
+        .filter(s => (funnel[s] || 0) > 0)
+        .map(s => {
+          const pct = ((funnel[s] || 0) / total * 100).toFixed(1)
+          return `<div style="width:${pct}%; background:${FUNNEL_COLORS[s] || '#4b5563'}"
+            title="${s.replace(/_/g, ' ')}: ${funnel[s]}" class="h-full first:rounded-l-full last:rounded-r-full"></div>`
+        })
+        .join('')
+
+      return `<div class="h-1.5 bg-gray-800 rounded-full overflow-hidden flex">${segments}</div>`
+    }
+
+    function formatTimeAgo(dateStr) {
+      if (!dateStr) return ''
+      const diff = Date.now() - new Date(dateStr).getTime()
+      const mins = Math.floor(diff / 60000)
+      if (mins < 60) return `${mins}m ago`
+      const hrs = Math.floor(mins / 60)
+      if (hrs < 24) return `${hrs}h ago`
+      const days = Math.floor(hrs / 24)
+      return `${days}d ago`
+    }
+
+    function esc(str) {
+      const el = document.createElement('span')
+      el.textContent = str
+      return el.innerHTML
+    }
+
+    loadCampaigns().then(startPolling)
+  </script>
+</body>
+</html>

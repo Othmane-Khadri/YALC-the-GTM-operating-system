@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GTM-OS — Monthly Report</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #0f0f0f; color: #e5e5e5; padding: 2rem; }
+.container { max-width: 900px; margin: 0 auto; }
+h1 { color: #f5c542; font-size: 1.75rem; margin-bottom: 0.5rem; }
+h2 { color: #f5c542; font-size: 1.1rem; margin: 2rem 0 1rem; border-bottom: 1px solid #333; padding-bottom: 0.5rem; }
+.subtitle { color: #888; margin-bottom: 2rem; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+.metric-card { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 1rem; text-align: center; }
+.metric-value { font-size: 1.75rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.metric-label { font-size: 0.75rem; color: #888; margin-top: 0.25rem; }
+.metric-delta { font-size: 0.75rem; margin-top: 0.25rem; }
+.delta-up { color: #2ecc71; }
+.delta-down { color: #e74c3c; }
+table { width: 100%; border-collapse: collapse; background: #1a1a1a; border-radius: 8px; overflow: hidden; }
+th { text-align: left; padding: 0.75rem 1rem; background: #222; color: #aaa; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+th:hover { color: #f5c542; }
+td { padding: 0.75rem 1rem; border-top: 1px solid #2a2a2a; font-size: 0.9rem; }
+.bar-container { width: 100%; height: 20px; background: #222; border-radius: 4px; overflow: hidden; margin-top: 0.25rem; }
+.bar { height: 100%; background: #f5c542; border-radius: 4px; transition: width 0.5s; }
+.tag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem; }
+.tag-item { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 0.5rem 0.75rem; display: flex; justify-content: space-between; font-size: 0.85rem; }
+.tag-name { color: #ccc; }
+.tag-rate { color: #f5c542; font-weight: 600; }
+.summary-box { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 1.5rem; line-height: 1.6; }
+.recs { list-style: none; }
+.recs li { padding: 0.5rem 0; border-bottom: 1px solid #222; }
+.recs li:last-child { border-bottom: none; }
+.loading { text-align: center; padding: 4rem; color: #888; }
+.month-select { background: #1a1a1a; border: 1px solid #333; color: #e5e5e5; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div style="display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <h1>Monthly Report</h1>
+      <p class="subtitle" id="subtitle">Loading...</p>
+    </div>
+    <input type="month" class="month-select" id="monthSelect" onchange="loadReport(this.value)">
+  </div>
+
+  <div id="content">
+    <div class="loading">Loading report...</div>
+  </div>
+</div>
+
+<script>
+const now = new Date();
+const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+const params = new URLSearchParams(window.location.search);
+const month = params.get('month') || currentMonth;
+
+document.getElementById('monthSelect').value = month;
+
+async function loadReport(m) {
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading">Loading report...</div>';
+
+  try {
+    const res = await fetch(`/api/campaigns/monthly-report?month=${m}`);
+    if (!res.ok) throw new Error('Failed to load report');
+    const report = await res.json();
+    renderReport(report);
+  } catch (e) {
+    content.innerHTML = `<div class="loading" style="color:#e74c3c">Error: ${e.message}</div>`;
+  }
+}
+
+function renderReport(r) {
+  const o = r.overview;
+  document.getElementById('subtitle').textContent = `${o.totalCampaigns} campaigns | ${o.totalLeads} leads | ${r.month}`;
+
+  const mom = r.monthOverMonth;
+  const delta = (v) => {
+    if (!v && v !== 0) return '';
+    const cls = v > 0 ? 'delta-up' : v < 0 ? 'delta-down' : '';
+    return `<div class="metric-delta ${cls}">${v > 0 ? '+' : ''}${v}</div>`;
+  };
+
+  let html = `
+    <div class="metrics">
+      <div class="metric-card"><div class="metric-value">${o.totalLeads}</div><div class="metric-label">Total Leads</div>${mom ? delta(mom.leadsDelta) : ''}</div>
+      <div class="metric-card"><div class="metric-value">${o.totalConnections}</div><div class="metric-label">Connects Sent</div></div>
+      <div class="metric-card"><div class="metric-value">${o.overallAcceptRate}%</div><div class="metric-label">Accept Rate</div>${mom ? delta(mom.acceptRateDelta + '%') : ''}</div>
+      <div class="metric-card"><div class="metric-value">${o.totalDMs}</div><div class="metric-label">DMs Sent</div></div>
+      <div class="metric-card"><div class="metric-value">${o.overallReplyRate}%</div><div class="metric-label">Reply Rate</div>${mom ? delta(mom.replyRateDelta + '%') : ''}</div>
+      <div class="metric-card"><div class="metric-value">${o.totalDemos}</div><div class="metric-label">Demos</div></div>
+    </div>`;
+
+  // Campaign comparison table
+  if (r.campaignComparison.length > 0) {
+    html += `<h2>Campaign Comparison</h2>
+    <table>
+      <tr><th>Campaign</th><th>Leads</th><th>Accept %</th><th>Reply %</th><th>Demos</th></tr>
+      ${r.campaignComparison.map(c => `
+        <tr>
+          <td>${c.title}</td>
+          <td>${c.leads}</td>
+          <td>${c.acceptRate}%</td>
+          <td>${c.replyRate}%</td>
+          <td>${c.demos}</td>
+        </tr>
+      `).join('')}
+    </table>`;
+  }
+
+  // Tags
+  if (r.crossCampaignTags && r.crossCampaignTags.length > 0) {
+    html += `<h2>Tag Performance</h2><div class="tag-grid">
+      ${r.crossCampaignTags.map(t => `
+        <div class="tag-item">
+          <span class="tag-name">${t.tag} (${t.count})</span>
+          <span class="tag-rate">${t.replyRate}% reply</span>
+        </div>
+      `).join('')}
+    </div>`;
+  }
+
+  // Executive summary
+  if (r.executiveSummary) {
+    html += `<h2>Executive Summary</h2><div class="summary-box">${r.executiveSummary}</div>`;
+  }
+
+  // Recommendations
+  if (r.recommendations && r.recommendations.length > 0) {
+    html += `<h2>Recommendations</h2><ul class="recs">
+      ${r.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+    </ul>`;
+  }
+
+  document.getElementById('content').innerHTML = html;
+}
+
+loadReport(month);
+</script>
+</body>
+</html>

@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GTM-OS — Campaign Detail</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            surface: { DEFAULT: '#0f0f0f', card: '#1a1a1a', hover: '#242424' },
+            accent: { DEFAULT: '#f5c542', dim: '#a68a2a' },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background: #0f0f0f; }
+    .card-enter { animation: fadeUp 0.2s ease-out; }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 9999px; font-weight: 500; }
+    .timeline-dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .timeline-line { height: 2px; flex: 1; min-width: 12px; }
+    .pulse { animation: pulse-ring 1.5s ease-in-out infinite; }
+    @keyframes pulse-ring {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(245,197,66,0.4); }
+      50% { box-shadow: 0 0 0 4px rgba(245,197,66,0); }
+    }
+    .metric-box { text-align: center; }
+    .metric-box .value { font-size: 20px; font-weight: 700; }
+    .metric-box .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; }
+    .detail-panel { border-left: 3px solid #f5c542; animation: slideDown 0.15s ease-out; }
+    @keyframes slideDown {
+      from { opacity: 0; max-height: 0; }
+      to { opacity: 1; max-height: 500px; }
+    }
+  </style>
+</head>
+<body class="dark text-gray-100 min-h-screen">
+  <div id="app" class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- Loading -->
+    <div id="loading" class="text-gray-500 text-sm text-center py-12">Loading campaign...</div>
+
+    <!-- Content (hidden until loaded) -->
+    <div id="content" class="hidden">
+
+      <!-- Back + header -->
+      <div class="mb-6">
+        <div class="flex items-center justify-between">
+          <a href="/campaigns" class="text-xs text-gray-500 hover:text-accent transition">&larr; Back to campaigns</a>
+          <div class="flex items-center gap-2">
+            <span id="lastUpdated" class="text-[10px] text-gray-600"></span>
+            <button id="pauseToggle" onclick="togglePause()"
+              class="text-xs text-gray-500 hover:text-accent transition px-2 py-1 rounded border border-gray-700 hover:border-accent/40"
+              title="Pause/resume auto-refresh">&#9208; Live</button>
+          </div>
+        </div>
+        <div class="flex items-start justify-between mt-3">
+          <div>
+            <h1 id="campaignTitle" class="text-xl font-bold"></h1>
+            <p id="campaignHypothesis" class="text-sm text-gray-500 mt-1"></p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="campaignStatus" class="badge"></span>
+            <span id="experimentBadge" class="badge hidden"></span>
+          </div>
+        </div>
+        <div id="campaignMeta" class="flex items-center gap-4 mt-3 text-xs text-gray-600"></div>
+      </div>
+
+      <!-- Variant comparison -->
+      <div id="variantsSection" class="mb-6">
+        <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Variant Performance</h2>
+        <div id="variants" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+      </div>
+
+      <!-- Funnel summary -->
+      <div class="mb-6">
+        <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Funnel</h2>
+        <div id="funnelBar" class="bg-surface-card rounded-lg p-4 border border-gray-800"></div>
+      </div>
+
+      <!-- Analytics Charts -->
+      <div class="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <!-- Funnel Visualization -->
+        <div class="bg-surface-card rounded-lg p-4 border border-gray-800">
+          <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Pipeline Funnel</h3>
+          <div id="funnelChart"></div>
+        </div>
+
+        <!-- Variant Comparison Chart -->
+        <div class="bg-surface-card rounded-lg p-4 border border-gray-800">
+          <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Variant Comparison</h3>
+          <div id="variantChart"></div>
+        </div>
+      </div>
+
+      <!-- Reply Timeline -->
+      <div class="mb-6">
+        <div class="bg-surface-card rounded-lg p-4 border border-gray-800">
+          <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Activity Over Time</h3>
+          <div id="timelineChart"></div>
+        </div>
+      </div>
+
+      <!-- Lead timeline table -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-3">
+            <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wide">
+              Leads <span id="leadCount" class="text-gray-600"></span>
+            </h2>
+            <a id="exportCsv" class="text-[10px] px-2 py-0.5 rounded border border-gray-700 text-gray-500 hover:text-accent hover:border-accent/40 transition cursor-pointer">Export CSV</a>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="searchInput" type="text" placeholder="Search name..."
+              oninput="filterLeads()"
+              class="bg-surface-card border border-gray-700 text-xs rounded-lg px-3 py-1.5 text-gray-300 focus:border-accent outline-none w-40">
+            <select id="statusLeadFilter" onchange="filterLeads()"
+              class="bg-surface-card border border-gray-700 text-xs rounded-lg px-3 py-1.5 text-gray-300 focus:border-accent outline-none">
+              <option value="">All statuses</option>
+              <option value="Queued">Queued</option>
+              <option value="Connect_Sent">Connect Sent</option>
+              <option value="Connected">Connected</option>
+              <option value="DM1_Sent">DM1 Sent</option>
+              <option value="DM2_Sent">DM2 Sent</option>
+              <option value="Replied">Replied</option>
+              <option value="Demo_Booked">Demo Booked</option>
+              <option value="Expired">Expired</option>
+              <option value="No_Reply">No Reply</option>
+            </select>
+            <select id="variantFilter" onchange="filterLeads()"
+              class="bg-surface-card border border-gray-700 text-xs rounded-lg px-3 py-1.5 text-gray-300 focus:border-accent outline-none">
+              <option value="">All variants</option>
+            </select>
+          </div>
+        </div>
+        <div id="leads" class="space-y-2"></div>
+      </div>
+
+      <!-- Campaign Chat Panel -->
+      <div class="mt-6">
+        <button id="chatToggle" onclick="toggleChat()"
+          class="w-full text-left bg-surface-card rounded-lg p-3 border border-gray-800 hover:border-accent/40 transition text-sm text-gray-400">
+          Ask about this campaign...
+        </button>
+        <div id="chatPanel" class="hidden mt-2 bg-surface-card rounded-lg border border-gray-800">
+          <div id="chatMessages" class="p-4 max-h-80 overflow-y-auto space-y-3"></div>
+          <div class="border-t border-gray-800 p-3 flex gap-2">
+            <input id="chatInput" type="text" placeholder="Ask a question..."
+              onkeydown="if(event.key==='Enter')sendChat()"
+              class="flex-1 bg-surface border border-gray-700 text-sm rounded-lg px-3 py-2 text-gray-200 focus:border-accent outline-none">
+            <button onclick="sendChat()"
+              class="px-4 py-2 bg-accent text-black text-sm font-semibold rounded-lg hover:bg-accent/90 transition">Send</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let campaignData = null
+    let allLeads = []
+    let refreshInterval = null
+    let lastDataHash = null
+    let isPaused = false
+    let lastFetchTime = null
+
+    const STATUS_COLORS = {
+      active:    { bg: 'rgba(34,197,94,0.12)', text: '#22c55e' },
+      paused:    { bg: 'rgba(234,179,8,0.12)',  text: '#eab308' },
+      draft:     { bg: 'rgba(156,163,175,0.12)', text: '#9ca3af' },
+      completed: { bg: 'rgba(59,130,246,0.12)',  text: '#3b82f6' },
+      planning:  { bg: 'rgba(168,85,247,0.12)',  text: '#a855f7' },
+      failed:    { bg: 'rgba(239,68,68,0.12)',   text: '#ef4444' },
+    }
+
+    const LIFECYCLE_COLORS = {
+      Queued:       { bg: 'rgba(75,85,99,0.15)',   text: '#9ca3af' },
+      Connect_Sent: { bg: 'rgba(59,130,246,0.15)', text: '#3b82f6' },
+      Connected:    { bg: 'rgba(99,102,241,0.15)', text: '#6366f1' },
+      DM1_Sent:     { bg: 'rgba(139,92,246,0.15)', text: '#8b5cf6' },
+      DM2_Sent:     { bg: 'rgba(167,139,250,0.15)',text: '#a78bfa' },
+      Replied:      { bg: 'rgba(34,197,94,0.15)',  text: '#22c55e' },
+      Demo_Booked:  { bg: 'rgba(245,197,66,0.15)', text: '#f5c542' },
+      Deal_Created: { bg: 'rgba(245,158,11,0.15)', text: '#f59e0b' },
+      Closed_Won:   { bg: 'rgba(16,185,129,0.15)', text: '#10b981' },
+      Closed_Lost:  { bg: 'rgba(239,68,68,0.15)',  text: '#ef4444' },
+      Expired:      { bg: 'rgba(107,114,128,0.15)',text: '#6b7280' },
+      No_Reply:     { bg: 'rgba(55,65,81,0.15)',   text: '#6b7280' },
+    }
+
+    // Timeline stage definitions
+    const TIMELINE_STAGES = [
+      { key: 'connectSentAt', label: 'Connect', color: '#3b82f6' },
+      { key: 'connectedAt',   label: 'Accepted', color: '#6366f1' },
+      { key: 'dm1SentAt',     label: 'DM1', color: '#8b5cf6' },
+      { key: 'dm2SentAt',     label: 'DM2', color: '#a78bfa' },
+      { key: 'repliedAt',     label: 'Replied', color: '#22c55e' },
+    ]
+
+    const campaignId = window.location.pathname.split('/').filter(Boolean).pop()
+
+    async function loadCampaign() {
+      try {
+        const [campaignRes, leadsRes] = await Promise.all([
+          fetch(`/api/campaigns/${campaignId}`),
+          fetch(`/api/campaigns/${campaignId}/leads`),
+        ])
+
+        if (!campaignRes.ok) {
+          document.getElementById('loading').innerHTML = '<span class="text-red-400">Campaign not found</span>'
+          return
+        }
+
+        const newCampaignData = await campaignRes.json()
+        const newLeadsData = await leadsRes.json()
+        const hash = JSON.stringify({ c: newCampaignData, l: newLeadsData })
+
+        if (hash !== lastDataHash) {
+          lastDataHash = hash
+          campaignData = newCampaignData
+          allLeads = newLeadsData.leads || []
+
+          renderCampaign()
+          renderVariants()
+          renderFunnel()
+          renderFunnelChart()
+          renderVariantChart()
+          loadTimelineChart()
+          populateVariantFilter()
+          renderLeads(allLeads)
+
+          document.getElementById('loading').classList.add('hidden')
+          document.getElementById('content').classList.remove('hidden')
+        }
+
+        lastFetchTime = Date.now()
+        updateLastUpdated()
+      } catch (err) {
+        document.getElementById('loading').innerHTML = '<span class="text-red-400">Failed to load campaign</span>'
+      }
+    }
+
+    function startPolling() {
+      if (refreshInterval) clearInterval(refreshInterval)
+      refreshInterval = setInterval(() => { if (!isPaused) loadCampaign() }, 30000)
+    }
+
+    function togglePause() {
+      isPaused = !isPaused
+      const btn = document.getElementById('pauseToggle')
+      btn.innerHTML = isPaused ? '&#9654; Paused' : '&#9208; Live'
+      btn.style.color = isPaused ? '#eab308' : ''
+    }
+
+    function updateLastUpdated() {
+      const el = document.getElementById('lastUpdated')
+      if (!lastFetchTime) return
+      const secs = Math.floor((Date.now() - lastFetchTime) / 1000)
+      el.textContent = secs < 5 ? 'Just now' : `${secs}s ago`
+    }
+
+    setInterval(updateLastUpdated, 5000)
+
+    function renderCampaign() {
+      const c = campaignData
+      document.title = `GTM-OS — ${c.title}`
+      document.getElementById('campaignTitle').textContent = c.title
+      document.getElementById('campaignHypothesis').textContent = c.hypothesis || ''
+
+      const sc = STATUS_COLORS[c.status] || STATUS_COLORS.draft
+      const statusEl = document.getElementById('campaignStatus')
+      statusEl.textContent = c.status
+      statusEl.style.background = sc.bg
+      statusEl.style.color = sc.text
+
+      if (c.experimentStatus === 'winner_declared' && c.winnerVariant) {
+        const eb = document.getElementById('experimentBadge')
+        eb.textContent = 'Winner declared'
+        eb.style.background = 'rgba(245,197,66,0.15)'
+        eb.style.color = '#f5c542'
+        eb.classList.remove('hidden')
+      }
+
+      const channels = (c.channels || []).map(ch =>
+        `<span class="inline-block text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">${ch}</span>`
+      ).join(' ')
+
+      document.getElementById('campaignMeta').innerHTML = `
+        ${c.targetSegment ? `<span>Segment: ${esc(c.targetSegment)}</span>` : ''}
+        ${channels}
+        <span>${c.leadCount || 0} leads</span>
+        <span>Created ${formatDate(c.createdAt)}</span>
+      `
+
+      document.getElementById('leadCount').textContent = `(${allLeads.length})`
+      document.getElementById('exportCsv').href = `/api/campaigns/${campaignId}/export?format=csv`
+    }
+
+    function renderVariants() {
+      const variants = campaignData.variants || []
+      if (variants.length === 0) {
+        document.getElementById('variantsSection').classList.add('hidden')
+        return
+      }
+
+      const cols = variants.length <= 2 ? 'md:grid-cols-2' : 'md:grid-cols-2 lg:grid-cols-3'
+      document.getElementById('variants').className = `grid grid-cols-1 ${cols} gap-4`
+
+      document.getElementById('variants').innerHTML = variants.map(v => {
+        const isWinner = v.status === 'winner' || v.id === campaignData.winnerVariant
+        const borderClass = isWinner ? 'border-accent' : 'border-gray-800'
+
+        return `
+          <div class="card-enter bg-surface-card rounded-lg p-4 border ${borderClass}">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold text-sm">${esc(v.name)}</h3>
+              ${isWinner ? '<span class="badge" style="background:rgba(245,197,66,0.15);color:#f5c542">Winner</span>' :
+                v.status === 'retired' ? '<span class="badge" style="background:rgba(107,114,128,0.15);color:#6b7280">Retired</span>' : ''}
+            </div>
+            <p class="text-[11px] text-gray-600 mb-3 line-clamp-2">${esc((v.connectNote || '').substring(0, 80))}${(v.connectNote || '').length > 80 ? '...' : ''}</p>
+            <div class="grid grid-cols-4 gap-2">
+              <div class="metric-box">
+                <div class="value text-gray-200">${v.sends || 0}</div>
+                <div class="label">Sends</div>
+              </div>
+              <div class="metric-box">
+                <div class="value text-indigo-400">${((v.acceptRate || 0) * 100).toFixed(0)}%</div>
+                <div class="label">Accept</div>
+              </div>
+              <div class="metric-box">
+                <div class="value text-gray-200">${v.dmsSent || 0}</div>
+                <div class="label">DMs</div>
+              </div>
+              <div class="metric-box">
+                <div class="value text-accent">${((v.replyRate || 0) * 100).toFixed(0)}%</div>
+                <div class="label">Reply</div>
+              </div>
+            </div>
+          </div>
+        `
+      }).join('')
+    }
+
+    function renderFunnel() {
+      const funnel = campaignData.funnel || {}
+      const total = campaignData.leadCount || 0
+
+      const stages = [
+        { key: 'Queued', label: 'Queued', color: '#4b5563' },
+        { key: 'Connect_Sent', label: 'Sent', color: '#3b82f6' },
+        { key: 'Connected', label: 'Connected', color: '#6366f1' },
+        { key: 'DM1_Sent', label: 'DM1', color: '#8b5cf6' },
+        { key: 'DM2_Sent', label: 'DM2', color: '#a78bfa' },
+        { key: 'Replied', label: 'Replied', color: '#22c55e' },
+        { key: 'Demo_Booked', label: 'Demos', color: '#f5c542' },
+        { key: 'Expired', label: 'Expired', color: '#6b7280' },
+        { key: 'No_Reply', label: 'No Reply', color: '#374151' },
+      ]
+
+      const items = stages.filter(s => (funnel[s.key] || 0) > 0)
+
+      if (items.length === 0) {
+        document.getElementById('funnelBar').innerHTML = '<div class="text-xs text-gray-600 text-center">No lead data yet</div>'
+        return
+      }
+
+      // Bar segments
+      const bar = items.map(s => {
+        const pct = ((funnel[s.key] || 0) / total * 100).toFixed(1)
+        return `<div style="width:${pct}%; background:${s.color}" class="h-full" title="${s.label}: ${funnel[s.key]}"></div>`
+      }).join('')
+
+      // Legend
+      const legend = items.map(s =>
+        `<div class="flex items-center gap-1.5">
+          <div style="background:${s.color}" class="w-2 h-2 rounded-full"></div>
+          <span class="text-gray-400">${s.label}</span>
+          <span class="font-medium text-gray-200">${funnel[s.key]}</span>
+        </div>`
+      ).join('')
+
+      document.getElementById('funnelBar').innerHTML = `
+        <div class="h-3 bg-gray-800 rounded-full overflow-hidden flex mb-3">${bar}</div>
+        <div class="flex flex-wrap gap-4 text-[11px]">${legend}</div>
+      `
+    }
+
+    function populateVariantFilter() {
+      const variants = campaignData.variants || []
+      const select = document.getElementById('variantFilter')
+      variants.forEach(v => {
+        const opt = document.createElement('option')
+        opt.value = v.id
+        opt.textContent = v.name
+        select.appendChild(opt)
+      })
+    }
+
+    function renderFunnelChart() {
+      const funnel = campaignData.funnel || {}
+      const total = campaignData.leadCount || 0
+      const container = document.getElementById('funnelChart')
+
+      const stages = [
+        { key: 'Queued', label: 'Queued', color: '#4b5563' },
+        { key: 'Connect_Sent', label: 'Connect Sent', color: '#3b82f6' },
+        { key: 'Connected', label: 'Connected', color: '#6366f1' },
+        { key: 'DM1_Sent', label: 'DM1 Sent', color: '#8b5cf6' },
+        { key: 'DM2_Sent', label: 'DM2 Sent', color: '#a78bfa' },
+        { key: 'Replied', label: 'Replied', color: '#22c55e' },
+        { key: 'Demo_Booked', label: 'Demo Booked', color: '#f5c542' },
+        { key: 'Deal_Created', label: 'Deal Created', color: '#f59e0b' },
+        { key: 'Closed_Won', label: 'Closed Won', color: '#10b981' },
+      ]
+
+      if (total === 0) {
+        container.innerHTML = '<div class="text-xs text-gray-600 text-center py-4">No data</div>'
+        return
+      }
+
+      // Cumulative funnel: each stage width = sum of that stage and all stages after it
+      let cumulative = 0
+      const funnelData = stages.map(s => ({ ...s, count: funnel[s.key] || 0 })).reverse()
+      const cumulativeData = []
+      for (const s of funnelData) {
+        cumulative += s.count
+        cumulativeData.unshift({ ...s, cumulative })
+      }
+
+      container.innerHTML = cumulativeData.filter(s => s.cumulative > 0 || s.count > 0).map(s => {
+        const widthPct = total > 0 ? Math.max((s.cumulative / total) * 100, 8) : 0
+        const pct = total > 0 ? ((s.count / total) * 100).toFixed(1) : '0'
+        return `
+          <div class="flex items-center gap-2 mb-1">
+            <div class="w-20 text-[10px] text-gray-500 text-right shrink-0">${s.label}</div>
+            <div class="flex-1 h-5 rounded overflow-hidden bg-gray-800/50 relative">
+              <div style="width:${widthPct}%; background:${s.color}" class="h-full rounded transition-all duration-300"></div>
+              <span class="absolute inset-y-0 left-2 flex items-center text-[10px] text-white font-medium">${s.count} (${pct}%)</span>
+            </div>
+          </div>
+        `
+      }).join('')
+    }
+
+    function renderVariantChart() {
+      const variants = campaignData.variants || []
+      const container = document.getElementById('variantChart')
+
+      if (variants.length === 0) {
+        container.innerHTML = '<div class="text-xs text-gray-600 text-center py-4">No variants</div>'
+        return
+      }
+
+      container.innerHTML = variants.map(v => {
+        const acceptPct = ((v.acceptRate || 0) * 100).toFixed(0)
+        const replyPct = ((v.replyRate || 0) * 100).toFixed(0)
+        const isWinner = v.status === 'winner' || v.id === campaignData.winnerVariant
+
+        return `
+          <div class="mb-3">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-xs font-medium text-gray-300">${esc(v.name)}</span>
+              ${isWinner ? '<span class="text-[9px] text-accent">(Winner)</span>' : ''}
+              <span class="text-[10px] text-gray-600 ml-auto">${v.sends || 0} sends</span>
+            </div>
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="text-[10px] text-gray-500 w-12">Accept</span>
+              <div class="flex-1 h-3 bg-gray-800 rounded overflow-hidden">
+                <div style="width:${acceptPct}%; background:#6366f1" class="h-full rounded transition-all duration-300"></div>
+              </div>
+              <span class="text-[10px] text-indigo-400 w-8 text-right">${acceptPct}%</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] text-gray-500 w-12">Reply</span>
+              <div class="flex-1 h-3 bg-gray-800 rounded overflow-hidden">
+                <div style="width:${replyPct}%; background:#f5c542" class="h-full rounded transition-all duration-300"></div>
+              </div>
+              <span class="text-[10px] text-accent w-8 text-right">${replyPct}%</span>
+            </div>
+          </div>
+        `
+      }).join('')
+    }
+
+    async function loadTimelineChart() {
+      const container = document.getElementById('timelineChart')
+      try {
+        const res = await fetch(`/api/campaigns/${campaignId}/timeline`)
+        const data = await res.json()
+        const weeks = data.weeks || []
+
+        if (weeks.length === 0) {
+          container.innerHTML = '<div class="text-xs text-gray-600 text-center py-4">No activity data</div>'
+          return
+        }
+
+        const maxReplies = Math.max(...weeks.map(w => w.events.replied || 0), 1)
+        const maxConnected = Math.max(...weeks.map(w => w.events.connected || 0), 1)
+        const maxVal = Math.max(maxReplies, maxConnected, 1)
+
+        container.innerHTML = `
+          <div class="flex items-end gap-1" style="height: 100px;">
+            ${weeks.map(w => {
+              const replied = w.events.replied || 0
+              const connected = w.events.connected || 0
+              const rH = (replied / maxVal) * 80
+              const cH = (connected / maxVal) * 80
+              return `
+                <div class="flex-1 flex flex-col items-center gap-0.5" title="${w.week}: ${connected} connected, ${replied} replied">
+                  <div class="w-full flex items-end justify-center gap-px" style="height:80px;">
+                    <div style="height:${cH}px; min-height:${connected ? 2 : 0}px" class="w-2 bg-indigo-500 rounded-t"></div>
+                    <div style="height:${rH}px; min-height:${replied ? 2 : 0}px" class="w-2 bg-accent rounded-t"></div>
+                  </div>
+                  <div class="text-[8px] text-gray-600 whitespace-nowrap">${w.week.split('-W')[1]}</div>
+                </div>
+              `
+            }).join('')}
+          </div>
+          <div class="flex items-center gap-4 mt-2 text-[10px]">
+            <div class="flex items-center gap-1"><div class="w-2 h-2 rounded bg-indigo-500"></div><span class="text-gray-500">Connected</span></div>
+            <div class="flex items-center gap-1"><div class="w-2 h-2 rounded bg-accent"></div><span class="text-gray-500">Replied</span></div>
+          </div>
+        `
+      } catch (err) {
+        container.innerHTML = '<div class="text-xs text-red-400 text-center py-4">Failed to load</div>'
+      }
+    }
+
+    function filterLeads() {
+      const search = document.getElementById('searchInput').value.toLowerCase()
+      const status = document.getElementById('statusLeadFilter').value
+      const variantId = document.getElementById('variantFilter').value
+
+      const filtered = allLeads.filter(lead => {
+        const name = `${lead.firstName || ''} ${lead.lastName || ''} ${lead.company || ''}`.toLowerCase()
+        if (search && !name.includes(search)) return false
+        if (status && lead.lifecycleStatus !== status) return false
+        if (variantId && lead.variantId !== variantId) return false
+        return true
+      })
+
+      renderLeads(filtered)
+    }
+
+    function renderLeads(leads) {
+      const container = document.getElementById('leads')
+
+      if (leads.length === 0) {
+        container.innerHTML = '<div class="text-gray-600 text-sm text-center py-8">No leads match filters</div>'
+        return
+      }
+
+      container.innerHTML = leads.map((lead, i) => {
+        const name = [lead.firstName, lead.lastName].filter(Boolean).join(' ') || 'Unknown'
+        const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
+        const lc = LIFECYCLE_COLORS[lead.lifecycleStatus] || LIFECYCLE_COLORS.Queued
+        const timeline = buildTimeline(lead)
+
+        const linkedinLink = lead.linkedinUrl
+          ? `<a href="${lead.linkedinUrl}" target="_blank" onclick="event.stopPropagation()" class="text-blue-400 hover:text-blue-300 text-[10px]">in</a>`
+          : ''
+
+        return `
+          <div class="card-enter bg-surface-card rounded-lg p-3 border border-gray-800 hover:border-gray-700 transition cursor-pointer"
+            style="animation-delay: ${Math.min(i * 30, 300)}ms"
+            onclick="toggleLeadDetail('${lead.id}')">
+            <div class="flex items-center gap-3">
+              <!-- Avatar -->
+              <div class="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center text-[11px] font-bold text-accent shrink-0">
+                ${initials}
+              </div>
+
+              <!-- Name + info -->
+              <div class="min-w-[140px] shrink-0">
+                <div class="flex items-center gap-2">
+                  <span class="font-semibold text-sm">${esc(name)}</span>
+                  ${linkedinLink}
+                </div>
+                <div class="text-[11px] text-gray-500 truncate max-w-[200px]">
+                  ${esc(lead.headline || '')}${lead.company ? ` @ ${esc(lead.company)}` : ''}
+                </div>
+                <div class="flex items-center gap-2 mt-0.5">
+                  ${lead.variantName ? `<span class="text-[9px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-500">${esc(lead.variantName)}</span>` : ''}
+                  ${lead.qualificationScore ? `<span class="text-[9px] text-gray-600">${lead.qualificationScore}pt</span>` : ''}
+                </div>
+              </div>
+
+              <!-- Timeline -->
+              <div class="flex-1 flex items-center justify-center px-2">
+                ${timeline}
+              </div>
+
+              <!-- Status badge + action -->
+              <span class="badge shrink-0" style="background:${lc.bg}; color:${lc.text}">
+                ${lead.lifecycleStatus.replace(/_/g, ' ')}
+              </span>
+              <select onchange="updateLeadStatus('${lead.id}', this.value); this.value=''" onclick="event.stopPropagation()"
+                class="bg-surface-card border border-gray-700 text-[10px] rounded px-1 py-0.5 text-gray-500 focus:border-accent outline-none shrink-0">
+                <option value="">Set...</option>
+                <option value="Demo_Booked">Demo Booked</option>
+                <option value="Deal_Created">Deal Created</option>
+                <option value="Closed_Won">Closed Won</option>
+                <option value="Closed_Lost">Closed Lost</option>
+              </select>
+            </div>
+          </div>
+          <div id="detail-${lead.id}" class="hidden"></div>
+        `
+      }).join('')
+    }
+
+    let openDetailId = null
+
+    async function toggleLeadDetail(leadId) {
+      // Close currently open panel
+      if (openDetailId) {
+        const prev = document.getElementById('detail-' + openDetailId)
+        if (prev) { prev.innerHTML = ''; prev.classList.add('hidden') }
+        if (openDetailId === leadId) { openDetailId = null; return }
+      }
+
+      openDetailId = leadId
+      const panel = document.getElementById('detail-' + leadId)
+      if (!panel) return
+
+      panel.innerHTML = '<div class="p-4 text-xs text-gray-500">Loading...</div>'
+      panel.classList.remove('hidden')
+
+      try {
+        const res = await fetch(`/api/campaigns/${campaignId}/leads/${leadId}`)
+        if (!res.ok) { panel.innerHTML = '<div class="p-4 text-xs text-red-400">Failed to load</div>'; return }
+        const lead = await res.json()
+
+        const name = [lead.first_name || lead.firstName, lead.last_name || lead.lastName].filter(Boolean).join(' ') || 'Unknown'
+        const tags = (lead.tags || []).map(t => `<span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-800 text-gray-400">${esc(t)}</span>`).join(' ')
+        const linkedinLink = (lead.linkedin_url || lead.linkedinUrl)
+          ? `<a href="${lead.linkedin_url || lead.linkedinUrl}" target="_blank" class="text-blue-400 hover:underline text-xs">${lead.linkedin_url || lead.linkedinUrl}</a>`
+          : '<span class="text-gray-600">—</span>'
+
+        const timestamps = [
+          ['Connect Sent', lead.connect_sent_at || lead.connectSentAt],
+          ['Connected', lead.connected_at || lead.connectedAt],
+          ['DM1 Sent', lead.dm1_sent_at || lead.dm1SentAt],
+          ['DM2 Sent', lead.dm2_sent_at || lead.dm2SentAt],
+          ['Replied', lead.replied_at || lead.repliedAt],
+          ['Created', lead.created_at || lead.createdAt],
+          ['Updated', lead.updated_at || lead.updatedAt],
+        ].filter(([, v]) => v).map(([label, val]) =>
+          `<div class="flex justify-between"><span class="text-gray-500">${label}</span><span class="text-gray-300">${formatTimeAgo(val)}</span></div>`
+        ).join('')
+
+        const variantSection = lead.variant ? `
+          <div class="mt-3">
+            <div class="text-[10px] text-gray-500 uppercase mb-1">Variant: ${esc(lead.variant.name)}</div>
+            <div class="text-[11px] text-gray-400 bg-gray-900 rounded p-2 mb-1"><b class="text-gray-500">Connect:</b> ${esc(lead.variant.connectNote)}</div>
+            <div class="text-[11px] text-gray-400 bg-gray-900 rounded p-2 mb-1"><b class="text-gray-500">DM1:</b> ${esc(lead.variant.dm1Template)}</div>
+            <div class="text-[11px] text-gray-400 bg-gray-900 rounded p-2"><b class="text-gray-500">DM2:</b> ${esc(lead.variant.dm2Template)}</div>
+          </div>
+        ` : ''
+
+        const contentSection = (lead.content || []).length > 0 ? `
+          <div class="mt-3">
+            <div class="text-[10px] text-gray-500 uppercase mb-1">Sent Content</div>
+            ${lead.content.map(c => `
+              <div class="text-[11px] text-gray-400 bg-gray-900 rounded p-2 mb-1">
+                <span class="text-gray-500">${esc(c.contentType)}${c.sentAt ? ' · ' + formatTimeAgo(c.sentAt) : ''}</span>
+                <div class="mt-1">${esc(c.content)}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''
+
+        panel.innerHTML = `
+          <div class="detail-panel bg-surface rounded-lg p-4 ml-12 mb-1 border border-gray-800">
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <div class="font-semibold text-sm mb-1">${esc(name)}</div>
+                <div class="text-[11px] text-gray-500">${esc(lead.headline || '')}</div>
+                <div class="text-[11px] text-gray-400">${esc(lead.company || '')}</div>
+                <div class="mt-1">${linkedinLink}</div>
+                <div class="mt-2 flex items-center gap-2">
+                  ${(lead.qualification_score || lead.qualificationScore) ? `<span class="text-xs text-accent font-bold">${lead.qualification_score || lead.qualificationScore}pt</span>` : ''}
+                  ${tags}
+                </div>
+                <div class="mt-2 text-[10px] text-gray-600">Source: ${esc(lead.source || 'unknown')}</div>
+              </div>
+              <div class="text-[11px] space-y-1">${timestamps}</div>
+            </div>
+            ${variantSection}
+            ${contentSection}
+          </div>
+        `
+      } catch (err) {
+        panel.innerHTML = '<div class="p-4 text-xs text-red-400">Error loading details</div>'
+      }
+    }
+
+    async function updateLeadStatus(leadId, newStatus) {
+      if (!newStatus) return
+      if (!confirm(`Change lead status to "${newStatus.replace(/_/g, ' ')}"?`)) return
+      try {
+        await fetch(`/api/campaigns/${campaignId}/leads/${leadId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lifecycleStatus: newStatus }),
+        })
+        lastDataHash = null
+        loadCampaign()
+      } catch (err) {
+        alert('Failed to update status')
+      }
+    }
+
+    // Chat functionality
+    let chatOpen = false
+    let chatHistory = []
+
+    function toggleChat() {
+      chatOpen = !chatOpen
+      document.getElementById('chatPanel').classList.toggle('hidden', !chatOpen)
+      document.getElementById('chatToggle').classList.toggle('hidden', chatOpen)
+      if (chatOpen) {
+        // Restore from sessionStorage
+        const stored = sessionStorage.getItem('chat-' + campaignId)
+        if (stored) {
+          chatHistory = JSON.parse(stored)
+          renderChatMessages()
+        }
+        document.getElementById('chatInput').focus()
+      }
+    }
+
+    function renderChatMessages() {
+      const container = document.getElementById('chatMessages')
+      if (chatHistory.length === 0) {
+        container.innerHTML = '<div class="text-xs text-gray-600 text-center">Ask anything about this campaign</div>'
+        return
+      }
+      container.innerHTML = chatHistory.map(msg => {
+        if (msg.role === 'user') {
+          return `<div class="flex justify-end"><div class="bg-accent/10 text-gray-200 text-sm rounded-lg px-3 py-2 max-w-[80%]">${esc(msg.text)}</div></div>`
+        }
+        return `<div class="flex justify-start"><div class="bg-gray-800 text-gray-300 text-sm rounded-lg px-3 py-2 max-w-[80%] whitespace-pre-wrap">${esc(msg.text)}</div></div>`
+      }).join('')
+      container.scrollTop = container.scrollHeight
+    }
+
+    async function sendChat() {
+      const input = document.getElementById('chatInput')
+      const message = input.value.trim()
+      if (!message) return
+
+      chatHistory.push({ role: 'user', text: message })
+      input.value = ''
+      renderChatMessages()
+
+      // Show loading
+      const container = document.getElementById('chatMessages')
+      container.innerHTML += '<div id="chatLoading" class="flex justify-start"><div class="bg-gray-800 text-gray-500 text-sm rounded-lg px-3 py-2"><span class="animate-pulse">Thinking...</span></div></div>'
+      container.scrollTop = container.scrollHeight
+
+      try {
+        const res = await fetch(`/api/campaigns/${campaignId}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message }),
+        })
+        const data = await res.json()
+
+        const loadEl = document.getElementById('chatLoading')
+        if (loadEl) loadEl.remove()
+
+        if (data.error) {
+          chatHistory.push({ role: 'assistant', text: 'Error: ' + data.error })
+        } else {
+          chatHistory.push({ role: 'assistant', text: data.response })
+        }
+
+        sessionStorage.setItem('chat-' + campaignId, JSON.stringify(chatHistory))
+        renderChatMessages()
+      } catch (err) {
+        const loadEl = document.getElementById('chatLoading')
+        if (loadEl) loadEl.remove()
+        chatHistory.push({ role: 'assistant', text: 'Failed to get response' })
+        renderChatMessages()
+      }
+    }
+
+    function formatTimeAgo(dateStr) {
+      if (!dateStr) return ''
+      const diff = Date.now() - new Date(dateStr).getTime()
+      const mins = Math.floor(diff / 60000)
+      if (mins < 1) return 'just now'
+      if (mins < 60) return `${mins}m ago`
+      const hrs = Math.floor(mins / 60)
+      if (hrs < 24) return `${hrs}h ago`
+      const days = Math.floor(hrs / 24)
+      return `${days}d ago`
+    }
+
+    function buildTimeline(lead) {
+      if (lead.lifecycleStatus === 'Queued') {
+        return '<div class="text-[10px] text-gray-600">Queued — awaiting send</div>'
+      }
+
+      let html = '<div class="flex items-start gap-0 w-full max-w-md">'
+
+      for (let i = 0; i < TIMELINE_STAGES.length; i++) {
+        const stage = TIMELINE_STAGES[i]
+        const timestamp = lead[stage.key]
+        const nextStage = TIMELINE_STAGES[i + 1]
+        const nextTimestamp = nextStage ? lead[nextStage.key] : null
+
+        // Determine dot state
+        let dotStyle, dotClass = 'timeline-dot'
+        if (timestamp) {
+          // Completed — is this the current (latest) step?
+          const isLatest = !nextTimestamp && i === getLatestStageIndex(lead)
+          if (isLatest && lead.lifecycleStatus !== 'Expired' && lead.lifecycleStatus !== 'No_Reply') {
+            dotStyle = `background:${stage.color}; box-shadow: 0 0 0 3px ${stage.color}33;`
+            dotClass += ' pulse'
+          } else {
+            dotStyle = `background:${stage.color};`
+          }
+        } else {
+          // Future step
+          dotStyle = `background:transparent; border: 1.5px solid #4b5563;`
+        }
+
+        html += `
+          <div class="flex flex-col items-center" style="min-width:48px;">
+            <div class="${dotClass}" style="${dotStyle}"></div>
+            <div class="text-[9px] mt-1 ${timestamp ? 'text-gray-400' : 'text-gray-700'}">${stage.label}</div>
+            ${timestamp ? `<div class="text-[8px] text-gray-600">${formatShortDate(timestamp)}</div>` : ''}
+          </div>
+        `
+
+        // Connector line between dots
+        if (i < TIMELINE_STAGES.length - 1) {
+          const lineColor = timestamp ? stage.color : '#333'
+          html += `<div class="timeline-line self-center" style="background:${lineColor}; margin-top: -18px;"></div>`
+        }
+      }
+
+      html += '</div>'
+      return html
+    }
+
+    function getLatestStageIndex(lead) {
+      let latest = -1
+      for (let i = 0; i < TIMELINE_STAGES.length; i++) {
+        if (lead[TIMELINE_STAGES[i].key]) latest = i
+      }
+      return latest
+    }
+
+    function formatShortDate(dateStr) {
+      if (!dateStr) return ''
+      const d = new Date(dateStr)
+      const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+      return `${months[d.getMonth()]} ${d.getDate()}`
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return ''
+      const d = new Date(dateStr)
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    }
+
+    function esc(str) {
+      const el = document.createElement('span')
+      el.textContent = str || ''
+      return el.innerHTML
+    }
+
+    loadCampaign().then(startPolling)
+  </script>
+</body>
+</html>

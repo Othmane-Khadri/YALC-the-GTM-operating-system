@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GTM-OS — Skill Optimization</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --card-bg: #16161e;
+    --card-border: #2a2a3a;
+    --text: #e8e8ed;
+    --text-muted: #7a7a8a;
+    --accent: #FFE747;
+    --like: #22c55e;
+    --like-bg: rgba(34, 197, 94, 0.08);
+    --dislike: #ef4444;
+    --dislike-bg: rgba(239, 68, 68, 0.08);
+    --radius: 16px;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .header {
+    width: 100%; max-width: 680px;
+    padding: 20px 24px 0;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .undo-btn {
+    background: none; border: 1px solid var(--card-border);
+    color: var(--text-muted); font-size: 13px; padding: 6px 12px;
+    border-radius: 8px; cursor: pointer; transition: all 0.2s;
+    opacity: 0; pointer-events: none;
+  }
+  .undo-btn.visible { opacity: 1; pointer-events: auto; }
+  .undo-btn:hover { border-color: var(--text-muted); color: var(--text); }
+  .skill-badge {
+    font-size: 13px; color: var(--accent);
+    background: rgba(255, 231, 71, 0.08);
+    padding: 4px 12px; border-radius: 20px; font-weight: 500;
+  }
+  .counter { font-size: 14px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+  .progress-track {
+    width: 100%; max-width: 680px; height: 3px;
+    background: var(--card-border); margin-top: 16px;
+    border-radius: 2px; overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; background: var(--accent); border-radius: 2px;
+    transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .card-container {
+    width: 100%; max-width: 680px; padding: 24px;
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; position: relative; min-height: 0;
+  }
+
+  .card {
+    width: 100%; background: var(--card-bg);
+    border: 1px solid var(--card-border); border-radius: var(--radius);
+    overflow: hidden; position: relative;
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+                opacity 0.4s ease, box-shadow 0.2s ease;
+    cursor: grab; user-select: none; touch-action: pan-y;
+  }
+  .card:active { cursor: grabbing; }
+  .card.dragging { transition: none; }
+  .card.swiped-right { transform: translateX(150%) rotate(15deg); opacity: 0; }
+  .card.swiped-left { transform: translateX(-150%) rotate(-15deg); opacity: 0; }
+
+  .card-overlay {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none; z-index: 2;
+    transition: background 0.15s ease; border-radius: var(--radius);
+  }
+  .card.drag-right .card-overlay { background: var(--like-bg); }
+  .card.drag-left .card-overlay { background: var(--dislike-bg); }
+
+  .card-label {
+    position: absolute; top: 20px; font-size: 18px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase;
+    padding: 6px 16px; border-radius: 8px; border: 3px solid;
+    opacity: 0; transition: opacity 0.15s ease; z-index: 3; pointer-events: none;
+  }
+  .card-label.like-label { left: 20px; color: var(--like); border-color: var(--like); transform: rotate(-12deg); }
+  .card-label.dislike-label { right: 20px; color: var(--dislike); border-color: var(--dislike); transform: rotate(12deg); }
+  .card.drag-right .like-label { opacity: 1; }
+  .card.drag-left .dislike-label { opacity: 1; }
+
+  .card-content {
+    padding: 28px; max-height: 55vh; overflow-y: auto;
+    font-size: 15px; line-height: 1.7; color: var(--text);
+    white-space: pre-wrap; word-wrap: break-word;
+  }
+  .card-content::-webkit-scrollbar { width: 4px; }
+  .card-content::-webkit-scrollbar-thumb { background: var(--card-border); border-radius: 2px; }
+  .card-content.type-config {
+    background: #0d1117;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+    font-size: 13px; line-height: 1.6; color: #c9d1d9;
+  }
+
+  .card-meta {
+    padding: 12px 28px 16px; border-top: 1px solid var(--card-border);
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .dim-tag {
+    font-size: 11px; color: var(--text-muted);
+    background: rgba(255,255,255,0.04); padding: 3px 8px; border-radius: 6px;
+  }
+
+  .scroll-hint {
+    text-align: center; font-size: 12px; color: var(--text-muted);
+    padding: 8px; border-top: 1px solid var(--card-border); display: none;
+  }
+  .scroll-hint.visible { display: block; }
+
+  .comment-area { width: 100%; margin-top: 12px; }
+  .comment-toggle {
+    background: none; border: none; color: var(--text-muted);
+    font-size: 13px; cursor: pointer; padding: 4px 0; transition: color 0.2s;
+  }
+  .comment-toggle:hover { color: var(--text); }
+  .comment-input {
+    display: none; width: 100%; margin-top: 8px;
+    background: var(--card-bg); border: 1px solid var(--card-border);
+    border-radius: 10px; color: var(--text); font-family: inherit;
+    font-size: 14px; padding: 12px 16px; resize: none;
+    min-height: 60px; outline: none; transition: border-color 0.2s;
+  }
+  .comment-input:focus { border-color: var(--accent); }
+  .comment-input.open { display: block; }
+
+  .actions {
+    width: 100%; max-width: 680px; padding: 0 24px 32px;
+    display: flex; justify-content: center; gap: 24px;
+  }
+  .action-btn {
+    width: 72px; height: 72px; border-radius: 50%;
+    border: 2px solid; background: transparent; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s; font-size: 28px;
+  }
+  .btn-dislike { border-color: var(--dislike); color: var(--dislike); }
+  .btn-dislike:hover { background: var(--dislike-bg); transform: scale(1.08); box-shadow: 0 0 24px rgba(239, 68, 68, 0.2); }
+  .btn-like { border-color: var(--like); color: var(--like); }
+  .btn-like:hover { background: var(--like-bg); transform: scale(1.08); box-shadow: 0 0 24px rgba(34, 197, 94, 0.2); }
+
+  .kbd-hint { text-align: center; font-size: 12px; color: var(--text-muted); padding-bottom: 16px; opacity: 0.5; }
+
+  .summary {
+    display: none; width: 100%; max-width: 680px; padding: 48px 24px;
+    text-align: center; flex-direction: column; align-items: center; gap: 24px;
+  }
+  .summary.active { display: flex; }
+  .summary h2 { font-size: 28px; font-weight: 700; color: var(--accent); }
+  .summary-stats { display: flex; gap: 32px; justify-content: center; }
+  .stat { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .stat-value { font-size: 36px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat-label { font-size: 13px; color: var(--text-muted); }
+  .stat-like .stat-value { color: var(--like); }
+  .stat-dislike .stat-value { color: var(--dislike); }
+  .stat-comments .stat-value { color: var(--accent); }
+
+  .submit-btn {
+    background: var(--accent); color: #0a0a0f; border: none;
+    padding: 14px 36px; border-radius: 12px; font-size: 16px;
+    font-weight: 600; cursor: pointer; transition: all 0.2s; margin-top: 8px;
+  }
+  .submit-btn:hover { transform: scale(1.04); box-shadow: 0 0 32px rgba(255, 231, 71, 0.3); }
+  .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  .review-toggle {
+    background: none; border: 1px solid var(--card-border);
+    color: var(--text-muted); padding: 10px 24px; border-radius: 10px;
+    font-size: 14px; cursor: pointer; transition: all 0.2s;
+  }
+  .review-toggle:hover { border-color: var(--text-muted); color: var(--text); }
+
+  .review-list {
+    display: none; width: 100%; text-align: left; margin-top: 16px;
+    max-height: 50vh; overflow-y: auto;
+    border: 1px solid var(--card-border); border-radius: var(--radius);
+  }
+  .review-list.open { display: block; }
+  .review-item {
+    padding: 16px 20px; border-bottom: 1px solid var(--card-border);
+    display: flex; gap: 12px; align-items: flex-start;
+  }
+  .review-item:last-child { border-bottom: none; }
+  .review-verdict {
+    font-size: 12px; font-weight: 600; padding: 3px 8px;
+    border-radius: 6px; flex-shrink: 0; margin-top: 2px;
+  }
+  .review-verdict.like { background: var(--like-bg); color: var(--like); }
+  .review-verdict.dislike { background: var(--dislike-bg); color: var(--dislike); }
+  .review-text { font-size: 13px; color: var(--text-muted); line-height: 1.5; white-space: pre-wrap; max-height: 80px; overflow: hidden; }
+  .review-comment { font-size: 12px; color: var(--accent); margin-top: 4px; font-style: italic; }
+
+  .submitting-msg {
+    display: none; text-align: center; padding: 48px 24px;
+    flex-direction: column; align-items: center; gap: 16px;
+  }
+  .submitting-msg.active { display: flex; }
+  .submitting-msg h2 { font-size: 22px; color: var(--accent); }
+  .submitting-msg p { color: var(--text-muted); font-size: 14px; }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid var(--card-border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-state {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; min-height: 60vh; gap: 16px;
+  }
+  .loading-state p { color: var(--text-muted); font-size: 14px; }
+
+  @media (max-width: 480px) {
+    .card-content { padding: 20px; max-height: 45vh; font-size: 14px; }
+    .action-btn { width: 60px; height: 60px; font-size: 24px; }
+    .header { padding: 16px 16px 0; }
+    .card-container { padding: 16px; }
+    .actions { padding: 0 16px 24px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Loading State -->
+<div class="loading-state" id="loadingPhase">
+  <div class="spinner"></div>
+  <p>Loading session...</p>
+</div>
+
+<!-- Swipe Phase -->
+<div id="swipe-phase" style="display:none">
+  <div class="header">
+    <div class="header-left">
+      <button class="undo-btn" id="undoBtn" onclick="undo()">Undo</button>
+      <span class="skill-badge" id="skillBadge"></span>
+    </div>
+    <span class="counter" id="counter">1 / -</span>
+  </div>
+
+  <div class="progress-track">
+    <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+  </div>
+
+  <div class="card-container">
+    <div class="card" id="card">
+      <div class="card-overlay"></div>
+      <span class="card-label like-label">LIKE</span>
+      <span class="card-label dislike-label">NOPE</span>
+      <div class="card-content" id="cardContent"></div>
+      <div class="scroll-hint" id="scrollHint">Scroll for more</div>
+      <div class="card-meta" id="cardMeta"></div>
+    </div>
+
+    <div class="comment-area">
+      <button class="comment-toggle" id="commentToggle" onclick="toggleComment()">+ Add note</button>
+      <textarea class="comment-input" id="commentInput" placeholder="Why do you like or dislike this one?"></textarea>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="action-btn btn-dislike" onclick="swipe('dislike')">&#10005;</button>
+    <button class="action-btn btn-like" onclick="swipe('like')">&#10003;</button>
+  </div>
+
+  <div class="kbd-hint">Keyboard: &larr; dislike &middot; &rarr; like &middot; Ctrl+Z undo</div>
+</div>
+
+<!-- Summary Phase -->
+<div class="summary" id="summaryPhase">
+  <h2>Session Complete</h2>
+  <div class="summary-stats">
+    <div class="stat stat-like">
+      <span class="stat-value" id="likedCount">0</span>
+      <span class="stat-label">Liked</span>
+    </div>
+    <div class="stat stat-dislike">
+      <span class="stat-value" id="dislikedCount">0</span>
+      <span class="stat-label">Disliked</span>
+    </div>
+    <div class="stat stat-comments">
+      <span class="stat-value" id="commentCount">0</span>
+      <span class="stat-label">Comments</span>
+    </div>
+  </div>
+  <button class="review-toggle" onclick="toggleReview()">Review All Responses</button>
+  <div class="review-list" id="reviewList"></div>
+  <button class="submit-btn" id="submitBtn" onclick="submitResults()">Submit &amp; Analyze</button>
+</div>
+
+<!-- Submitting State -->
+<div class="submitting-msg" id="submittingPhase">
+  <div class="spinner"></div>
+  <h2>Analyzing your preferences...</h2>
+  <p>Return to the CLI. The analysis will start automatically.</p>
+</div>
+
+<script>
+// Extract session ID from URL: /swipe/:sessionId
+const sessionId = window.location.pathname.split('/swipe/')[1] || 'demo';
+
+let samples = [];
+let skillName = '';
+let outputType = 'prose';
+let currentIndex = 0;
+const results = [];
+let startTime = Date.now();
+let dragStartX = 0;
+let isDragging = false;
+
+async function init() {
+  try {
+    const res = await fetch(`/api/swipe/${sessionId}`);
+    if (!res.ok) {
+      document.getElementById('loadingPhase').innerHTML =
+        '<p style="color:#ef4444">Session not found. Start a session from the CLI first.</p>';
+      return;
+    }
+    const data = await res.json();
+    samples = data.samples || data;
+    skillName = data.skill || sessionId;
+    outputType = data.output_type || 'prose';
+
+    document.getElementById('skillBadge').textContent = skillName;
+    document.getElementById('loadingPhase').style.display = 'none';
+    document.getElementById('swipe-phase').style.display = '';
+
+    showCard(0);
+  } catch (e) {
+    document.getElementById('loadingPhase').innerHTML =
+      `<p style="color:#ef4444">Failed to load: ${e.message}</p>`;
+  }
+}
+
+function showCard(idx) {
+  if (idx >= samples.length) { showSummary(); return; }
+
+  const card = document.getElementById('card');
+  const content = document.getElementById('cardContent');
+  const meta = document.getElementById('cardMeta');
+  const scrollHint = document.getElementById('scrollHint');
+  const commentInput = document.getElementById('commentInput');
+  const commentToggle = document.getElementById('commentToggle');
+
+  card.className = 'card';
+  card.style.transform = '';
+  content.textContent = samples[idx].content;
+  content.className = 'card-content';
+  if (outputType === 'config') content.classList.add('type-config');
+
+  const dims = samples[idx].dimensions || {};
+  meta.innerHTML = Object.entries(dims)
+    .map(([k, v]) => `<span class="dim-tag">${k}: ${v}</span>`)
+    .join('');
+
+  requestAnimationFrame(() => {
+    scrollHint.classList.toggle('visible', content.scrollHeight > content.clientHeight);
+  });
+
+  commentInput.value = '';
+  commentInput.classList.remove('open');
+  commentToggle.textContent = '+ Add note';
+
+  document.getElementById('counter').textContent = `${idx + 1} / ${samples.length}`;
+  document.getElementById('progressFill').style.width = `${(idx / samples.length) * 100}%`;
+  document.getElementById('undoBtn').classList.toggle('visible', idx > 0);
+
+  startTime = Date.now();
+  currentIndex = idx;
+}
+
+function swipe(verdict) {
+  const card = document.getElementById('card');
+  const comment = document.getElementById('commentInput').value.trim() || null;
+  const timeSpent = Date.now() - startTime;
+
+  if (currentIndex < results.length) {
+    results[currentIndex] = { id: samples[currentIndex].id, verdict, comment, time_spent_ms: timeSpent };
+  } else {
+    results.push({ id: samples[currentIndex].id, verdict, comment, time_spent_ms: timeSpent });
+  }
+
+  card.classList.add(verdict === 'like' ? 'swiped-right' : 'swiped-left');
+  setTimeout(() => showCard(currentIndex + 1), 350);
+}
+
+function undo() {
+  if (currentIndex <= 0) return;
+  results.pop();
+  showCard(currentIndex - 1);
+}
+
+function toggleComment() {
+  const input = document.getElementById('commentInput');
+  const toggle = document.getElementById('commentToggle');
+  const isOpen = input.classList.toggle('open');
+  toggle.textContent = isOpen ? '- Hide note' : '+ Add note';
+  if (isOpen) input.focus();
+}
+
+function showSummary() {
+  document.getElementById('swipe-phase').style.display = 'none';
+  document.getElementById('summaryPhase').classList.add('active');
+
+  const liked = results.filter(r => r.verdict === 'like').length;
+  const disliked = results.filter(r => r.verdict === 'dislike').length;
+  const comments = results.filter(r => r.comment).length;
+
+  document.getElementById('likedCount').textContent = liked;
+  document.getElementById('dislikedCount').textContent = disliked;
+  document.getElementById('commentCount').textContent = comments;
+  document.getElementById('progressFill').style.width = '100%';
+
+  const reviewList = document.getElementById('reviewList');
+  reviewList.innerHTML = results.map((r, i) => {
+    const sample = samples[i];
+    const preview = sample.content.substring(0, 120).replace(/\n/g, ' ') + (sample.content.length > 120 ? '...' : '');
+    const commentHtml = r.comment ? `<div class="review-comment">"${escapeHtml(r.comment)}"</div>` : '';
+    return `<div class="review-item">
+      <span class="review-verdict ${r.verdict}">${r.verdict === 'like' ? 'LIKE' : 'NOPE'}</span>
+      <div>
+        <div class="review-text">${escapeHtml(preview)}</div>
+        ${commentHtml}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleReview() {
+  document.getElementById('reviewList').classList.toggle('open');
+}
+
+async function submitResults() {
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+
+  const payload = {
+    skill: skillName,
+    output_type: outputType,
+    completed_at: new Date().toISOString(),
+    total_samples: samples.length,
+    results: results
+  };
+
+  try {
+    await fetch(`/api/swipe/${sessionId}/results`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload, null, 2)
+    });
+  } catch (e) {
+    console.error('Submit failed:', e);
+  }
+
+  document.getElementById('summaryPhase').classList.remove('active');
+  document.getElementById('submittingPhase').classList.add('active');
+}
+
+// Drag (mouse)
+const card = document.getElementById('card');
+card.addEventListener('mousedown', (e) => {
+  if (e.target.closest('.comment-input') || e.target.closest('.comment-toggle')) return;
+  isDragging = true; dragStartX = e.clientX; card.classList.add('dragging');
+});
+document.addEventListener('mousemove', (e) => {
+  if (!isDragging) return;
+  const dx = e.clientX - dragStartX;
+  card.style.transform = `translateX(${dx}px) rotate(${dx * 0.08}deg)`;
+  card.classList.toggle('drag-right', dx > 40);
+  card.classList.toggle('drag-left', dx < -40);
+});
+document.addEventListener('mouseup', (e) => {
+  if (!isDragging) return;
+  isDragging = false; card.classList.remove('dragging');
+  const dx = e.clientX - dragStartX;
+  if (dx > 100) { swipe('like'); }
+  else if (dx < -100) { swipe('dislike'); }
+  else { card.style.transform = ''; card.classList.remove('drag-right', 'drag-left'); }
+});
+
+// Drag (touch)
+card.addEventListener('touchstart', (e) => {
+  if (e.target.closest('.comment-input') || e.target.closest('.comment-toggle')) return;
+  isDragging = true; dragStartX = e.touches[0].clientX; card.classList.add('dragging');
+}, { passive: true });
+document.addEventListener('touchmove', (e) => {
+  if (!isDragging) return;
+  const dx = e.touches[0].clientX - dragStartX;
+  card.style.transform = `translateX(${dx}px) rotate(${dx * 0.08}deg)`;
+  card.classList.toggle('drag-right', dx > 40);
+  card.classList.toggle('drag-left', dx < -40);
+}, { passive: true });
+document.addEventListener('touchend', (e) => {
+  if (!isDragging) return;
+  isDragging = false; card.classList.remove('dragging');
+  const dx = (e.changedTouches[0]?.clientX || 0) - dragStartX;
+  if (dx > 100) { swipe('like'); }
+  else if (dx < -100) { swipe('dislike'); }
+  else { card.style.transform = ''; card.classList.remove('drag-right', 'drag-left'); }
+});
+
+// Keyboard
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'ArrowRight') { e.preventDefault(); swipe('like'); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); swipe('dislike'); }
+  else if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
+});
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+init();
+</script>
+</body>
+</html>

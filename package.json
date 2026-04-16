@@ -1,0 +1,53 @@
+{
+  "name": "yalc-gtm-os",
+  "version": "0.5.0",
+  "private": false,
+  "type": "module",
+  "license": "MIT",
+  "description": "YALC — open-source, AI-native GTM operating system. CLI-first engine for lead finding, enrichment, qualification, and campaign orchestration.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Othmane-Khadri/YALC-the-GTM-operating-system.git"
+  },
+  "homepage": "https://github.com/Othmane-Khadri/YALC-the-GTM-operating-system",
+  "author": "Othmane Khadri",
+  "keywords": ["gtm", "sales", "outbound", "ai", "cli", "lead-generation", "campaign", "linkedin", "qualification"],
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "yalc-gtm": "./src/cli/index.ts"
+  },
+  "scripts": {
+    "cli": "npx tsx src/cli/index.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@hono/node-server": "^1.19.11",
+    "@inquirer/prompts": "^8.4.1",
+    "@libsql/client": "^0.17.0",
+    "@mendable/firecrawl-js": "^1.0.0",
+    "@notionhq/client": "^2.0.0",
+    "chokidar": "^5.0.0",
+    "commander": "^14.0.3",
+    "dotenv": "^17.3.1",
+    "drizzle-orm": "^0.45.1",
+    "hono": "^4.12.8",
+    "js-yaml": "^4.1.1",
+    "unipile-node-sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.17.0",
+    "drizzle-kit": "^0.30.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.2"
+  }
+}
