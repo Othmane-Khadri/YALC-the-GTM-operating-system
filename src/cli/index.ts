@@ -555,6 +555,283 @@ program
     }
   })
 
+// ─── crm:setup ──────────────────────────────────────────────────────────────
+program
+  .command('crm:setup')
+  .description('Interactive setup wizard for CRM integration via MCP')
+  .requiredOption('--provider <name>', 'CRM provider name (e.g., hubspot, salesforce, pipedrive)')
+  .option('--non-interactive', 'Skip prompts and auto-accept all mappings')
+  .action(withDiagnostics(async (opts) => {
+    const { runCrmSetupWizard } = await import('../lib/crm/setup-wizard')
+    const result = await runCrmSetupWizard({
+      provider: opts.provider,
+      nonInteractive: opts.nonInteractive ?? false,
+    })
+    if (!result.success) {
+      console.error(`\nSetup failed: ${result.message}`)
+      process.exit(1)
+    }
+    console.log(`\n${result.message}`)
+  }))
+
+// ─── crm:import ─────────────────────────────────────────────────────────────
+program
+  .command('crm:import')
+  .description('Import contacts from a CRM into SQLite')
+  .requiredOption('--provider <name>', 'CRM provider name')
+  .option('--dry-run', 'Preview import without writing to DB')
+  .action(withDiagnostics(async (opts) => {
+    const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
+    const { runImport } = await import('../lib/qualification/importers')
+    await runImport({
+      config,
+      source: opts.provider,
+      input: opts.provider,
+      dryRun: opts.dryRun ?? false,
+    })
+  }))
+
+// ─── crm:push ───────────────────────────────────────────────────────────────
+program
+  .command('crm:push')
+  .description('Push enriched leads from a result set to CRM')
+  .requiredOption('--provider <name>', 'CRM provider name')
+  .requiredOption('--result-set <id>', 'Result set ID to push')
+  .option('--dry-run', 'Preview without writing to CRM')
+  .action(withDiagnostics(async (opts) => {
+    const { loadCrmConfig } = await import('../lib/crm/config-store')
+    const { McpCrmAdapter } = await import('../lib/crm/mcp-crm-adapter')
+    const { db } = await import('../lib/db')
+    const { resultRows } = await import('../lib/db/schema')
+    const { eq } = await import('drizzle-orm')
+    const { existsSync, readFileSync } = await import('fs')
+    const { join } = await import('path')
+    const { homedir } = await import('os')
+    const { validateMcpConfig, expandEnvVars } = await import('../lib/providers/mcp-loader')
+
+    const crmConfig = loadCrmConfig(opts.provider)
+    if (!crmConfig) {
+      console.error(`No CRM config for "${opts.provider}". Run crm:setup first.`)
+      process.exit(1)
+    }
+
+    // Load MCP config
+    const mcpPaths = [
+      join(homedir(), '.gtm-os', 'mcp', `${crmConfig.mcpServer}.json`),
+      join(process.cwd(), 'configs', 'mcp', `${crmConfig.mcpServer}.json`),
+    ]
+    let mcpConfig = null
+    for (const p of mcpPaths) {
+      if (existsSync(p)) {
+        try {
+          const raw = JSON.parse(readFileSync(p, 'utf-8'))
+          const v = validateMcpConfig(raw, `${crmConfig.mcpServer}.json`)
+          if (v.valid) { mcpConfig = expandEnvVars(raw).result; break }
+        } catch { continue }
+      }
+    }
+    if (!mcpConfig) { console.error('MCP config not found'); process.exit(1) }
+
+    // Load leads from result set
+    const rows = await db
+      .select()
+      .from(resultRows)
+      .where(eq(resultRows.resultSetId, opts.resultSet))
+
+    if (rows.length === 0) {
+      console.error(`No rows found in result set ${opts.resultSet}`)
+      process.exit(1)
+    }
+
+    const leads = rows.map(r => JSON.parse(r.data as string) as Record<string, unknown>)
+    console.log(`[crm:push] Pushing ${leads.length} leads to ${opts.provider}`)
+
+    if (opts.dryRun) {
+      console.log(`[crm:push] Dry run — would push ${leads.length} records`)
+      return
+    }
+
+    const contactsMapping = crmConfig.objects['contacts']
+    if (!contactsMapping) {
+      console.error('No contacts mapping configured. Run crm:setup.')
+      process.exit(1)
+    }
+
+    const adapter = new McpCrmAdapter(mcpConfig as any, crmConfig)
+    try {
+      await adapter.connect()
+      const result = await adapter.pushContacts(leads, contactsMapping.fieldMapping)
+      console.log(`\n  Created: ${result.created}`)
+      console.log(`  Updated: ${result.updated}`)
+      console.log(`  Skipped: ${result.skipped}`)
+      if (result.errors.length > 0) {
+        console.log(`  Errors:  ${result.errors.length}`)
+        for (const err of result.errors.slice(0, 5)) {
+          console.log(`    ${err.record}: ${err.message}`)
+        }
+      }
+    } finally {
+      await adapter.disconnect()
+    }
+  }))
+
+// ─── crm:sync ───────────────────────────────────────────────────────────────
+program
+  .command('crm:sync')
+  .description('Bidirectional sync between GTM-OS and CRM')
+  .requiredOption('--provider <name>', 'CRM provider name')
+  .option('--direction <dir>', 'push | pull | bidirectional', 'bidirectional')
+  .option('--dry-run', 'Preview without writing')
+  .action(withDiagnostics(async (opts) => {
+    const { loadCrmConfig } = await import('../lib/crm/config-store')
+    const { McpCrmAdapter } = await import('../lib/crm/mcp-crm-adapter')
+    const { existsSync, readFileSync } = await import('fs')
+    const { join } = await import('path')
+    const { homedir } = await import('os')
+    const { validateMcpConfig, expandEnvVars } = await import('../lib/providers/mcp-loader')
+
+    const crmConfig = loadCrmConfig(opts.provider)
+    if (!crmConfig) {
+      console.error(`No CRM config for "${opts.provider}". Run crm:setup first.`)
+      process.exit(1)
+    }
+
+    const mcpPaths = [
+      join(homedir(), '.gtm-os', 'mcp', `${crmConfig.mcpServer}.json`),
+      join(process.cwd(), 'configs', 'mcp', `${crmConfig.mcpServer}.json`),
+    ]
+    let mcpConfig = null
+    for (const p of mcpPaths) {
+      if (existsSync(p)) {
+        try {
+          const raw = JSON.parse(readFileSync(p, 'utf-8'))
+          const v = validateMcpConfig(raw, `${crmConfig.mcpServer}.json`)
+          if (v.valid) { mcpConfig = expandEnvVars(raw).result; break }
+        } catch { continue }
+      }
+    }
+    if (!mcpConfig) { console.error('MCP config not found'); process.exit(1) }
+
+    if (opts.dryRun) {
+      console.log(`[crm:sync] Dry run — would sync ${opts.direction} with ${opts.provider}`)
+      return
+    }
+
+    const adapter = new McpCrmAdapter(mcpConfig as any, crmConfig)
+    try {
+      await adapter.connect()
+      const result = await adapter.syncBidirectional!({
+        direction: opts.direction,
+        conflictResolution: 'newest_wins',
+      })
+      console.log(`\n  Pulled: ${result.pulled}`)
+      console.log(`  Pushed: ${result.pushed}`)
+      console.log(`  Conflicts: ${result.conflicts}`)
+      if (result.errors.length > 0) {
+        console.log(`  Errors: ${result.errors.length}`)
+      }
+    } finally {
+      await adapter.disconnect()
+    }
+  }))
+
+// ─── crm:status ─────────────────────────────────────────────────────────────
+program
+  .command('crm:status')
+  .description('Show current CRM mapping and last sync time')
+  .requiredOption('--provider <name>', 'CRM provider name')
+  .action(async (opts) => {
+    const { loadCrmConfig } = await import('../lib/crm/config-store')
+    const crmConfig = loadCrmConfig(opts.provider)
+    if (!crmConfig) {
+      console.error(`No CRM config for "${opts.provider}". Run crm:setup first.`)
+      process.exit(1)
+    }
+
+    console.log(`\n── CRM Status: ${crmConfig.provider} ──`)
+    console.log(`  MCP server:  ${crmConfig.mcpServer}`)
+    console.log(`  Last setup:  ${crmConfig.lastSetup}`)
+    console.log(`  Last sync:   ${crmConfig.lastSync ?? 'never'}`)
+    console.log(`  Version:     ${crmConfig.version}`)
+
+    for (const [objName, objMapping] of Object.entries(crmConfig.objects)) {
+      const fieldCount = Object.keys(objMapping.fieldMapping.gtmToCrm).length
+      console.log(`\n  ${objName}:`)
+      console.log(`    List tool:   ${objMapping.listTool}`)
+      console.log(`    Create tool: ${objMapping.createTool}`)
+      console.log(`    Fields:      ${fieldCount} mapped`)
+
+      for (const [gtm, crm] of Object.entries(objMapping.fieldMapping.gtmToCrm)) {
+        console.log(`      ${gtm.padEnd(20)} -> ${crm}`)
+      }
+    }
+  })
+
+// ─── crm:verify ─────────────────────────────────────────────────────────────
+program
+  .command('crm:verify')
+  .description('Detect schema drift between saved CRM mapping and live MCP tools')
+  .requiredOption('--provider <name>', 'CRM provider name')
+  .action(withDiagnostics(async (opts) => {
+    const { loadCrmConfig } = await import('../lib/crm/config-store')
+    const { McpCrmAdapter } = await import('../lib/crm/mcp-crm-adapter')
+    const { existsSync, readFileSync } = await import('fs')
+    const { join } = await import('path')
+    const { homedir } = await import('os')
+    const { validateMcpConfig, expandEnvVars } = await import('../lib/providers/mcp-loader')
+
+    const crmConfig = loadCrmConfig(opts.provider)
+    if (!crmConfig) {
+      console.error(`No CRM config for "${opts.provider}". Run crm:setup first.`)
+      process.exit(1)
+    }
+
+    const mcpPaths = [
+      join(homedir(), '.gtm-os', 'mcp', `${crmConfig.mcpServer}.json`),
+      join(process.cwd(), 'configs', 'mcp', `${crmConfig.mcpServer}.json`),
+    ]
+    let mcpConfig = null
+    for (const p of mcpPaths) {
+      if (existsSync(p)) {
+        try {
+          const raw = JSON.parse(readFileSync(p, 'utf-8'))
+          const v = validateMcpConfig(raw, `${crmConfig.mcpServer}.json`)
+          if (v.valid) { mcpConfig = expandEnvVars(raw).result; break }
+        } catch { continue }
+      }
+    }
+    if (!mcpConfig) { console.error('MCP config not found'); process.exit(1) }
+
+    console.log(`[crm:verify] Connecting to ${opts.provider}...`)
+    const adapter = new McpCrmAdapter(mcpConfig as any, crmConfig)
+
+    try {
+      await adapter.connect()
+      const drift = await adapter.detectDrift()
+
+      if (drift.ok) {
+        console.log(`\n  Schema is in sync.`)
+        if (drift.missingInMapping.length > 0) {
+          console.log(`  New CRM fields available: ${drift.missingInMapping.join(', ')}`)
+          console.log(`  Run crm:setup --provider ${opts.provider} to add them.`)
+        }
+      } else {
+        console.log(`\n  Schema drift detected:`)
+        if (drift.missingInCrm.length > 0) {
+          console.log(`  Missing in CRM: ${drift.missingInCrm.join(', ')}`)
+        }
+        if (drift.typeChanges.length > 0) {
+          for (const tc of drift.typeChanges) {
+            console.log(`  Type changed: ${tc.field} (${tc.expected} -> ${tc.actual})`)
+          }
+        }
+        console.log(`\n  Run crm:setup --provider ${opts.provider} to re-map.`)
+      }
+    } finally {
+      await adapter.disconnect()
+    }
+  }))
+
 // ─── leads:qualify ──────────────────────────────────────────────────────────
 program
   .command('leads:qualify')
