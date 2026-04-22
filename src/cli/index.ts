@@ -1237,4 +1237,51 @@ program
     )
   }))
 
+// ─── research ────────────────────────────────────────────────────────────────
+program
+  .command('research')
+  .description('AI research agent — answer any question about a company, person, or topic with evidence')
+  .requiredOption('--question <text>', 'Research question to answer')
+  .requiredOption('--target <identifier>', 'Target identifier (domain, name, or topic)')
+  .option('--target-type <type>', 'Target type: company, person, or topic', 'company')
+  .option('--max-sources <n>', 'Maximum sources to scrape (1-10)', '5')
+  .action(withDiagnostics(async (opts) => {
+    const { runResearchAgent } = await import('../lib/scraping/research-agent')
+
+    const finding = await runResearchAgent(
+      {
+        question: opts.question,
+        target: opts.target,
+        targetType: opts.targetType as 'company' | 'person' | 'topic',
+        maxSources: parseInt(opts.maxSources, 10),
+        tenantId: getTenant(),
+      },
+      {
+        onProgress: (progress) => {
+          console.log(`[${progress.percent}%] [${progress.phase}] ${progress.message}`)
+        },
+      },
+    )
+
+    console.log('\n── Research Finding ──')
+    console.log(`  Question:   ${finding.question}`)
+    console.log(`  Answer:     ${finding.answer}`)
+    console.log(`  Confidence: ${finding.confidence}%`)
+    console.log(`  Sources:    ${finding.evidence.length}`)
+
+    if (finding.evidence.length > 0) {
+      console.log('\n── Evidence Chain ──')
+      for (const [i, e] of finding.evidence.entries()) {
+        console.log(`  [${i + 1}] ${e.url}`)
+        console.log(`      Relevance: ${e.relevanceScore}% | Scraped: ${e.scrapedAt}`)
+        console.log(`      Text: ${e.extractedText.slice(0, 150)}${e.extractedText.length > 150 ? '...' : ''}`)
+      }
+    }
+
+    if (Object.keys(finding.structuredData).length > 0) {
+      console.log('\n── Structured Data ──')
+      console.log(JSON.stringify(finding.structuredData, null, 2))
+    }
+  }))
+
 program.parse()

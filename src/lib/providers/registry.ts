@@ -137,6 +137,7 @@ export async function registerBuiltinProviders(registry: ProviderRegistry): Prom
   const { FullEnrichProvider } = await import('./builtin/fullenrich-provider')
   const { InstantlyProvider } = await import('./builtin/instantly-provider')
   const { OrthogonalProvider } = await import('./builtin/orthogonal-provider')
+  const { ResearchProvider } = await import('./builtin/research-provider')
 
   registry.register(new MockProvider())
   registry.register(new QualifyProvider())
@@ -147,6 +148,7 @@ export async function registerBuiltinProviders(registry: ProviderRegistry): Prom
   registry.register(new FullEnrichProvider())
   registry.register(new InstantlyProvider())
   registry.register(new OrthogonalProvider())
+  registry.register(new ResearchProvider())
 }
 
 // Lazy default instance for CLI backward compatibility
