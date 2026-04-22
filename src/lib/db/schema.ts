@@ -401,6 +401,20 @@ export const providerPreferences = sqliteTable('provider_preferences', {
   createdAt: text('created_at').default(sql`(datetime('now'))`),
 })
 
+// ─── Signal Watches ──────────────────────────────────────────────────────────
+// Active monitoring targets — companies/people to watch for intent signals
+export const signalWatches = sqliteTable('signal_watches', {
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default('default'),
+  entityType: text('entity_type').notNull(), // 'company' | 'person'
+  entityId: text('entity_id').notNull(),     // domain or linkedin URL
+  entityName: text('entity_name').notNull(),
+  signalTypes: text('signal_types').notNull(), // JSON: SignalType[]
+  baseline: text('baseline').notNull().default('{}'), // JSON: last known state
+  createdAt: text('created_at').default(sql`(datetime('now'))`),
+  lastCheckedAt: text('last_checked_at').default(sql`(datetime('now'))`),
+})
+
 // ─── Signals Log ──────────────────────────────────────────────────────────────
 // Passive signal collection from user interactions
 export const signalsLog = sqliteTable('signals_log', {
@@ -589,5 +603,6 @@ export const signalsLogRelations = relations(signalsLog, () => ({}))
 export const providerStatsRelations = relations(providerStats, () => ({}))
 export const providerPreferencesRelations = relations(providerPreferences, () => ({}))
 
+export const signalWatchesRelations = relations(signalWatches, () => ({}))
 export const dataQualityLogRelations = relations(dataQualityLog, () => ({}))
 export const leadBlocklistRelations = relations(leadBlocklist, () => ({}))

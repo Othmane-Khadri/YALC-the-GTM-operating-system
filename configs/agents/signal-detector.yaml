@@ -1,0 +1,33 @@
+# Signal Detector — Background Agent Template
+# Runs signal detection on a schedule via the agent system.
+#
+# Install:
+#   cp configs/agents/signal-detector.yaml ~/.gtm-os/agents/signal-detector.yaml
+#   npx tsx src/cli/index.ts agent:install --agent signal-detector --hour 9 --minute 0
+#
+# Run manually:
+#   npx tsx src/cli/index.ts signals:detect
+
+id: signal-detector
+name: Daily Signal Detector
+description: >
+  Monitors watched companies and people for intent signals
+  (job changes, hiring surges, funding events, news).
+  Detected signals feed the intelligence store and trigger
+  configured actions (Slack alerts, enrichment, qualification).
+
+steps:
+  - skillId: signals-detect
+    input:
+      # Leave empty to check all watches, or filter:
+      # signalType: hiring-surge
+      # entityId: acme.com
+    continueOnError: true
+
+schedule:
+  type: daily
+  hour: 9
+  minute: 0
+
+maxRetries: 2
+timeoutMs: 600000  # 10 min — some detectors make API calls

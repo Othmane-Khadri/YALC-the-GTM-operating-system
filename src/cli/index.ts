@@ -1237,4 +1237,169 @@ program
     )
   }))
 
+// ─── signals:watch ──────────────────────────────────────────────────────────
+program
+  .command('signals:watch')
+  .description('Add companies or people to the signal watch list')
+  .requiredOption('--companies <domains>', 'Comma-separated company domains')
+  .option('--types <types>', 'Signal types to detect (default: all)', 'job-change,hiring-surge,funding,news')
+  .option('--force', 'Skip credit budget warning')
+  .action(withDiagnostics(async (opts) => {
+    const { addWatch, listWatches, estimateDailyCreditCost, ALL_SIGNAL_TYPES } = await import('../lib/signals')
+    const tenantId = getTenant()
+    const domains = (opts.companies as string).split(',').map(d => d.trim()).filter(Boolean)
+    const types = (opts.types as string).split(',').map(t => t.trim()) as import('../lib/signals').SignalType[]
+
+    // Validate signal types
+    for (const t of types) {
+      if (!ALL_SIGNAL_TYPES.includes(t)) {
+        console.error(`Invalid signal type: "${t}". Valid: ${ALL_SIGNAL_TYPES.join(', ')}`)
+        process.exit(1)
+      }
+    }
+
+    // Credit budget check
+    const existingWatches = await listWatches(tenantId)
+    const newWatches = domains.map(d => ({
+      entityType: 'company' as const,
+      entityId: d,
+      entityName: d,
+      signalTypes: types,
+      baseline: {},
+      tenantId,
+    }))
+    const projectedCost = estimateDailyCreditCost([
+      ...existingWatches,
+      ...newWatches.map(w => ({ ...w, id: '', createdAt: '', lastCheckedAt: '' })),
+    ])
+
+    if (projectedCost > 50 && !opts.force) {
+      console.error(
+        `[signals] Projected daily credit cost: ${projectedCost} credits.` +
+        ` This exceeds the 50-credit warning threshold. Use --force to proceed.`
+      )
+      process.exit(1)
+    }
+
+    for (const domain of domains) {
+      const watch = await addWatch({
+        entityType: 'company',
+        entityId: domain,
+        entityName: domain,
+        signalTypes: types,
+        baseline: {},
+        tenantId,
+      })
+      console.log(`[signals] Watching ${domain} for [${types.join(', ')}] (id: ${watch.id})`)
+    }
+
+    console.log(`\n[signals] Estimated daily credit cost: ${projectedCost} credits`)
+    console.log(`[signals] Run detection: npx tsx src/cli/index.ts signals:detect`)
+  }))
+
+// ─── signals:detect ─────────────────────────────────────────────────────────
+program
+  .command('signals:detect')
+  .description('Run signal detection now')
+  .option('--type <type>', 'Only run a specific signal type')
+  .option('--company <domain>', 'Only check a specific company')
+  .action(withDiagnostics(async (opts) => {
+    const { runDetection } = await import('../lib/signals')
+    const tenantId = getTenant()
+
+    console.log(`[signals] Running detection for tenant "${tenantId}"...`)
+    const signals = await runDetection({
+      tenantId,
+      signalType: opts.type,
+      entityId: opts.company,
+    })
+
+    if (signals.length === 0) {
+      console.log('[signals] No new signals detected.')
+      return
+    }
+
+    console.log(`\n[signals] Detected ${signals.length} signal(s):\n`)
+    for (const s of signals) {
+      console.log(`  ${s.signalType.padEnd(16)} ${s.entityName.padEnd(30)} ${s.summary}`)
+    }
+  }))
+
+// ─── signals:list ───────────────────────────────────────────────────────────
+program
+  .command('signals:list')
+  .description('Show all signal watches with last check time')
+  .action(withDiagnostics(async () => {
+    const { listWatches, estimateDailyCreditCost } = await import('../lib/signals')
+    const tenantId = getTenant()
+    const watches = await listWatches(tenantId)
+
+    if (watches.length === 0) {
+      console.log('[signals] No watches configured. Add with: signals:watch --companies <domains>')
+      return
+    }
+
+    console.log(`\n── Signal Watches (${watches.length}) ──\n`)
+    for (const w of watches) {
+      console.log(
+        `  ${w.entityId.padEnd(30)} ${w.entityType.padEnd(10)} [${w.signalTypes.join(', ')}]  last: ${w.lastCheckedAt?.slice(0, 16) ?? 'never'}`
+      )
+    }
+
+    const dailyCost = estimateDailyCreditCost(watches)
+    console.log(`\n  Daily credit cost: ~${dailyCost} credits\n`)
+  }))
+
+// ─── signals:triggers ───────────────────────────────────────────────────────
+program
+  .command('signals:triggers')
+  .description('Manage signal trigger configurations')
+  .argument('<action>', 'list | set')
+  .option('--signal <type>', 'Signal type (for set)')
+  .option('--action <action>', 'Trigger action: slack, enrich, qualify, campaign, intelligence (for set)')
+  .option('--channel <channel>', 'Slack channel (for slack action)')
+  .option('--template <text>', 'Message template (for slack action)')
+  .action(withDiagnostics(async (action: string, opts) => {
+    const { listTriggers, setTrigger, ALL_SIGNAL_TYPES } = await import('../lib/signals')
+    const tenantId = getTenant()
+
+    if (action === 'list') {
+      const config = await listTriggers(tenantId)
+      if (!config || Object.keys(config.triggers).length === 0) {
+        console.log('[signals] No triggers configured.')
+        console.log(`  Set with: signals:triggers set --signal <type> --action <action>`)
+        return
+      }
+
+      console.log('\n── Signal Triggers ──\n')
+      for (const [signalType, triggers] of Object.entries(config.triggers)) {
+        if (!triggers || triggers.length === 0) continue
+        console.log(`  ${signalType}:`)
+        for (const t of triggers) {
+          const details = t.channel ? ` (${t.channel})` : t.campaignId ? ` (campaign: ${t.campaignId})` : ''
+          console.log(`    -> ${t.action}${details}`)
+        }
+      }
+    } else if (action === 'set') {
+      if (!opts.signal || !opts.action) {
+        console.error('Both --signal and --action are required for "set"')
+        process.exit(1)
+      }
+      if (!ALL_SIGNAL_TYPES.includes(opts.signal as any)) {
+        console.error(`Invalid signal type: "${opts.signal}". Valid: ${ALL_SIGNAL_TYPES.join(', ')}`)
+        process.exit(1)
+      }
+
+      await setTrigger(tenantId, opts.signal as any, {
+        action: opts.action as any,
+        channel: opts.channel,
+        template: opts.template,
+      })
+      console.log(`[signals] Trigger set: ${opts.signal} -> ${opts.action}`)
+    } else {
+      console.error(`Unknown action: "${action}". Use "list" or "set".`)
+      process.exit(1)
+    }
+  }))
+
 program.parse()
