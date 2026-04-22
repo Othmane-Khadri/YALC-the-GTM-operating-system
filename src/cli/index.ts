@@ -1436,6 +1436,179 @@ program
     console.log('The provider will not load on next CLI invocation.')
   })
 
+// ─── pipeline:run ──────────────────────────────────────────────────────────
+program
+  .command('pipeline:run')
+  .description('Execute a declarative YAML pipeline')
+  .requiredOption('--file <path>', 'Path to pipeline YAML file')
+  .option('--dry-run', 'Validate and show execution plan without running')
+  .action(withDiagnostics(async (opts) => {
+    const { executePipeline } = await import('../lib/orchestrator/chain')
+    const context = {
+      framework: null as any,
+      intelligence: [],
+      providers: { resolve: () => ({ id: 'mock', name: 'mock', execute: async function*() {} }) } as any,
+      userId: 'default',
+    }
+
+    for await (const event of executePipeline({ file: opts.file, dryRun: opts.dryRun ?? false }, context)) {
+      if (event.type === 'progress') console.log(`[${event.percent}%] ${event.message}`)
+      else if (event.type === 'error') console.error(`ERROR: ${event.message}`)
+      else if (event.type === 'result') console.log('\nResult:', JSON.stringify(event.data, null, 2))
+      else if (event.type === 'step_complete') {
+        const step = (event as any).data
+        if (step.status === 'skipped') console.log(`  -> skipped: ${step.skippedReason}`)
+        else if (step.status === 'completed') console.log(`  -> completed in ${step.duration}ms`)
+      }
+    }
+  }))
+
+// ─── pipeline:list ─────────────────────────────────────────────────────────
+program
+  .command('pipeline:list')
+  .description('List available pipelines from ~/.gtm-os/pipelines/ and configs/pipelines/')
+  .action(async () => {
+    const { listPipelines } = await import('../lib/orchestrator/chain')
+    const pipelines = listPipelines()
+
+    if (pipelines.length === 0) {
+      console.log('No pipelines found. Create one with: pipeline:create')
+      console.log('  Or add YAML files to ~/.gtm-os/pipelines/ or configs/pipelines/')
+      return
+    }
+
+    console.log(`\n── Pipelines (${pipelines.length}) ──\n`)
+    for (const p of pipelines) {
+      console.log(`  ${p.name.padEnd(30)} ${String(p.steps).padEnd(4)} steps  ${p.description}`)
+      console.log(`    ${p.file}`)
+    }
+  })
+
+// ─── pipeline:resume ───────────────────────────────────────────────────────
+program
+  .command('pipeline:resume')
+  .description('Resume a failed or interrupted pipeline from its last checkpoint')
+  .requiredOption('--name <name>', 'Pipeline name to resume')
+  .action(withDiagnostics(async (opts) => {
+    const { loadCheckpoint, executePipeline } = await import('../lib/orchestrator/chain')
+    const checkpoint = loadCheckpoint(opts.name)
+
+    if (!checkpoint) {
+      console.error(`No checkpoint found for pipeline "${opts.name}".`)
+      console.error(`Run pipeline:status --name "${opts.name}" to check, or pipeline:run --file <yaml> to start fresh.`)
+      process.exit(1)
+    }
+
+    if (checkpoint.status === 'completed') {
+      console.log(`Pipeline "${opts.name}" already completed at ${checkpoint.updatedAt}.`)
+      return
+    }
+
+    const resumeStep = checkpoint.currentStep
+    console.log(`Resuming pipeline "${opts.name}" from step ${resumeStep}...`)
+
+    const context = {
+      framework: null as any,
+      intelligence: [],
+      providers: { resolve: () => ({ id: 'mock', name: 'mock', execute: async function*() {} }) } as any,
+      userId: 'default',
+    }
+
+    for await (const event of executePipeline({
+      file: checkpoint.pipelineFile,
+      resumeFrom: resumeStep,
+    }, context)) {
+      if (event.type === 'progress') console.log(`[${event.percent}%] ${event.message}`)
+      else if (event.type === 'error') console.error(`ERROR: ${event.message}`)
+      else if (event.type === 'result') console.log('\nResult:', JSON.stringify(event.data, null, 2))
+      else if (event.type === 'step_complete') {
+        const step = (event as any).data
+        if (step.status === 'skipped') console.log(`  -> skipped: ${step.skippedReason}`)
+        else if (step.status === 'completed') console.log(`  -> completed in ${step.duration}ms`)
+      }
+    }
+  }))
+
+// ─── pipeline:status ───────────────────────────────────────────────────────
+program
+  .command('pipeline:status')
+  .description('Show current state of a running, failed, or completed pipeline')
+  .requiredOption('--name <name>', 'Pipeline name')
+  .action(async (opts) => {
+    const { getPipelineStatus } = await import('../lib/orchestrator/chain')
+    const status = getPipelineStatus(opts.name)
+
+    if (!status) {
+      console.log(`No state found for pipeline "${opts.name}".`)
+      return
+    }
+
+    console.log(`\n── Pipeline: ${status.pipelineName} ──`)
+    console.log(`  Status:     ${status.status}`)
+    console.log(`  Started:    ${status.startedAt}`)
+    console.log(`  Updated:    ${status.updatedAt}`)
+    console.log(`  Current:    step ${status.currentStep}`)
+    console.log(`  Completed:  [${status.completedSteps.join(', ')}]`)
+    console.log(`  File:       ${status.pipelineFile}`)
+    if (status.error) {
+      console.log(`  Error:      ${status.error}`)
+    }
+
+    const resultKeys = Object.keys(status.stepResults)
+    if (resultKeys.length > 0) {
+      console.log(`\n  Step results: ${resultKeys.join(', ')}`)
+    }
+
+    if (status.status === 'failed') {
+      console.log(`\n  Resume with: npx tsx src/cli/index.ts pipeline:resume --name "${status.pipelineName}"`)
+    }
+  })
+
+// ─── pipeline:create ───────────────────────────────────────────────────────
+program
+  .command('pipeline:create')
+  .description('Create a new pipeline YAML from a template')
+  .requiredOption('--name <name>', 'Pipeline name')
+  .option('--output <path>', 'Output path (default: ~/.gtm-os/pipelines/<name>.yaml)')
+  .action(async (opts) => {
+    const { existsSync, writeFileSync, mkdirSync } = await import('fs')
+    const { join } = await import('path')
+    const { homedir } = await import('os')
+    const yaml = (await import('js-yaml')).default
+
+    const pipelinesDir = join(homedir(), '.gtm-os', 'pipelines')
+    mkdirSync(pipelinesDir, { recursive: true })
+
+    const outputPath = opts.output ?? join(pipelinesDir, `${opts.name}.yaml`)
+    if (existsSync(outputPath)) {
+      console.error(`File already exists: ${outputPath}`)
+      process.exit(1)
+    }
+
+    const template = {
+      name: opts.name,
+      description: 'TODO: describe this pipeline',
+      version: '1.0',
+      steps: [
+        {
+          skill: 'find-companies',
+          input: { query: 'TODO: your search query' },
+          output: 'companies',
+        },
+        {
+          skill: 'enrich-leads',
+          from: 'companies',
+          condition: 'domain exists',
+          output: 'enriched',
+        },
+      ],
+    }
+
+    writeFileSync(outputPath, yaml.dump(template, { lineWidth: 120 }))
+    console.log(`Pipeline created: ${outputPath}`)
+    console.log(`Edit the YAML, then run: npx tsx src/cli/index.ts pipeline:run --file "${outputPath}" --dry-run`)
+  })
+
 // ─── signals:watch ──────────────────────────────────────────────────────────
 program
   .command('signals:watch')

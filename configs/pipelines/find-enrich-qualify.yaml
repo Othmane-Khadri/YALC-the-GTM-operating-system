@@ -1,0 +1,30 @@
+name: find-enrich-qualify
+description: Find companies, enrich contacts, qualify leads, and export qualified results
+version: "1.0"
+
+steps:
+  - skill: find-companies
+    input:
+      query: "series-a saas usa"
+    output: companies
+
+  - skill: enrich-leads
+    input:
+      types: [email, phone]
+    from: companies
+    condition: "domain exists"
+    transform:
+      company_url: domain
+    output: enriched
+
+  - skill: qualify-leads
+    from: enriched
+    condition: "email exists"
+    output: qualified
+
+  - skill: export-data
+    from: qualified
+    condition: "score >= 70"
+    input:
+      format: csv
+      destination: notion
