@@ -8,7 +8,11 @@ import { getRegistryReady } from '../providers/registry'
 import { buildFrameworkContext } from '../framework/context'
 import { notionService } from '../services/notion'
 import { runImport } from './importers'
+import { DedupEngine } from '../dedup/engine'
+import { buildSuppressionSet } from '../dedup/live-sync'
+import { sendConfirmation } from '../dedup/slack-confirm'
 import type { GTMOSConfig } from '../config/types'
+import type { LeadRecord, DedupConfig } from '../dedup/types'
 
 const HOLDING_CAMPAIGN_TITLE = '__qualified_leads_pool__'
 
@@ -18,6 +22,12 @@ interface QualifyOptions {
   input?: string
   resultSetId?: string
   dryRun?: boolean
+  /** Skip dedup gate entirely */
+  noDedup?: boolean
+  /** Enable Slack confirmation for ambiguous matches */
+  slackConfirm?: boolean
+  /** Dedup config overrides (from tenant YAML) */
+  dedupConfig?: Partial<DedupConfig>
 }
 
 interface QualifyResult {
@@ -69,23 +79,52 @@ export async function runQualify(opts: QualifyOptions): Promise<QualifyResult> {
   let pipeline: Record<string, unknown>[] = leads
 
   // ─── Gate 0: Dedup ───────────────────────────────────────────────────────────
-  console.log('[qualify] Gate 0: Dedup check...')
-  const existingLeads = await db.select().from(campaignLeads)
-  const existingIds = new Set(existingLeads.map(l => l.providerId))
-  const existingUrls = new Set(existingLeads.map(l => l.linkedinUrl).filter(Boolean))
+  if (opts.noDedup) {
+    console.log('[qualify] Gate 0: Dedup SKIPPED (--no-dedup flag)')
+  } else {
+    console.log('[qualify] Gate 0: Enhanced dedup check (live sync)...')
 
-  const dedupPassed: Record<string, unknown>[] = []
-  for (const lead of pipeline) {
-    const pid = String(lead.provider_id ?? lead.providerId ?? '')
-    const url = String(lead.linkedin_url ?? lead.linkedinUrl ?? '')
-    if ((pid && existingIds.has(pid)) || (url && existingUrls.has(url))) {
-      result.skippedDedup++
-    } else {
-      dedupPassed.push(lead)
+    // Build suppression set from all sources
+    const suppressionSet = await buildSuppressionSet({
+      tenantId: 'default',
+      includeCampaigns: true,
+      includeReplied: true,
+      includeBlocklist: true,
+    })
+
+    const engine = new DedupEngine(opts.dedupConfig)
+    const dedupResult = engine.dedup(
+      pipeline as LeadRecord[],
+      suppressionSet,
+    )
+
+    // Handle duplicates — skip them
+    result.skippedDedup = dedupResult.duplicates.length
+    for (const { lead, match } of dedupResult.duplicates) {
+      console.log(`[qualify]   DUP (${match.confidence}%): ${lead.first_name ?? ''} ${lead.last_name ?? ''} matched via ${match.matcher} -> ${match.matchedSource}`)
     }
+
+    // Handle pending review — send Slack confirmations if enabled
+    if (dedupResult.pendingReview.length > 0 && opts.slackConfirm && opts.config.slack?.webhook_url) {
+      console.log(`[qualify]   ${dedupResult.pendingReview.length} leads pending Slack review`)
+      for (const { lead, match } of dedupResult.pendingReview) {
+        await sendConfirmation(lead, match, {
+          webhookUrl: opts.config.slack.webhook_url,
+        })
+        // Mark as pending — they'll proceed as unique for now (safe default)
+        ;(lead as Record<string, unknown>).dedup_status = 'pending_review'
+      }
+      // Pending review leads are included in the pipeline (safe default: keep both)
+      dedupResult.unique.push(...dedupResult.pendingReview.map(pr => pr.lead))
+    } else if (dedupResult.pendingReview.length > 0) {
+      // No Slack confirm — treat as unique (safe default)
+      dedupResult.unique.push(...dedupResult.pendingReview.map(pr => pr.lead))
+      console.log(`[qualify]   ${dedupResult.pendingReview.length} ambiguous matches kept (no Slack confirm)`)
+    }
+
+    pipeline = dedupResult.unique as Record<string, unknown>[]
+    console.log(`[qualify] Gate 0: ${result.skippedDedup} duplicates removed, ${pipeline.length} remaining`)
   }
-  pipeline = dedupPassed
-  console.log(`[qualify] Gate 0: ${result.skippedDedup} duplicates removed, ${pipeline.length} remaining`)
 
   // ─── Gate 1: Headline pre-qualification ──────────────────────────────────────
   console.log('[qualify] Gate 1: Headline pre-qualification...')
