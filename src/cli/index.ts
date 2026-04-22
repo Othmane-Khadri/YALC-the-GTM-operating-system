@@ -547,10 +547,20 @@ program
   .option('--input <path>', 'Path to input file or Notion DB ID')
   .option('--result-set <id>', 'Existing result set ID to qualify')
   .option('--dry-run', 'Preview qualification without writing results')
+  .option('--no-dedup', 'Skip dedup gate entirely')
+  .option('--slack-confirm', 'Enable Slack confirmation for ambiguous dedup matches')
   .action(withDiagnostics(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { runQualify } = await import('../lib/qualification/pipeline')
-    await runQualify({ config, source: opts.source, input: opts.input, resultSetId: opts.resultSet, dryRun: opts.dryRun ?? false })
+    await runQualify({
+      config,
+      source: opts.source,
+      input: opts.input,
+      resultSetId: opts.resultSet,
+      dryRun: opts.dryRun ?? false,
+      noDedup: opts.noDedup === true || opts.dedup === false,
+      slackConfirm: opts.slackConfirm ?? false,
+    })
   }))
 
 // ─── leads:import ───────────────────────────────────────────────────────────
@@ -564,6 +574,123 @@ program
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { runImport } = await import('../lib/qualification/importers')
     await runImport({ config, source: opts.source, input: opts.input, dryRun: opts.dryRun ?? false })
+  }))
+
+// ─── leads:dedup ────────────────────────────────────────────────────────────
+program
+  .command('leads:dedup')
+  .description('Deduplicate a result set against campaigns, CRM, replied leads, and blocklist')
+  .requiredOption('--result-set <id>', 'Result set ID to deduplicate')
+  .option('--strategy <type>', 'Matcher strategy: exact, fuzzy, or all', 'all')
+  .option('--slack-confirm', 'Send Slack confirmations for ambiguous matches')
+  .action(withDiagnostics(async (opts) => {
+    const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
+    const { DedupEngine } = await import('../lib/dedup/engine')
+    const { buildSuppressionSet } = await import('../lib/dedup/live-sync')
+    const { sendConfirmation } = await import('../lib/dedup/slack-confirm')
+    const { resultRows } = await import('../lib/db/schema')
+    const { db } = await import('../lib/db')
+    const { eq } = await import('drizzle-orm')
+
+    const rows = await db.select().from(resultRows).where(eq(resultRows.resultSetId, opts.resultSet))
+    const leads = rows.map(r => {
+      const data = typeof r.data === 'string' ? JSON.parse(r.data) : r.data
+      return { id: r.id, ...(data as Record<string, unknown>) }
+    })
+
+    console.log(`[dedup] Loaded ${leads.length} leads from result set ${opts.resultSet}`)
+
+    const suppressionSet = await buildSuppressionSet({
+      includeCampaigns: true,
+      includeReplied: true,
+      includeBlocklist: true,
+    })
+
+    const enabledMatchers = opts.strategy === 'exact'
+      ? ['email' as const, 'linkedin' as const]
+      : opts.strategy === 'fuzzy'
+        ? ['fuzzy_name_company' as const, 'domain_title' as const]
+        : ['email' as const, 'linkedin' as const, 'fuzzy_name_company' as const, 'domain_title' as const]
+
+    const engine = new DedupEngine({ enabledMatchers })
+    const result = engine.dedup(leads, suppressionSet)
+
+    console.log(`\n--- Dedup Results ---`)
+    console.log(`Unique:         ${result.unique.length}`)
+    console.log(`Duplicates:     ${result.duplicates.length}`)
+    console.log(`Pending review: ${result.pendingReview.length}`)
+
+    if (result.duplicates.length > 0) {
+      console.log(`\nDuplicates:`)
+      for (const { lead, match } of result.duplicates) {
+        console.log(`  ${lead.first_name ?? ''} ${lead.last_name ?? ''} (${match.confidence}%) via ${match.matcher} -> ${match.matchedSource}`)
+      }
+    }
+
+    if (result.pendingReview.length > 0 && opts.slackConfirm && config.slack?.webhook_url) {
+      console.log(`\nSending Slack confirmations for ${result.pendingReview.length} ambiguous matches...`)
+      for (const { lead, match } of result.pendingReview) {
+        await sendConfirmation(lead, match, { webhookUrl: config.slack.webhook_url })
+      }
+    }
+  }))
+
+// ─── leads:suppress ─────────────────────────────────────────────────────────
+program
+  .command('leads:suppress')
+  .description('Load a suppression list from external source')
+  .requiredOption('--source <type>', 'Source type: hubspot, notion, csv')
+  .option('--file <path>', 'Path to CSV suppression file')
+  .action(withDiagnostics(async (opts) => {
+    const { db } = await import('../lib/db')
+    const { leadBlocklist } = await import('../lib/db/schema')
+    const { randomUUID } = await import('crypto')
+
+    let entries: Array<{ email?: string; linkedin_url?: string; name?: string; company?: string }> = []
+
+    if (opts.source === 'csv' && opts.file) {
+      const { readFileSync } = await import('fs')
+      const raw = readFileSync(opts.file, 'utf-8')
+      const lines = raw.split('\n').filter(l => l.trim())
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
+
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim())
+        const record: Record<string, string> = {}
+        headers.forEach((h, idx) => { record[h] = values[idx] ?? '' })
+        entries.push({
+          email: record.email || undefined,
+          linkedin_url: record.linkedin_url || record.linkedin || undefined,
+          name: record.name || `${record.first_name ?? ''} ${record.last_name ?? ''}`.trim() || undefined,
+          company: record.company || undefined,
+        })
+      }
+    } else if (opts.source === 'notion') {
+      console.log('[suppress] Notion suppression import — use leads:import --source notion instead')
+      return
+    } else if (['hubspot', 'salesforce', 'pipedrive'].includes(opts.source)) {
+      console.log(`[suppress] CRM suppression — use crm:import --provider ${opts.source} for full import`)
+      return
+    }
+
+    console.log(`[suppress] Importing ${entries.length} suppression entries...`)
+
+    let inserted = 0
+    for (const entry of entries) {
+      if (!entry.email && !entry.linkedin_url) continue
+      await db.insert(leadBlocklist).values({
+        id: randomUUID(),
+        providerId: entry.email ?? entry.linkedin_url ?? undefined,
+        linkedinUrl: entry.linkedin_url ?? undefined,
+        name: entry.name ?? undefined,
+        company: entry.company ?? undefined,
+        scope: 'permanent',
+        reason: `Imported from ${opts.source}`,
+      })
+      inserted++
+    }
+
+    console.log(`[suppress] Inserted ${inserted} entries into lead blocklist`)
   }))
 
 // ─── notion:sync ────────────────────────────────────────────────────────────
