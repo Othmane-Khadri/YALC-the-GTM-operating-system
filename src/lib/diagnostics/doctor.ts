@@ -523,6 +523,46 @@ async function checkProviders(): Promise<LayerResult> {
     checks.push({ name: 'FullEnrich', status: 'skip', detail: 'Not configured' })
   }
 
+  // MCP Providers
+  try {
+    const { getMcpConfigDir } = await import('../providers/mcp-loader')
+    const { readdirSync, readFileSync } = await import('fs')
+    const mcpDir = getMcpConfigDir()
+    if (existsSync(mcpDir)) {
+      const configs = readdirSync(mcpDir).filter(f => f.endsWith('.json'))
+      if (configs.length > 0) {
+        const { getRegistryReady } = await import('../providers/registry')
+        const registry = await getRegistryReady()
+        const allProviders = registry.getAll()
+        const mcpProviders = allProviders.filter(p => p.type === 'mcp')
+
+        for (const p of mcpProviders) {
+          if (p.status === 'active') {
+            checks.push({ name: `MCP: ${p.name}`, status: 'pass', detail: `${p.capabilities.join(', ')}` })
+          } else {
+            checks.push({ name: `MCP: ${p.name}`, status: 'warn', detail: 'Unavailable — check config and env vars' })
+          }
+        }
+
+        // Report configs that failed to load
+        const loadedNames = new Set(mcpProviders.map(p => p.id.replace('mcp:', '')))
+        for (const file of configs) {
+          try {
+            const raw = JSON.parse(readFileSync(join(mcpDir, file), 'utf-8'))
+            const name = raw.name
+            if (name && !loadedNames.has(name)) {
+              checks.push({ name: `MCP: ${file}`, status: 'fail', detail: 'Config exists but provider failed to register — check JSON schema' })
+            }
+          } catch {
+            checks.push({ name: `MCP: ${file}`, status: 'fail', detail: 'Invalid JSON' })
+          }
+        }
+      }
+    }
+  } catch {
+    // MCP check is best-effort
+  }
+
   return { layer: 'Provider Connectivity', checks }
 }
 

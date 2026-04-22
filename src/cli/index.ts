@@ -237,7 +237,9 @@ program
   .command('linkedin:reply-to-comments')
   .description('Send threaded replies under LinkedIn post comments (never top-level)')
   .requiredOption('--url <url>', 'LinkedIn post URL')
-  .requiredOption('--template <text>', 'Reply text (use {{name}} for first name)')
+  .option('--template <text>', 'Reply text (use {{name}} for first name)')
+  .option('--templates <texts...>', 'Multiple reply templates to rotate through')
+  .option('--include-keywords <words...>', 'Only reply to comments containing these keywords')
   .option('--max <n>', 'Max replies', '100')
   .option('--dry-run', 'Preview without sending', true)
   .option('--send', 'Actually send replies (disables dry-run)')
@@ -256,7 +258,9 @@ program
     for await (const event of replyToCommentsSkill.execute({
       url: opts.url,
       template: opts.template,
+      templates: opts.templates,
       exclude: opts.exclude ?? [],
+      includeKeywords: opts.includeKeywords,
       maxReplies: parseInt(opts.max, 10),
       dryRun,
     }, context)) {
@@ -1248,5 +1252,174 @@ program
       `[framework:derive][${tenantId}] nodes=${r.nodesConsidered} interview=${r.interviewAnswersUsed} onboardingComplete=${r.framework.onboardingComplete}`,
     )
   }))
+
+// ─── provider:list ─────────────────────────────────────────────────────────
+program
+  .command('provider:list')
+  .description('List all providers (builtin + MCP) with status')
+  .action(withDiagnostics(async () => {
+    const { getRegistryReady } = await import('../lib/providers/registry')
+    const registry = await getRegistryReady()
+    const all = registry.getAll()
+
+    if (all.length === 0) {
+      console.log('No providers registered.')
+      return
+    }
+
+    const builtins = all.filter(p => p.type !== 'mcp')
+    const mcps = all.filter(p => p.type === 'mcp')
+
+    console.log('\n── Builtin Providers ──\n')
+    for (const p of builtins) {
+      const statusTag = p.status === 'active' ? 'OK' : p.status.toUpperCase()
+      console.log(`  ${p.id.padEnd(24)} [${statusTag.padEnd(12)}] ${p.capabilities.join(', ').padEnd(28)} ${p.description}`)
+    }
+
+    if (mcps.length > 0) {
+      console.log('\n── MCP Providers ──\n')
+      for (const p of mcps) {
+        const statusTag = p.status === 'active' ? 'OK' : p.status.toUpperCase()
+        console.log(`  ${p.id.padEnd(24)} [${statusTag.padEnd(12)}] ${p.capabilities.join(', ').padEnd(28)} ${p.name}`)
+      }
+    } else {
+      console.log('\n  No MCP providers loaded. Drop configs into ~/.gtm-os/mcp/ or run: provider:add --mcp <name>')
+    }
+
+    console.log(`\n  Total: ${all.length} providers (${builtins.length} builtin, ${mcps.length} MCP)\n`)
+  }))
+
+// ─── provider:add ──────────────────────────────────────────────────────────
+program
+  .command('provider:add')
+  .description('Add an MCP provider from a template config')
+  .requiredOption('--mcp <name>', 'Template name (hubspot, apollo, peopledatalabs, zoominfo)')
+  .action(withDiagnostics(async (opts) => {
+    const { existsSync, copyFileSync, mkdirSync, readFileSync } = await import('fs')
+    const { join } = await import('path')
+    const { homedir } = await import('os')
+
+    const templateDir = join(process.cwd(), 'configs', 'mcp')
+    const targetDir = join(homedir(), '.gtm-os', 'mcp')
+
+    const templatePath = join(templateDir, `${opts.mcp}.json`)
+    const targetPath = join(targetDir, `${opts.mcp}.json`)
+
+    if (!existsSync(templatePath)) {
+      const { readdirSync } = await import('fs')
+      const available = existsSync(templateDir)
+        ? readdirSync(templateDir).filter(f => f.endsWith('.json')).map(f => f.replace('.json', ''))
+        : []
+      console.error(`Template "${opts.mcp}" not found. Available: ${available.join(', ') || 'none'}`)
+      process.exit(1)
+    }
+
+    if (existsSync(targetPath)) {
+      console.log(`Config already exists at ${targetPath}. Edit it directly or remove first.`)
+      return
+    }
+
+    mkdirSync(targetDir, { recursive: true })
+    copyFileSync(templatePath, targetPath)
+
+    // Parse to show env vars that need to be set
+    const config = JSON.parse(readFileSync(targetPath, 'utf-8'))
+    const envVars: string[] = []
+    const jsonStr = JSON.stringify(config)
+    const matches = jsonStr.matchAll(/\$\{([^}]+)\}/g)
+    for (const match of matches) {
+      if (!envVars.includes(match[1])) envVars.push(match[1])
+    }
+
+    console.log(`\nCopied ${opts.mcp} config to ${targetPath}`)
+
+    if (envVars.length > 0) {
+      console.log('\nRequired environment variables:')
+      for (const v of envVars) {
+        const isSet = process.env[v] ? 'SET' : 'NOT SET'
+        console.log(`  ${v}: ${isSet}`)
+      }
+      console.log('\nAdd them to your .env.local or export them before running GTM-OS.')
+    }
+
+    console.log('\nVerify with: npx tsx src/cli/index.ts provider:test ' + opts.mcp)
+  }))
+
+// ─── provider:test ─────────────────────────────────────────────────────────
+program
+  .command('provider:test <name>')
+  .description('Run health check for a specific provider')
+  .action(withDiagnostics(async (name: string) => {
+    const { getRegistryReady } = await import('../lib/providers/registry')
+    const registry = await getRegistryReady()
+    const all = registry.getAll()
+
+    // Find provider by id or name
+    const match = all.find(p => p.id === name || p.id === `mcp:${name}` || p.name.toLowerCase() === name.toLowerCase())
+    if (!match) {
+      console.error(`Provider "${name}" not found. Run provider:list to see available providers.`)
+      process.exit(1)
+    }
+
+    console.log(`\nTesting provider: ${match.name} (${match.id})`)
+    console.log(`  Type:         ${match.type}`)
+    console.log(`  Capabilities: ${match.capabilities.join(', ')}`)
+    console.log(`  Status:       ${match.status}`)
+
+    // Try to run healthCheck if available
+    const step = { stepType: match.capabilities[0] ?? 'search', provider: match.id }
+    try {
+      const executor = registry.resolve(step)
+      if (executor.healthCheck) {
+        console.log('\n  Running health check...')
+        const result = await executor.healthCheck()
+        console.log(`  Result: ${result.ok ? 'PASS' : 'FAIL'} — ${result.message}`)
+
+        // Show discovered tools for MCP providers
+        if (match.type === 'mcp') {
+          const { McpProviderAdapter } = await import('../lib/providers/mcp-adapter')
+          if (executor instanceof McpProviderAdapter) {
+            const tools = executor.getDiscoveredTools()
+            if (tools.length > 0) {
+              console.log(`\n  Discovered tools (${tools.length}):`)
+              for (const t of tools.slice(0, 20)) {
+                console.log(`    - ${t.name}${t.description ? `: ${t.description.slice(0, 60)}` : ''}`)
+              }
+              if (tools.length > 20) {
+                console.log(`    ... and ${tools.length - 20} more`)
+              }
+            }
+          }
+        }
+      } else {
+        console.log(`\n  No health check defined. Provider is ${executor.isAvailable() ? 'available' : 'unavailable'}.`)
+      }
+    } catch (err) {
+      console.error(`\n  Error: ${err instanceof Error ? err.message : String(err)}`)
+    }
+
+    console.log('')
+  }))
+
+// ─── provider:remove ───────────────────────────────────────────────────────
+program
+  .command('provider:remove <name>')
+  .description('Remove an MCP provider config')
+  .action(async (name: string) => {
+    const { existsSync, unlinkSync } = await import('fs')
+    const { join } = await import('path')
+    const { homedir } = await import('os')
+
+    const configPath = join(homedir(), '.gtm-os', 'mcp', `${name}.json`)
+
+    if (!existsSync(configPath)) {
+      console.error(`No MCP config found at ${configPath}`)
+      process.exit(1)
+    }
+
+    unlinkSync(configPath)
+    console.log(`Removed MCP provider config: ${configPath}`)
+    console.log('The provider will not load on next CLI invocation.')
+  })
 
 program.parse()

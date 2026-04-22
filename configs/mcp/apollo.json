@@ -1,0 +1,14 @@
+{
+  "name": "apollo",
+  "displayName": "Apollo.io",
+  "transport": "sse",
+  "url": "https://mcp.apollo.io/sse",
+  "headers": {
+    "Authorization": "Bearer ${APOLLO_API_KEY}"
+  },
+  "capabilities": ["search", "enrich"],
+  "healthCheck": {
+    "tool": "search_people",
+    "timeout": 5000
+  }
+}

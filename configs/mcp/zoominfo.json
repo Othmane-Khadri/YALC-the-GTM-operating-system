@@ -1,0 +1,15 @@
+{
+  "name": "zoominfo",
+  "displayName": "ZoomInfo",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@zoominfo/mcp-server"],
+  "env": {
+    "ZOOMINFO_API_KEY": "${ZOOMINFO_API_KEY}"
+  },
+  "capabilities": ["search", "enrich", "export"],
+  "healthCheck": {
+    "tool": "search_contacts",
+    "timeout": 5000
+  }
+}

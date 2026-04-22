@@ -11,7 +11,17 @@
   },
   "homepage": "https://github.com/Othmane-Khadri/YALC-the-GTM-operating-system",
   "author": "Othmane Khadri",
-  "keywords": ["gtm", "sales", "outbound", "ai", "cli", "lead-generation", "campaign", "linkedin", "qualification"],
+  "keywords": [
+    "gtm",
+    "sales",
+    "outbound",
+    "ai",
+    "cli",
+    "lead-generation",
+    "campaign",
+    "linkedin",
+    "qualification"
+  ],
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts"
@@ -34,6 +44,7 @@
     "@inquirer/prompts": "^8.4.1",
     "@libsql/client": "^0.17.0",
     "@mendable/firecrawl-js": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@notionhq/client": "^2.0.0",
     "chokidar": "^5.0.0",
     "commander": "^14.0.3",

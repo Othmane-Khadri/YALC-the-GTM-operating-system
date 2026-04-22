@@ -1,0 +1,15 @@
+{
+  "name": "hubspot",
+  "displayName": "HubSpot CRM",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@hubspot/mcp-server"],
+  "env": {
+    "HUBSPOT_ACCESS_TOKEN": "${HUBSPOT_ACCESS_TOKEN}"
+  },
+  "capabilities": ["search", "enrich", "export"],
+  "healthCheck": {
+    "tool": "list_contacts",
+    "timeout": 5000
+  }
+}

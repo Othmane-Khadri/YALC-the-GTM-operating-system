@@ -76,7 +76,7 @@ export class ProviderRegistry {
     }
 
     // 3. Capability match — find all that canExecute, sort by type priority
-    const typePriority: Record<string, number> = { builtin: 0, mock: 1 }
+    const typePriority: Record<string, number> = { builtin: 0, mcp: 1, mock: 2 }
     const candidates = Array.from(this.providers.values())
       .filter(p => p.canExecute(step as never))
       // BUG-010: stable, deterministic tiebreaker on id so resolution is not
@@ -107,7 +107,7 @@ export class ProviderRegistry {
       description: p.description,
       type: p.type,
       capabilities: p.capabilities,
-      status: 'active' as const,
+      status: p.isAvailable() ? 'active' as const : 'disconnected' as const,
     }))
   }
 
@@ -149,6 +149,21 @@ export async function registerBuiltinProviders(registry: ProviderRegistry): Prom
   registry.register(new OrthogonalProvider())
 }
 
+/**
+ * Register MCP providers discovered in ~/.gtm-os/mcp/*.json.
+ * Runs after builtins so MCP providers never shadow core providers.
+ */
+export async function registerMcpProviders(registry: ProviderRegistry): Promise<void> {
+  try {
+    const { loadMcpProviders } = await import('./mcp-loader')
+    await loadMcpProviders(registry)
+  } catch (err) {
+    // MCP loading is best-effort — never crash the CLI
+    // eslint-disable-next-line no-console
+    console.warn(`[registry] MCP provider loading failed: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
 // Lazy default instance for CLI backward compatibility
 let _defaultRegistry: ProviderRegistry | null = null
 
@@ -157,7 +172,10 @@ let _initPromise: Promise<void> | null = null
 export function getRegistry(): ProviderRegistry {
   if (!_defaultRegistry) {
     _defaultRegistry = new ProviderRegistry()
-    _initPromise = registerBuiltinProviders(_defaultRegistry)
+    _initPromise = (async () => {
+      await registerBuiltinProviders(_defaultRegistry!)
+      await registerMcpProviders(_defaultRegistry!)
+    })()
   }
   return _defaultRegistry
 }

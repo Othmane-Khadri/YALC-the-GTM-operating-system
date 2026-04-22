@@ -1,0 +1,15 @@
+{
+  "name": "peopledatalabs",
+  "displayName": "People Data Labs",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@peopledatalabs/mcp-server"],
+  "env": {
+    "PDL_API_KEY": "${PDL_API_KEY}"
+  },
+  "capabilities": ["search", "enrich"],
+  "healthCheck": {
+    "tool": "enrich_person",
+    "timeout": 5000
+  }
+}
