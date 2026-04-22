@@ -1016,6 +1016,20 @@ program
     console.log(`\nInstall with: gtm-os skills:install --github <owner>/<repo>`)
   }))
 
+// ─── skills:create ───────────────────────────────────────────────────────
+program
+  .command('skills:create')
+  .description('Create a new skill interactively')
+  .option('--format <format>', 'Skill format: markdown or typescript', 'markdown')
+  .action(async (opts) => {
+    if (opts.format === 'markdown') {
+      const { runSkillsCreate } = await import('./commands/skills-create')
+      await runSkillsCreate()
+    } else {
+      console.log('Only --format markdown is supported. TypeScript skills are created manually in src/lib/skills/builtin/.')
+    }
+  })
+
 // ─── skills:install ───────────────────────────────────────────────────────
 program
   .command('skills:install')

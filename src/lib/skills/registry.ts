@@ -79,10 +79,17 @@ export async function registerBuiltinSkills(registry: SkillRegistry): Promise<vo
   registry.register(competitiveIntelSkill)
   registry.register(findPeopleSkill)
 
-  // Load community skills from ~/.gtm-os/skills/
+  // Load community skills from ~/.gtm-os/skills/ (JSON-based)
   const { loadCommunitySkills } = await import('../marketplace/loader')
   const communitySkills = await loadCommunitySkills()
   for (const skill of communitySkills) {
+    registry.register(skill)
+  }
+
+  // Load markdown skills from ~/.gtm-os/skills/*.md
+  const { loadAllMarkdownSkills } = await import('./markdown-loader')
+  const markdownSkills = await loadAllMarkdownSkills()
+  for (const skill of markdownSkills) {
     registry.register(skill)
   }
 }
