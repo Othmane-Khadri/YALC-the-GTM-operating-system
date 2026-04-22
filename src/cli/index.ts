@@ -5,7 +5,11 @@ loadEnv({ path: '.env.local' })
 import { Command } from 'commander'
 import { loadConfig } from '../lib/config/loader'
 import { withDiagnostics } from '../lib/diagnostics/error-handler'
+import { installGlobalErrorBoundary, setVerbose } from '../lib/cli/error-boundary'
 import { resolveTenant, DEFAULT_TENANT } from '../lib/tenant/index.js'
+
+// Install global error boundary to catch any uncaught errors
+installGlobalErrorBoundary()
 
 const program = new Command()
 
@@ -15,11 +19,19 @@ program
   .version('0.5.0')
   .option('-c, --config <path>', 'Path to config YAML', '~/.gtm-os/config.yaml')
   .option('-t, --tenant <slug>', 'Tenant slug (overrides GTM_OS_TENANT env and .gtm-os-tenant file)')
+  .option('-v, --verbose', 'Enable verbose output with full stack traces')
   .hook('preAction', (thisCommand) => {
+    // Resolve verbose flag first — affects error output globally
+    const opts = thisCommand.opts()
+    if (opts.verbose) {
+      setVerbose(true)
+      process.env.GTM_OS_VERBOSE = '1'
+    }
+
     // Phase 1 / A3 — resolve once per invocation, cache on the program so
     // any command can read it via `getTenant()`. Precedence: --tenant flag
     // > GTM_OS_TENANT env > .gtm-os-tenant file > 'default'.
-    const tenantId = resolveTenant({ cliFlag: thisCommand.opts().tenant })
+    const tenantId = resolveTenant({ cliFlag: opts.tenant })
     ;(program as any)._tenantId = tenantId
   })
 

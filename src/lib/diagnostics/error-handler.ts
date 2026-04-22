@@ -315,10 +315,12 @@ export function withDiagnostics<T extends (...args: any[]) => Promise<void>>(
         console.error(`  Or:  gtm-os doctor --report — to generate a diagnostic report`)
         console.error('')
 
-        // Show stack trace in debug mode
-        if (process.env.DEBUG || process.env.GTM_OS_DEBUG) {
+        // Show stack trace in debug/verbose mode
+        if (process.env.DEBUG || process.env.GTM_OS_DEBUG || process.env.GTM_OS_VERBOSE) {
           console.error('Stack trace:')
           console.error(err.stack)
+        } else {
+          console.error(`  Tip: re-run with --verbose for full stack trace`)
         }
       }
 
