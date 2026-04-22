@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test*)",
+      "Bash(npx vitest*)",
+      "Bash(npx tsx src/cli/index.ts*)",
+      "Bash(pnpm test*)",
+      "Bash(pnpm run*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(ls *)",
+      "Bash(find *)"
+    ]
+  }
+}
