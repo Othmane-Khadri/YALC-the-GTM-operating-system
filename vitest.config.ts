@@ -13,6 +13,7 @@ const _testCfg: any = {
   // Vitest 4 moved pool options to top-level.
   forks: { singleFork: true },
   fileParallelism: false,
+  globalSetup: ['./vitest.globalSetup.ts'],
 }
 
 export default defineConfig({
