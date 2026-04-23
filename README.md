@@ -11,6 +11,12 @@ YALC is an open-source, AI-native operating system for running any GTM campaign.
 
 ## Quick Start
 
+### Prerequisites
+
+- Node.js version 20 or higher ([nodejs.org](https://nodejs.org/))
+- pnpm: run `corepack enable && corepack prepare pnpm@latest --activate` (or see the [pnpm install guide](https://pnpm.io/installation))
+- Git
+
 ```bash
 git clone https://github.com/Othmane-Khadri/YALC-the-GTM-operating-system.git
 cd YALC-the-GTM-operating-system
@@ -22,6 +28,10 @@ pnpm link --global
 # One command to set up everything
 yalc-gtm start
 ```
+
+### If `pnpm link --global` fails
+
+If you see `ERR_PNPM_NO_GLOBAL_BIN_DIR`, or you are on Windows, skip the global link and run YALC in-repo: `pnpm cli start`. This uses the `cli` script defined in `package.json` and works without any global bin directory.
 
 The `start` command walks you through 4 steps:
 

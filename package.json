@@ -27,7 +27,10 @@
     ".": "./src/index.ts"
   },
   "bin": {
-    "yalc-gtm": "./src/cli/index.ts"
+    "yalc-gtm": "./bin/yalc-gtm.mjs"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "scripts": {
     "cli": "npx tsx src/cli/index.ts",
@@ -52,6 +55,7 @@
     "drizzle-orm": "^0.45.1",
     "hono": "^4.12.8",
     "js-yaml": "^4.1.1",
+    "tsx": "^4.19.0",
     "unipile-node-sdk": "^1.0.0"
   },
   "devDependencies": {
