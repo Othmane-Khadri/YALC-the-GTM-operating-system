@@ -1,6 +1,17 @@
-#!/usr/bin/env npx tsx
 import { config as loadEnv } from 'dotenv'
-loadEnv({ path: '.env.local' })
+import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+
+// Load env from ~/.gtm-os/.env first (canonical), then .env.local in CWD
+// (legacy) as a fallback. dotenv v16.4+ supports an array of paths; later
+// entries do NOT override earlier ones, so the canonical location wins.
+const globalEnvPath = join(homedir(), '.gtm-os', '.env')
+const localEnvPath = join(process.cwd(), '.env.local')
+const envPaths = [globalEnvPath, localEnvPath].filter(existsSync)
+if (envPaths.length > 0) {
+  loadEnv({ path: envPaths })
+}
 
 import { Command } from 'commander'
 import { loadConfig } from '../lib/config/loader'
@@ -47,7 +58,7 @@ program
   .option('--dry-run', 'Show what would happen without sending anything')
   .option('--campaign-id <id>', 'Track a specific campaign only')
   .action(withDiagnostics(async (opts) => {
-    const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
+    const config = loadConfig(program.opts().config.replace('~', homedir()))
     const { runTracker } = await import('../lib/campaign/tracker')
     await runTracker({
       config,
@@ -73,7 +84,7 @@ program
   .option('--delay-mode <mode>', 'Step delay counting: business or calendar (default: business)')
   .option('--dry-run', 'Preview campaign creation without writing to DB')
   .action(withDiagnostics(async (opts) => {
-    const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
+    const config = loadConfig(program.opts().config.replace('~', homedir()))
     const { runCreator } = await import('../lib/campaign/creator')
     const { buildScheduleFromOptions } = await import('../lib/campaign/schedule')
 
@@ -162,7 +173,7 @@ program
   .description('Generate weekly intelligence report')
   .option('--week <date>', 'Report week (ISO date, defaults to current)')
   .action(withDiagnostics(async (opts) => {
-    const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
+    const config = loadConfig(program.opts().config.replace('~', homedir()))
     const { runReport } = await import('../lib/campaign/intelligence-report')
     await runReport({ config, week: opts.week })
   }))
@@ -177,7 +188,7 @@ program
   .option('--output <path>', 'Custom output JSON path')
   .option('--account <name>', 'Unipile account name or ID to use for scraping')
   .action(withDiagnostics(async (opts) => {
-    const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
+    const config = loadConfig(program.opts().config.replace('~', homedir()))
     const { scrapePostEngagers } = await import('../lib/scraping/post-engagers')
     const result = await scrapePostEngagers({
       config,
@@ -581,7 +592,7 @@ program
   .requiredOption('--provider <name>', 'CRM provider name')
   .option('--dry-run', 'Preview import without writing to DB')
   .action(withDiagnostics(async (opts) => {
-    const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
+    const config = loadConfig(program.opts().config.replace('~', homedir()))
     const { runImport } = await import('../lib/qualification/importers')
     await runImport({
       config,
@@ -843,7 +854,7 @@ program
   .option('--no-dedup', 'Skip dedup gate entirely')
   .option('--slack-confirm', 'Enable Slack confirmation for ambiguous dedup matches')
   .action(withDiagnostics(async (opts) => {
-    const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
+    const config = loadConfig(program.opts().config.replace('~', homedir()))
     const { runQualify } = await import('../lib/qualification/pipeline')
     await runQualify({
       config,
@@ -864,7 +875,7 @@ program
   .requiredOption('--input <path>', 'Path to input file')
   .option('--dry-run', 'Preview import without writing to DB')
   .action(withDiagnostics(async (opts) => {
-    const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
+    const config = loadConfig(program.opts().config.replace('~', homedir()))
     const { runImport } = await import('../lib/qualification/importers')
     await runImport({ config, source: opts.source, input: opts.input, dryRun: opts.dryRun ?? false })
   }))
@@ -877,7 +888,7 @@ program
   .option('--strategy <type>', 'Matcher strategy: exact, fuzzy, or all', 'all')
   .option('--slack-confirm', 'Send Slack confirmations for ambiguous matches')
   .action(withDiagnostics(async (opts) => {
-    const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
+    const config = loadConfig(program.opts().config.replace('~', homedir()))
     const { DedupEngine } = await import('../lib/dedup/engine')
     const { buildSuppressionSet } = await import('../lib/dedup/live-sync')
     const { sendConfirmation } = await import('../lib/dedup/slack-confirm')
@@ -993,7 +1004,7 @@ program
   .option('--direction <dir>', 'push | pull | both', 'both')
   .option('--dry-run', 'Preview sync without writing')
   .action(withDiagnostics(async (opts) => {
-    const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
+    const config = loadConfig(program.opts().config.replace('~', homedir()))
     const { runSync } = await import('../lib/notion/sync')
     await runSync({ config, direction: opts.direction, dryRun: opts.dryRun ?? false })
   }))
@@ -1004,7 +1015,7 @@ program
   .description('Import existing campaigns, leads, and variants from Notion into SQLite')
   .option('--dry-run', 'Preview bootstrap without writing to DB')
   .action(withDiagnostics(async (opts) => {
-    const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
+    const config = loadConfig(program.opts().config.replace('~', homedir()))
     const { runBootstrap } = await import('../lib/notion/bootstrap')
     await runBootstrap({ config, dryRun: opts.dryRun ?? false })
   }))
@@ -1144,7 +1155,7 @@ program
   .description('Run a test batch: find → enrich → qualify → review')
   .option('--count <n>', 'Number of test leads', '10')
   .action(withDiagnostics(async (opts) => {
-    const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
+    const config = loadConfig(program.opts().config.replace('~', homedir()))
     const { runTestBatch } = await import('../lib/execution/test-runner')
     await runTestBatch(config, parseInt(opts.count, 10))
   }))

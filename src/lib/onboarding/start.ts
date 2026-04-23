@@ -9,7 +9,7 @@
  * Other keys unlock additional capabilities (enrichment, LinkedIn, scraping).
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { randomBytes } from 'node:crypto'
@@ -19,6 +19,7 @@ import { isClaudeCode } from '../env/claude-code.js'
 
 const GTM_OS_DIR = join(homedir(), '.gtm-os')
 const CONFIG_PATH = join(GTM_OS_DIR, 'config.yaml')
+const ENV_PATH = join(GTM_OS_DIR, '.env')
 
 // ─── Provider tiers ─────────────────────────────────────────────────────────
 // Tier 1 = recommended for standalone use. Tier 2 = unlocks core features.
@@ -82,6 +83,11 @@ export async function runStart(opts: StartOptions): Promise<void> {
   const { tenantId } = opts
   const inClaudeCode = isClaudeCode()
 
+  // Apply DB migrations before anything else — fresh installs have no tables
+  // yet, so the first query otherwise crashes with `SQLITE_ERROR: no such table`.
+  // Idempotent: drizzle's migrator is a no-op when everything is current.
+  await applyMigrations()
+
   console.log(`
   ╔══════════════════════════════════════╗
   ║         GTM-OS — Getting Started     ║
@@ -108,11 +114,22 @@ export async function runStart(opts: StartOptions): Promise<void> {
     console.log(`  Created default config`)
   }
 
-  // Read existing .env.local
-  const envLocalPath = join(process.cwd(), '.env.local')
+  // Read existing env. Canonical location is ~/.gtm-os/.env. For back-compat
+  // we also look at ./.env.local in the CWD — if only the legacy file exists,
+  // migrate it to the canonical location and keep the original in place.
+  const legacyEnvPath = join(process.cwd(), '.env.local')
+  const hasGlobalEnv = existsSync(ENV_PATH)
+  const hasLegacyEnv = existsSync(legacyEnvPath)
+
+  if (!hasGlobalEnv && hasLegacyEnv) {
+    copyFileSync(legacyEnvPath, ENV_PATH)
+    console.log(`  Migrated ${legacyEnvPath} → ${ENV_PATH}`)
+  }
+
+  const envReadPath = existsSync(ENV_PATH) ? ENV_PATH : (hasLegacyEnv ? legacyEnvPath : null)
   const existingEnv: Record<string, string> = {}
-  if (existsSync(envLocalPath)) {
-    const content = readFileSync(envLocalPath, 'utf-8')
+  if (envReadPath) {
+    const content = readFileSync(envReadPath, 'utf-8')
     for (const line of content.split('\n')) {
       const match = line.match(/^([A-Z_]+)=(.+)$/)
       if (match) existingEnv[match[1]] = match[2]
@@ -209,12 +226,12 @@ export async function runStart(opts: StartOptions): Promise<void> {
     console.log('    .env.local and re-run `yalc-gtm setup` to validate.')
   }
 
-  // Write .env.local
+  // Write canonical env file at ~/.gtm-os/.env
   const envContent = Object.entries(collectedKeys)
     .map(([k, v]) => `${k}=${v}`)
     .join('\n') + '\n'
-  writeFileSync(envLocalPath, envContent)
-  console.log(`\n  ✓ ${Object.keys(collectedKeys).length} keys saved to .env.local`)
+  writeFileSync(ENV_PATH, envContent)
+  console.log(`\n  ✓ ${Object.keys(collectedKeys).length} keys saved to ${ENV_PATH}`)
 
   // ── Step 2: Company Context ─────────────────────────────────────────────
   console.log('\n── Step 2/4 — Company Context ──\n')
@@ -275,6 +292,44 @@ export async function runStart(opts: StartOptions): Promise<void> {
 
   // ── Readiness Report ────────────────────────────────────────────────────
   printReadinessReport(collectedKeys, { frameworkDerived, inClaudeCode })
+}
+
+/**
+ * Apply pending drizzle migrations. Idempotent: when everything is current
+ * this is a no-op and prints nothing. When it applies migrations, prints
+ * "✓ Database ready".
+ */
+async function applyMigrations(): Promise<void> {
+  const { rawClient, db } = await import('../db/index.js')
+  const { migrate } = await import('drizzle-orm/libsql/migrator')
+  const { fileURLToPath } = await import('node:url')
+  const { dirname, resolve } = await import('node:path')
+
+  const here = dirname(fileURLToPath(import.meta.url))
+  // This file lives at src/lib/onboarding/start.ts → migrations at src/lib/db/migrations
+  const migrationsFolder = resolve(here, '../db/migrations')
+
+  // Count applied migrations before and after to decide whether to log.
+  async function countApplied(): Promise<number> {
+    try {
+      const r = await rawClient.execute(
+        "SELECT COUNT(*) AS n FROM __drizzle_migrations"
+      )
+      const row = r.rows[0] as Record<string, unknown> | undefined
+      const n = row ? Number(row.n ?? 0) : 0
+      return Number.isFinite(n) ? n : 0
+    } catch {
+      return 0 // table doesn't exist yet → first run
+    }
+  }
+
+  const before = await countApplied()
+  await migrate(db, { migrationsFolder })
+  const after = await countApplied()
+
+  if (after > before) {
+    console.log('  ✓ Database ready')
+  }
 }
 
 function printFileStructure(): void {
