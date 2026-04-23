@@ -5,7 +5,11 @@ loadEnv({ path: '.env.local' })
 import { Command } from 'commander'
 import { loadConfig } from '../lib/config/loader'
 import { withDiagnostics } from '../lib/diagnostics/error-handler'
+import { installGlobalErrorBoundary, setVerbose } from '../lib/cli/error-boundary'
 import { resolveTenant, DEFAULT_TENANT } from '../lib/tenant/index.js'
+
+// Install global error boundary to catch any uncaught errors
+installGlobalErrorBoundary()
 
 const program = new Command()
 
@@ -15,11 +19,19 @@ program
   .version('0.5.0')
   .option('-c, --config <path>', 'Path to config YAML', '~/.gtm-os/config.yaml')
   .option('-t, --tenant <slug>', 'Tenant slug (overrides GTM_OS_TENANT env and .gtm-os-tenant file)')
+  .option('-v, --verbose', 'Enable verbose output with full stack traces')
   .hook('preAction', (thisCommand) => {
+    // Resolve verbose flag first — affects error output globally
+    const opts = thisCommand.opts()
+    if (opts.verbose) {
+      setVerbose(true)
+      process.env.GTM_OS_VERBOSE = '1'
+    }
+
     // Phase 1 / A3 — resolve once per invocation, cache on the program so
     // any command can read it via `getTenant()`. Precedence: --tenant flag
     // > GTM_OS_TENANT env > .gtm-os-tenant file > 'default'.
-    const tenantId = resolveTenant({ cliFlag: thisCommand.opts().tenant })
+    const tenantId = resolveTenant({ cliFlag: opts.tenant })
     ;(program as any)._tenantId = tenantId
   })
 
@@ -225,7 +237,9 @@ program
   .command('linkedin:reply-to-comments')
   .description('Send threaded replies under LinkedIn post comments (never top-level)')
   .requiredOption('--url <url>', 'LinkedIn post URL')
-  .requiredOption('--template <text>', 'Reply text (use {{name}} for first name)')
+  .option('--template <text>', 'Reply text (use {{name}} for first name)')
+  .option('--templates <texts...>', 'Multiple reply templates to rotate through')
+  .option('--include-keywords <words...>', 'Only reply to comments containing these keywords')
   .option('--max <n>', 'Max replies', '100')
   .option('--dry-run', 'Preview without sending', true)
   .option('--send', 'Actually send replies (disables dry-run)')
@@ -244,7 +258,9 @@ program
     for await (const event of replyToCommentsSkill.execute({
       url: opts.url,
       template: opts.template,
+      templates: opts.templates,
       exclude: opts.exclude ?? [],
+      includeKeywords: opts.includeKeywords,
       maxReplies: parseInt(opts.max, 10),
       dryRun,
     }, context)) {
@@ -539,6 +555,283 @@ program
     }
   })
 
+// ─── crm:setup ──────────────────────────────────────────────────────────────
+program
+  .command('crm:setup')
+  .description('Interactive setup wizard for CRM integration via MCP')
+  .requiredOption('--provider <name>', 'CRM provider name (e.g., hubspot, salesforce, pipedrive)')
+  .option('--non-interactive', 'Skip prompts and auto-accept all mappings')
+  .action(withDiagnostics(async (opts) => {
+    const { runCrmSetupWizard } = await import('../lib/crm/setup-wizard')
+    const result = await runCrmSetupWizard({
+      provider: opts.provider,
+      nonInteractive: opts.nonInteractive ?? false,
+    })
+    if (!result.success) {
+      console.error(`\nSetup failed: ${result.message}`)
+      process.exit(1)
+    }
+    console.log(`\n${result.message}`)
+  }))
+
+// ─── crm:import ─────────────────────────────────────────────────────────────
+program
+  .command('crm:import')
+  .description('Import contacts from a CRM into SQLite')
+  .requiredOption('--provider <name>', 'CRM provider name')
+  .option('--dry-run', 'Preview import without writing to DB')
+  .action(withDiagnostics(async (opts) => {
+    const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
+    const { runImport } = await import('../lib/qualification/importers')
+    await runImport({
+      config,
+      source: opts.provider,
+      input: opts.provider,
+      dryRun: opts.dryRun ?? false,
+    })
+  }))
+
+// ─── crm:push ───────────────────────────────────────────────────────────────
+program
+  .command('crm:push')
+  .description('Push enriched leads from a result set to CRM')
+  .requiredOption('--provider <name>', 'CRM provider name')
+  .requiredOption('--result-set <id>', 'Result set ID to push')
+  .option('--dry-run', 'Preview without writing to CRM')
+  .action(withDiagnostics(async (opts) => {
+    const { loadCrmConfig } = await import('../lib/crm/config-store')
+    const { McpCrmAdapter } = await import('../lib/crm/mcp-crm-adapter')
+    const { db } = await import('../lib/db')
+    const { resultRows } = await import('../lib/db/schema')
+    const { eq } = await import('drizzle-orm')
+    const { existsSync, readFileSync } = await import('fs')
+    const { join } = await import('path')
+    const { homedir } = await import('os')
+    const { validateMcpConfig, expandEnvVars } = await import('../lib/providers/mcp-loader')
+
+    const crmConfig = loadCrmConfig(opts.provider)
+    if (!crmConfig) {
+      console.error(`No CRM config for "${opts.provider}". Run crm:setup first.`)
+      process.exit(1)
+    }
+
+    // Load MCP config
+    const mcpPaths = [
+      join(homedir(), '.gtm-os', 'mcp', `${crmConfig.mcpServer}.json`),
+      join(process.cwd(), 'configs', 'mcp', `${crmConfig.mcpServer}.json`),
+    ]
+    let mcpConfig = null
+    for (const p of mcpPaths) {
+      if (existsSync(p)) {
+        try {
+          const raw = JSON.parse(readFileSync(p, 'utf-8'))
+          const v = validateMcpConfig(raw, `${crmConfig.mcpServer}.json`)
+          if (v.valid) { mcpConfig = expandEnvVars(raw).result; break }
+        } catch { continue }
+      }
+    }
+    if (!mcpConfig) { console.error('MCP config not found'); process.exit(1) }
+
+    // Load leads from result set
+    const rows = await db
+      .select()
+      .from(resultRows)
+      .where(eq(resultRows.resultSetId, opts.resultSet))
+
+    if (rows.length === 0) {
+      console.error(`No rows found in result set ${opts.resultSet}`)
+      process.exit(1)
+    }
+
+    const leads = rows.map(r => JSON.parse(r.data as string) as Record<string, unknown>)
+    console.log(`[crm:push] Pushing ${leads.length} leads to ${opts.provider}`)
+
+    if (opts.dryRun) {
+      console.log(`[crm:push] Dry run — would push ${leads.length} records`)
+      return
+    }
+
+    const contactsMapping = crmConfig.objects['contacts']
+    if (!contactsMapping) {
+      console.error('No contacts mapping configured. Run crm:setup.')
+      process.exit(1)
+    }
+
+    const adapter = new McpCrmAdapter(mcpConfig as any, crmConfig)
+    try {
+      await adapter.connect()
+      const result = await adapter.pushContacts(leads, contactsMapping.fieldMapping)
+      console.log(`\n  Created: ${result.created}`)
+      console.log(`  Updated: ${result.updated}`)
+      console.log(`  Skipped: ${result.skipped}`)
+      if (result.errors.length > 0) {
+        console.log(`  Errors:  ${result.errors.length}`)
+        for (const err of result.errors.slice(0, 5)) {
+          console.log(`    ${err.record}: ${err.message}`)
+        }
+      }
+    } finally {
+      await adapter.disconnect()
+    }
+  }))
+
+// ─── crm:sync ───────────────────────────────────────────────────────────────
+program
+  .command('crm:sync')
+  .description('Bidirectional sync between GTM-OS and CRM')
+  .requiredOption('--provider <name>', 'CRM provider name')
+  .option('--direction <dir>', 'push | pull | bidirectional', 'bidirectional')
+  .option('--dry-run', 'Preview without writing')
+  .action(withDiagnostics(async (opts) => {
+    const { loadCrmConfig } = await import('../lib/crm/config-store')
+    const { McpCrmAdapter } = await import('../lib/crm/mcp-crm-adapter')
+    const { existsSync, readFileSync } = await import('fs')
+    const { join } = await import('path')
+    const { homedir } = await import('os')
+    const { validateMcpConfig, expandEnvVars } = await import('../lib/providers/mcp-loader')
+
+    const crmConfig = loadCrmConfig(opts.provider)
+    if (!crmConfig) {
+      console.error(`No CRM config for "${opts.provider}". Run crm:setup first.`)
+      process.exit(1)
+    }
+
+    const mcpPaths = [
+      join(homedir(), '.gtm-os', 'mcp', `${crmConfig.mcpServer}.json`),
+      join(process.cwd(), 'configs', 'mcp', `${crmConfig.mcpServer}.json`),
+    ]
+    let mcpConfig = null
+    for (const p of mcpPaths) {
+      if (existsSync(p)) {
+        try {
+          const raw = JSON.parse(readFileSync(p, 'utf-8'))
+          const v = validateMcpConfig(raw, `${crmConfig.mcpServer}.json`)
+          if (v.valid) { mcpConfig = expandEnvVars(raw).result; break }
+        } catch { continue }
+      }
+    }
+    if (!mcpConfig) { console.error('MCP config not found'); process.exit(1) }
+
+    if (opts.dryRun) {
+      console.log(`[crm:sync] Dry run — would sync ${opts.direction} with ${opts.provider}`)
+      return
+    }
+
+    const adapter = new McpCrmAdapter(mcpConfig as any, crmConfig)
+    try {
+      await adapter.connect()
+      const result = await adapter.syncBidirectional!({
+        direction: opts.direction,
+        conflictResolution: 'newest_wins',
+      })
+      console.log(`\n  Pulled: ${result.pulled}`)
+      console.log(`  Pushed: ${result.pushed}`)
+      console.log(`  Conflicts: ${result.conflicts}`)
+      if (result.errors.length > 0) {
+        console.log(`  Errors: ${result.errors.length}`)
+      }
+    } finally {
+      await adapter.disconnect()
+    }
+  }))
+
+// ─── crm:status ─────────────────────────────────────────────────────────────
+program
+  .command('crm:status')
+  .description('Show current CRM mapping and last sync time')
+  .requiredOption('--provider <name>', 'CRM provider name')
+  .action(async (opts) => {
+    const { loadCrmConfig } = await import('../lib/crm/config-store')
+    const crmConfig = loadCrmConfig(opts.provider)
+    if (!crmConfig) {
+      console.error(`No CRM config for "${opts.provider}". Run crm:setup first.`)
+      process.exit(1)
+    }
+
+    console.log(`\n── CRM Status: ${crmConfig.provider} ──`)
+    console.log(`  MCP server:  ${crmConfig.mcpServer}`)
+    console.log(`  Last setup:  ${crmConfig.lastSetup}`)
+    console.log(`  Last sync:   ${crmConfig.lastSync ?? 'never'}`)
+    console.log(`  Version:     ${crmConfig.version}`)
+
+    for (const [objName, objMapping] of Object.entries(crmConfig.objects)) {
+      const fieldCount = Object.keys(objMapping.fieldMapping.gtmToCrm).length
+      console.log(`\n  ${objName}:`)
+      console.log(`    List tool:   ${objMapping.listTool}`)
+      console.log(`    Create tool: ${objMapping.createTool}`)
+      console.log(`    Fields:      ${fieldCount} mapped`)
+
+      for (const [gtm, crm] of Object.entries(objMapping.fieldMapping.gtmToCrm)) {
+        console.log(`      ${gtm.padEnd(20)} -> ${crm}`)
+      }
+    }
+  })
+
+// ─── crm:verify ─────────────────────────────────────────────────────────────
+program
+  .command('crm:verify')
+  .description('Detect schema drift between saved CRM mapping and live MCP tools')
+  .requiredOption('--provider <name>', 'CRM provider name')
+  .action(withDiagnostics(async (opts) => {
+    const { loadCrmConfig } = await import('../lib/crm/config-store')
+    const { McpCrmAdapter } = await import('../lib/crm/mcp-crm-adapter')
+    const { existsSync, readFileSync } = await import('fs')
+    const { join } = await import('path')
+    const { homedir } = await import('os')
+    const { validateMcpConfig, expandEnvVars } = await import('../lib/providers/mcp-loader')
+
+    const crmConfig = loadCrmConfig(opts.provider)
+    if (!crmConfig) {
+      console.error(`No CRM config for "${opts.provider}". Run crm:setup first.`)
+      process.exit(1)
+    }
+
+    const mcpPaths = [
+      join(homedir(), '.gtm-os', 'mcp', `${crmConfig.mcpServer}.json`),
+      join(process.cwd(), 'configs', 'mcp', `${crmConfig.mcpServer}.json`),
+    ]
+    let mcpConfig = null
+    for (const p of mcpPaths) {
+      if (existsSync(p)) {
+        try {
+          const raw = JSON.parse(readFileSync(p, 'utf-8'))
+          const v = validateMcpConfig(raw, `${crmConfig.mcpServer}.json`)
+          if (v.valid) { mcpConfig = expandEnvVars(raw).result; break }
+        } catch { continue }
+      }
+    }
+    if (!mcpConfig) { console.error('MCP config not found'); process.exit(1) }
+
+    console.log(`[crm:verify] Connecting to ${opts.provider}...`)
+    const adapter = new McpCrmAdapter(mcpConfig as any, crmConfig)
+
+    try {
+      await adapter.connect()
+      const drift = await adapter.detectDrift()
+
+      if (drift.ok) {
+        console.log(`\n  Schema is in sync.`)
+        if (drift.missingInMapping.length > 0) {
+          console.log(`  New CRM fields available: ${drift.missingInMapping.join(', ')}`)
+          console.log(`  Run crm:setup --provider ${opts.provider} to add them.`)
+        }
+      } else {
+        console.log(`\n  Schema drift detected:`)
+        if (drift.missingInCrm.length > 0) {
+          console.log(`  Missing in CRM: ${drift.missingInCrm.join(', ')}`)
+        }
+        if (drift.typeChanges.length > 0) {
+          for (const tc of drift.typeChanges) {
+            console.log(`  Type changed: ${tc.field} (${tc.expected} -> ${tc.actual})`)
+          }
+        }
+        console.log(`\n  Run crm:setup --provider ${opts.provider} to re-map.`)
+      }
+    } finally {
+      await adapter.disconnect()
+    }
+  }))
+
 // ─── leads:qualify ──────────────────────────────────────────────────────────
 program
   .command('leads:qualify')
@@ -547,10 +840,20 @@ program
   .option('--input <path>', 'Path to input file or Notion DB ID')
   .option('--result-set <id>', 'Existing result set ID to qualify')
   .option('--dry-run', 'Preview qualification without writing results')
+  .option('--no-dedup', 'Skip dedup gate entirely')
+  .option('--slack-confirm', 'Enable Slack confirmation for ambiguous dedup matches')
   .action(withDiagnostics(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { runQualify } = await import('../lib/qualification/pipeline')
-    await runQualify({ config, source: opts.source, input: opts.input, resultSetId: opts.resultSet, dryRun: opts.dryRun ?? false })
+    await runQualify({
+      config,
+      source: opts.source,
+      input: opts.input,
+      resultSetId: opts.resultSet,
+      dryRun: opts.dryRun ?? false,
+      noDedup: opts.noDedup === true || opts.dedup === false,
+      slackConfirm: opts.slackConfirm ?? false,
+    })
   }))
 
 // ─── leads:import ───────────────────────────────────────────────────────────
@@ -564,6 +867,123 @@ program
     const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
     const { runImport } = await import('../lib/qualification/importers')
     await runImport({ config, source: opts.source, input: opts.input, dryRun: opts.dryRun ?? false })
+  }))
+
+// ─── leads:dedup ────────────────────────────────────────────────────────────
+program
+  .command('leads:dedup')
+  .description('Deduplicate a result set against campaigns, CRM, replied leads, and blocklist')
+  .requiredOption('--result-set <id>', 'Result set ID to deduplicate')
+  .option('--strategy <type>', 'Matcher strategy: exact, fuzzy, or all', 'all')
+  .option('--slack-confirm', 'Send Slack confirmations for ambiguous matches')
+  .action(withDiagnostics(async (opts) => {
+    const config = loadConfig(program.opts().config.replace('~', process.env.HOME!))
+    const { DedupEngine } = await import('../lib/dedup/engine')
+    const { buildSuppressionSet } = await import('../lib/dedup/live-sync')
+    const { sendConfirmation } = await import('../lib/dedup/slack-confirm')
+    const { resultRows } = await import('../lib/db/schema')
+    const { db } = await import('../lib/db')
+    const { eq } = await import('drizzle-orm')
+
+    const rows = await db.select().from(resultRows).where(eq(resultRows.resultSetId, opts.resultSet))
+    const leads = rows.map(r => {
+      const data = typeof r.data === 'string' ? JSON.parse(r.data) : r.data
+      return { id: r.id, ...(data as Record<string, unknown>) }
+    })
+
+    console.log(`[dedup] Loaded ${leads.length} leads from result set ${opts.resultSet}`)
+
+    const suppressionSet = await buildSuppressionSet({
+      includeCampaigns: true,
+      includeReplied: true,
+      includeBlocklist: true,
+    })
+
+    const enabledMatchers = opts.strategy === 'exact'
+      ? ['email' as const, 'linkedin' as const]
+      : opts.strategy === 'fuzzy'
+        ? ['fuzzy_name_company' as const, 'domain_title' as const]
+        : ['email' as const, 'linkedin' as const, 'fuzzy_name_company' as const, 'domain_title' as const]
+
+    const engine = new DedupEngine({ enabledMatchers })
+    const result = engine.dedup(leads, suppressionSet)
+
+    console.log(`\n--- Dedup Results ---`)
+    console.log(`Unique:         ${result.unique.length}`)
+    console.log(`Duplicates:     ${result.duplicates.length}`)
+    console.log(`Pending review: ${result.pendingReview.length}`)
+
+    if (result.duplicates.length > 0) {
+      console.log(`\nDuplicates:`)
+      for (const { lead, match } of result.duplicates) {
+        console.log(`  ${lead.first_name ?? ''} ${lead.last_name ?? ''} (${match.confidence}%) via ${match.matcher} -> ${match.matchedSource}`)
+      }
+    }
+
+    if (result.pendingReview.length > 0 && opts.slackConfirm && config.slack?.webhook_url) {
+      console.log(`\nSending Slack confirmations for ${result.pendingReview.length} ambiguous matches...`)
+      for (const { lead, match } of result.pendingReview) {
+        await sendConfirmation(lead, match, { webhookUrl: config.slack.webhook_url })
+      }
+    }
+  }))
+
+// ─── leads:suppress ─────────────────────────────────────────────────────────
+program
+  .command('leads:suppress')
+  .description('Load a suppression list from external source')
+  .requiredOption('--source <type>', 'Source type: hubspot, notion, csv')
+  .option('--file <path>', 'Path to CSV suppression file')
+  .action(withDiagnostics(async (opts) => {
+    const { db } = await import('../lib/db')
+    const { leadBlocklist } = await import('../lib/db/schema')
+    const { randomUUID } = await import('crypto')
+
+    let entries: Array<{ email?: string; linkedin_url?: string; name?: string; company?: string }> = []
+
+    if (opts.source === 'csv' && opts.file) {
+      const { readFileSync } = await import('fs')
+      const raw = readFileSync(opts.file, 'utf-8')
+      const lines = raw.split('\n').filter(l => l.trim())
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
+
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim())
+        const record: Record<string, string> = {}
+        headers.forEach((h, idx) => { record[h] = values[idx] ?? '' })
+        entries.push({
+          email: record.email || undefined,
+          linkedin_url: record.linkedin_url || record.linkedin || undefined,
+          name: record.name || `${record.first_name ?? ''} ${record.last_name ?? ''}`.trim() || undefined,
+          company: record.company || undefined,
+        })
+      }
+    } else if (opts.source === 'notion') {
+      console.log('[suppress] Notion suppression import — use leads:import --source notion instead')
+      return
+    } else if (['hubspot', 'salesforce', 'pipedrive'].includes(opts.source)) {
+      console.log(`[suppress] CRM suppression — use crm:import --provider ${opts.source} for full import`)
+      return
+    }
+
+    console.log(`[suppress] Importing ${entries.length} suppression entries...`)
+
+    let inserted = 0
+    for (const entry of entries) {
+      if (!entry.email && !entry.linkedin_url) continue
+      await db.insert(leadBlocklist).values({
+        id: randomUUID(),
+        providerId: entry.email ?? entry.linkedin_url ?? undefined,
+        linkedinUrl: entry.linkedin_url ?? undefined,
+        name: entry.name ?? undefined,
+        company: entry.company ?? undefined,
+        scope: 'permanent',
+        reason: `Imported from ${opts.source}`,
+      })
+      inserted++
+    }
+
+    console.log(`[suppress] Inserted ${inserted} entries into lead blocklist`)
   }))
 
 // ─── notion:sync ────────────────────────────────────────────────────────────
@@ -1000,6 +1420,20 @@ program
     console.log(`\nInstall with: gtm-os skills:install --github <owner>/<repo>`)
   }))
 
+// ─── skills:create ───────────────────────────────────────────────────────
+program
+  .command('skills:create')
+  .description('Create a new skill interactively')
+  .option('--format <format>', 'Skill format: markdown or typescript', 'markdown')
+  .action(async (opts) => {
+    if (opts.format === 'markdown') {
+      const { runSkillsCreate } = await import('./commands/skills-create')
+      await runSkillsCreate()
+    } else {
+      console.log('Only --format markdown is supported. TypeScript skills are created manually in src/lib/skills/builtin/.')
+    }
+  })
+
 // ─── skills:install ───────────────────────────────────────────────────────
 program
   .command('skills:install')
@@ -1235,6 +1669,644 @@ program
     console.log(
       `[framework:derive][${tenantId}] nodes=${r.nodesConsidered} interview=${r.interviewAnswersUsed} onboardingComplete=${r.framework.onboardingComplete}`,
     )
+  }))
+
+// ─── provider:list ─────────────────────────────────────────────────────────
+program
+  .command('provider:list')
+  .description('List all providers (builtin + MCP) with status')
+  .action(withDiagnostics(async () => {
+    const { getRegistryReady } = await import('../lib/providers/registry')
+    const registry = await getRegistryReady()
+    const all = registry.getAll()
+
+    if (all.length === 0) {
+      console.log('No providers registered.')
+      return
+    }
+
+    const builtins = all.filter(p => p.type !== 'mcp')
+    const mcps = all.filter(p => p.type === 'mcp')
+
+    console.log('\n── Builtin Providers ──\n')
+    for (const p of builtins) {
+      const statusTag = p.status === 'active' ? 'OK' : p.status.toUpperCase()
+      console.log(`  ${p.id.padEnd(24)} [${statusTag.padEnd(12)}] ${p.capabilities.join(', ').padEnd(28)} ${p.description}`)
+    }
+
+    if (mcps.length > 0) {
+      console.log('\n── MCP Providers ──\n')
+      for (const p of mcps) {
+        const statusTag = p.status === 'active' ? 'OK' : p.status.toUpperCase()
+        console.log(`  ${p.id.padEnd(24)} [${statusTag.padEnd(12)}] ${p.capabilities.join(', ').padEnd(28)} ${p.name}`)
+      }
+    } else {
+      console.log('\n  No MCP providers loaded. Drop configs into ~/.gtm-os/mcp/ or run: provider:add --mcp <name>')
+    }
+
+    console.log(`\n  Total: ${all.length} providers (${builtins.length} builtin, ${mcps.length} MCP)\n`)
+  }))
+
+// ─── provider:add ──────────────────────────────────────────────────────────
+program
+  .command('provider:add')
+  .description('Add an MCP provider from a template config')
+  .requiredOption('--mcp <name>', 'Template name (hubspot, apollo, peopledatalabs, zoominfo)')
+  .action(withDiagnostics(async (opts) => {
+    const { existsSync, copyFileSync, mkdirSync, readFileSync } = await import('fs')
+    const { join } = await import('path')
+    const { homedir } = await import('os')
+
+    const templateDir = join(process.cwd(), 'configs', 'mcp')
+    const targetDir = join(homedir(), '.gtm-os', 'mcp')
+
+    const templatePath = join(templateDir, `${opts.mcp}.json`)
+    const targetPath = join(targetDir, `${opts.mcp}.json`)
+
+    if (!existsSync(templatePath)) {
+      const { readdirSync } = await import('fs')
+      const available = existsSync(templateDir)
+        ? readdirSync(templateDir).filter(f => f.endsWith('.json')).map(f => f.replace('.json', ''))
+        : []
+      console.error(`Template "${opts.mcp}" not found. Available: ${available.join(', ') || 'none'}`)
+      process.exit(1)
+    }
+
+    if (existsSync(targetPath)) {
+      console.log(`Config already exists at ${targetPath}. Edit it directly or remove first.`)
+      return
+    }
+
+    mkdirSync(targetDir, { recursive: true })
+    copyFileSync(templatePath, targetPath)
+
+    // Parse to show env vars that need to be set
+    const config = JSON.parse(readFileSync(targetPath, 'utf-8'))
+    const envVars: string[] = []
+    const jsonStr = JSON.stringify(config)
+    const matches = jsonStr.matchAll(/\$\{([^}]+)\}/g)
+    for (const match of matches) {
+      if (!envVars.includes(match[1])) envVars.push(match[1])
+    }
+
+    console.log(`\nCopied ${opts.mcp} config to ${targetPath}`)
+
+    if (envVars.length > 0) {
+      console.log('\nRequired environment variables:')
+      for (const v of envVars) {
+        const isSet = process.env[v] ? 'SET' : 'NOT SET'
+        console.log(`  ${v}: ${isSet}`)
+      }
+      console.log('\nAdd them to your .env.local or export them before running GTM-OS.')
+    }
+
+    console.log('\nVerify with: npx tsx src/cli/index.ts provider:test ' + opts.mcp)
+  }))
+
+// ─── provider:test ─────────────────────────────────────────────────────────
+program
+  .command('provider:test <name>')
+  .description('Run health check for a specific provider')
+  .action(withDiagnostics(async (name: string) => {
+    const { getRegistryReady } = await import('../lib/providers/registry')
+    const registry = await getRegistryReady()
+    const all = registry.getAll()
+
+    // Find provider by id or name
+    const match = all.find(p => p.id === name || p.id === `mcp:${name}` || p.name.toLowerCase() === name.toLowerCase())
+    if (!match) {
+      console.error(`Provider "${name}" not found. Run provider:list to see available providers.`)
+      process.exit(1)
+    }
+
+    console.log(`\nTesting provider: ${match.name} (${match.id})`)
+    console.log(`  Type:         ${match.type}`)
+    console.log(`  Capabilities: ${match.capabilities.join(', ')}`)
+    console.log(`  Status:       ${match.status}`)
+
+    // Try to run healthCheck if available
+    const step = { stepType: match.capabilities[0] ?? 'search', provider: match.id }
+    try {
+      const executor = registry.resolve(step)
+      if (executor.healthCheck) {
+        console.log('\n  Running health check...')
+        const result = await executor.healthCheck()
+        console.log(`  Result: ${result.ok ? 'PASS' : 'FAIL'} — ${result.message}`)
+
+        // Show discovered tools for MCP providers
+        if (match.type === 'mcp') {
+          const { McpProviderAdapter } = await import('../lib/providers/mcp-adapter')
+          if (executor instanceof McpProviderAdapter) {
+            const tools = executor.getDiscoveredTools()
+            if (tools.length > 0) {
+              console.log(`\n  Discovered tools (${tools.length}):`)
+              for (const t of tools.slice(0, 20)) {
+                console.log(`    - ${t.name}${t.description ? `: ${t.description.slice(0, 60)}` : ''}`)
+              }
+              if (tools.length > 20) {
+                console.log(`    ... and ${tools.length - 20} more`)
+              }
+            }
+          }
+        }
+      } else {
+        console.log(`\n  No health check defined. Provider is ${executor.isAvailable() ? 'available' : 'unavailable'}.`)
+      }
+    } catch (err) {
+      console.error(`\n  Error: ${err instanceof Error ? err.message : String(err)}`)
+    }
+
+    console.log('')
+  }))
+
+// ─── provider:remove ───────────────────────────────────────────────────────
+program
+  .command('provider:remove <name>')
+  .description('Remove an MCP provider config')
+  .action(async (name: string) => {
+    const { existsSync, unlinkSync } = await import('fs')
+    const { join } = await import('path')
+    const { homedir } = await import('os')
+
+    const configPath = join(homedir(), '.gtm-os', 'mcp', `${name}.json`)
+
+    if (!existsSync(configPath)) {
+      console.error(`No MCP config found at ${configPath}`)
+      process.exit(1)
+    }
+
+    unlinkSync(configPath)
+    console.log(`Removed MCP provider config: ${configPath}`)
+    console.log('The provider will not load on next CLI invocation.')
+  })
+
+// ─── pipeline:run ──────────────────────────────────────────────────────────
+program
+  .command('pipeline:run')
+  .description('Execute a declarative YAML pipeline')
+  .requiredOption('--file <path>', 'Path to pipeline YAML file')
+  .option('--dry-run', 'Validate and show execution plan without running')
+  .action(withDiagnostics(async (opts) => {
+    const { executePipeline } = await import('../lib/orchestrator/chain')
+    const context = {
+      framework: null as any,
+      intelligence: [],
+      providers: { resolve: () => ({ id: 'mock', name: 'mock', execute: async function*() {} }) } as any,
+      userId: 'default',
+    }
+
+    for await (const event of executePipeline({ file: opts.file, dryRun: opts.dryRun ?? false }, context)) {
+      if (event.type === 'progress') console.log(`[${event.percent}%] ${event.message}`)
+      else if (event.type === 'error') console.error(`ERROR: ${event.message}`)
+      else if (event.type === 'result') console.log('\nResult:', JSON.stringify(event.data, null, 2))
+      else if (event.type === 'step_complete') {
+        const step = (event as any).data
+        if (step.status === 'skipped') console.log(`  -> skipped: ${step.skippedReason}`)
+        else if (step.status === 'completed') console.log(`  -> completed in ${step.duration}ms`)
+      }
+    }
+  }))
+
+// ─── pipeline:list ─────────────────────────────────────────────────────────
+program
+  .command('pipeline:list')
+  .description('List available pipelines from ~/.gtm-os/pipelines/ and configs/pipelines/')
+  .action(async () => {
+    const { listPipelines } = await import('../lib/orchestrator/chain')
+    const pipelines = listPipelines()
+
+    if (pipelines.length === 0) {
+      console.log('No pipelines found. Create one with: pipeline:create')
+      console.log('  Or add YAML files to ~/.gtm-os/pipelines/ or configs/pipelines/')
+      return
+    }
+
+    console.log(`\n── Pipelines (${pipelines.length}) ──\n`)
+    for (const p of pipelines) {
+      console.log(`  ${p.name.padEnd(30)} ${String(p.steps).padEnd(4)} steps  ${p.description}`)
+      console.log(`    ${p.file}`)
+    }
+  })
+
+// ─── pipeline:resume ───────────────────────────────────────────────────────
+program
+  .command('pipeline:resume')
+  .description('Resume a failed or interrupted pipeline from its last checkpoint')
+  .requiredOption('--name <name>', 'Pipeline name to resume')
+  .action(withDiagnostics(async (opts) => {
+    const { loadCheckpoint, executePipeline } = await import('../lib/orchestrator/chain')
+    const checkpoint = loadCheckpoint(opts.name)
+
+    if (!checkpoint) {
+      console.error(`No checkpoint found for pipeline "${opts.name}".`)
+      console.error(`Run pipeline:status --name "${opts.name}" to check, or pipeline:run --file <yaml> to start fresh.`)
+      process.exit(1)
+    }
+
+    if (checkpoint.status === 'completed') {
+      console.log(`Pipeline "${opts.name}" already completed at ${checkpoint.updatedAt}.`)
+      return
+    }
+
+    const resumeStep = checkpoint.currentStep
+    console.log(`Resuming pipeline "${opts.name}" from step ${resumeStep}...`)
+
+    const context = {
+      framework: null as any,
+      intelligence: [],
+      providers: { resolve: () => ({ id: 'mock', name: 'mock', execute: async function*() {} }) } as any,
+      userId: 'default',
+    }
+
+    for await (const event of executePipeline({
+      file: checkpoint.pipelineFile,
+      resumeFrom: resumeStep,
+    }, context)) {
+      if (event.type === 'progress') console.log(`[${event.percent}%] ${event.message}`)
+      else if (event.type === 'error') console.error(`ERROR: ${event.message}`)
+      else if (event.type === 'result') console.log('\nResult:', JSON.stringify(event.data, null, 2))
+      else if (event.type === 'step_complete') {
+        const step = (event as any).data
+        if (step.status === 'skipped') console.log(`  -> skipped: ${step.skippedReason}`)
+        else if (step.status === 'completed') console.log(`  -> completed in ${step.duration}ms`)
+      }
+    }
+  }))
+
+// ─── pipeline:status ───────────────────────────────────────────────────────
+program
+  .command('pipeline:status')
+  .description('Show current state of a running, failed, or completed pipeline')
+  .requiredOption('--name <name>', 'Pipeline name')
+  .action(async (opts) => {
+    const { getPipelineStatus } = await import('../lib/orchestrator/chain')
+    const status = getPipelineStatus(opts.name)
+
+    if (!status) {
+      console.log(`No state found for pipeline "${opts.name}".`)
+      return
+    }
+
+    console.log(`\n── Pipeline: ${status.pipelineName} ──`)
+    console.log(`  Status:     ${status.status}`)
+    console.log(`  Started:    ${status.startedAt}`)
+    console.log(`  Updated:    ${status.updatedAt}`)
+    console.log(`  Current:    step ${status.currentStep}`)
+    console.log(`  Completed:  [${status.completedSteps.join(', ')}]`)
+    console.log(`  File:       ${status.pipelineFile}`)
+    if (status.error) {
+      console.log(`  Error:      ${status.error}`)
+    }
+
+    const resultKeys = Object.keys(status.stepResults)
+    if (resultKeys.length > 0) {
+      console.log(`\n  Step results: ${resultKeys.join(', ')}`)
+    }
+
+    if (status.status === 'failed') {
+      console.log(`\n  Resume with: npx tsx src/cli/index.ts pipeline:resume --name "${status.pipelineName}"`)
+    }
+  })
+
+// ─── pipeline:create ───────────────────────────────────────────────────────
+program
+  .command('pipeline:create')
+  .description('Create a new pipeline YAML from a template')
+  .requiredOption('--name <name>', 'Pipeline name')
+  .option('--output <path>', 'Output path (default: ~/.gtm-os/pipelines/<name>.yaml)')
+  .action(async (opts) => {
+    const { existsSync, writeFileSync, mkdirSync } = await import('fs')
+    const { join } = await import('path')
+    const { homedir } = await import('os')
+    const yaml = (await import('js-yaml')).default
+
+    const pipelinesDir = join(homedir(), '.gtm-os', 'pipelines')
+    mkdirSync(pipelinesDir, { recursive: true })
+
+    const outputPath = opts.output ?? join(pipelinesDir, `${opts.name}.yaml`)
+    if (existsSync(outputPath)) {
+      console.error(`File already exists: ${outputPath}`)
+      process.exit(1)
+    }
+
+    const template = {
+      name: opts.name,
+      description: 'TODO: describe this pipeline',
+      version: '1.0',
+      steps: [
+        {
+          skill: 'find-companies',
+          input: { query: 'TODO: your search query' },
+          output: 'companies',
+        },
+        {
+          skill: 'enrich-leads',
+          from: 'companies',
+          condition: 'domain exists',
+          output: 'enriched',
+        },
+      ],
+    }
+
+    writeFileSync(outputPath, yaml.dump(template, { lineWidth: 120 }))
+    console.log(`Pipeline created: ${outputPath}`)
+    console.log(`Edit the YAML, then run: npx tsx src/cli/index.ts pipeline:run --file "${outputPath}" --dry-run`)
+  })
+
+// ─── signals:watch ──────────────────────────────────────────────────────────
+program
+  .command('signals:watch')
+  .description('Add companies or people to the signal watch list')
+  .requiredOption('--companies <domains>', 'Comma-separated company domains')
+  .option('--types <types>', 'Signal types to detect (default: all)', 'job-change,hiring-surge,funding,news')
+  .option('--force', 'Skip credit budget warning')
+  .action(withDiagnostics(async (opts) => {
+    const { addWatch, listWatches, estimateDailyCreditCost, ALL_SIGNAL_TYPES } = await import('../lib/signals')
+    const tenantId = getTenant()
+    const domains = (opts.companies as string).split(',').map(d => d.trim()).filter(Boolean)
+    const types = (opts.types as string).split(',').map(t => t.trim()) as import('../lib/signals').SignalType[]
+
+    // Validate signal types
+    for (const t of types) {
+      if (!ALL_SIGNAL_TYPES.includes(t)) {
+        console.error(`Invalid signal type: "${t}". Valid: ${ALL_SIGNAL_TYPES.join(', ')}`)
+        process.exit(1)
+      }
+    }
+
+    // Credit budget check
+    const existingWatches = await listWatches(tenantId)
+    const newWatches = domains.map(d => ({
+      entityType: 'company' as const,
+      entityId: d,
+      entityName: d,
+      signalTypes: types,
+      baseline: {},
+      tenantId,
+    }))
+    const projectedCost = estimateDailyCreditCost([
+      ...existingWatches,
+      ...newWatches.map(w => ({ ...w, id: '', createdAt: '', lastCheckedAt: '' })),
+    ])
+
+    if (projectedCost > 50 && !opts.force) {
+      console.error(
+        `[signals] Projected daily credit cost: ${projectedCost} credits.` +
+        ` This exceeds the 50-credit warning threshold. Use --force to proceed.`
+      )
+      process.exit(1)
+    }
+
+    for (const domain of domains) {
+      const watch = await addWatch({
+        entityType: 'company',
+        entityId: domain,
+        entityName: domain,
+        signalTypes: types,
+        baseline: {},
+        tenantId,
+      })
+      console.log(`[signals] Watching ${domain} for [${types.join(', ')}] (id: ${watch.id})`)
+    }
+
+    console.log(`\n[signals] Estimated daily credit cost: ${projectedCost} credits`)
+    console.log(`[signals] Run detection: npx tsx src/cli/index.ts signals:detect`)
+  }))
+
+// ─── signals:detect ─────────────────────────────────────────────────────────
+program
+  .command('signals:detect')
+  .description('Run signal detection now')
+  .option('--type <type>', 'Only run a specific signal type')
+  .option('--company <domain>', 'Only check a specific company')
+  .action(withDiagnostics(async (opts) => {
+    const { runDetection } = await import('../lib/signals')
+    const tenantId = getTenant()
+
+    console.log(`[signals] Running detection for tenant "${tenantId}"...`)
+    const signals = await runDetection({
+      tenantId,
+      signalType: opts.type,
+      entityId: opts.company,
+    })
+
+    if (signals.length === 0) {
+      console.log('[signals] No new signals detected.')
+      return
+    }
+
+    console.log(`\n[signals] Detected ${signals.length} signal(s):\n`)
+    for (const s of signals) {
+      console.log(`  ${s.signalType.padEnd(16)} ${s.entityName.padEnd(30)} ${s.summary}`)
+    }
+  }))
+
+// ─── signals:list ───────────────────────────────────────────────────────────
+program
+  .command('signals:list')
+  .description('Show all signal watches with last check time')
+  .action(withDiagnostics(async () => {
+    const { listWatches, estimateDailyCreditCost } = await import('../lib/signals')
+    const tenantId = getTenant()
+    const watches = await listWatches(tenantId)
+
+    if (watches.length === 0) {
+      console.log('[signals] No watches configured. Add with: signals:watch --companies <domains>')
+      return
+    }
+
+    console.log(`\n── Signal Watches (${watches.length}) ──\n`)
+    for (const w of watches) {
+      console.log(
+        `  ${w.entityId.padEnd(30)} ${w.entityType.padEnd(10)} [${w.signalTypes.join(', ')}]  last: ${w.lastCheckedAt?.slice(0, 16) ?? 'never'}`
+      )
+    }
+
+    const dailyCost = estimateDailyCreditCost(watches)
+    console.log(`\n  Daily credit cost: ~${dailyCost} credits\n`)
+  }))
+
+// ─── signals:triggers ───────────────────────────────────────────────────────
+program
+  .command('signals:triggers')
+  .description('Manage signal trigger configurations')
+  .argument('<action>', 'list | set')
+  .option('--signal <type>', 'Signal type (for set)')
+  .option('--action <action>', 'Trigger action: slack, enrich, qualify, campaign, intelligence (for set)')
+  .option('--channel <channel>', 'Slack channel (for slack action)')
+  .option('--template <text>', 'Message template (for slack action)')
+  .action(withDiagnostics(async (action: string, opts) => {
+    const { listTriggers, setTrigger, ALL_SIGNAL_TYPES } = await import('../lib/signals')
+    const tenantId = getTenant()
+
+    if (action === 'list') {
+      const config = await listTriggers(tenantId)
+      if (!config || Object.keys(config.triggers).length === 0) {
+        console.log('[signals] No triggers configured.')
+        console.log(`  Set with: signals:triggers set --signal <type> --action <action>`)
+        return
+      }
+
+      console.log('\n── Signal Triggers ──\n')
+      for (const [signalType, triggers] of Object.entries(config.triggers)) {
+        if (!triggers || triggers.length === 0) continue
+        console.log(`  ${signalType}:`)
+        for (const t of triggers) {
+          const details = t.channel ? ` (${t.channel})` : t.campaignId ? ` (campaign: ${t.campaignId})` : ''
+          console.log(`    -> ${t.action}${details}`)
+        }
+      }
+    } else if (action === 'set') {
+      if (!opts.signal || !opts.action) {
+        console.error('Both --signal and --action are required for "set"')
+        process.exit(1)
+      }
+      if (!ALL_SIGNAL_TYPES.includes(opts.signal as any)) {
+        console.error(`Invalid signal type: "${opts.signal}". Valid: ${ALL_SIGNAL_TYPES.join(', ')}`)
+        process.exit(1)
+      }
+
+      await setTrigger(tenantId, opts.signal as any, {
+        action: opts.action as any,
+        channel: opts.channel,
+        template: opts.template,
+      })
+      console.log(`[signals] Trigger set: ${opts.signal} -> ${opts.action}`)
+    } else {
+      console.error(`Unknown action: "${action}". Use "list" or "set".`)
+      process.exit(1)
+    }
+  }))
+
+// ─── leads:export ───────────────────────────────────────────────────────────
+program
+  .command('leads:export')
+  .description('Export a result set to CSV, JSON, Google Sheets, webhook, or sequencer-formatted CSV')
+  .requiredOption('--result-set <id>', 'Result set ID to export')
+  .option('--destination <type>', 'Export destination: csv, json, google-sheets, webhook, lemlist, apollo, woodpecker', 'csv')
+  .option('--output <path>', 'Output file path (for file-based exports)')
+  .option('--fields <fields>', 'Comma-separated list of fields to include')
+  .option('--url <url>', 'Webhook URL (required for webhook destination)')
+  .option('--sheet-id <id>', 'Google Spreadsheet ID (required for google-sheets destination)')
+  .option('--headers <json>', 'Custom headers as JSON (for webhook)')
+  .action(withDiagnostics(async (opts) => {
+    const { db } = await import('../lib/db')
+    const { resultRows } = await import('../lib/db/schema')
+    const { eq } = await import('drizzle-orm')
+    const { createDefaultRegistry } = await import('../lib/export/registry')
+
+    // Load rows from result set
+    const rows = await db
+      .select()
+      .from(resultRows)
+      .where(eq(resultRows.resultSetId, opts.resultSet))
+
+    if (rows.length === 0) {
+      console.error(`No rows found for result set: ${opts.resultSet}`)
+      process.exit(1)
+    }
+
+    const data = rows.map(row => {
+      const d = typeof row.data === 'string' ? JSON.parse(row.data) : (row.data ?? row)
+      return d as Record<string, unknown>
+    })
+
+    console.log(`Loaded ${data.length} rows from result set ${opts.resultSet}`)
+
+    // Resolve adapter
+    const registry = createDefaultRegistry()
+    const SEQUENCER_FORMATS = ['lemlist', 'apollo', 'woodpecker']
+    const isSequencer = SEQUENCER_FORMATS.includes(opts.destination)
+    const adapterId = isSequencer ? 'sequencer-csv' : opts.destination
+
+    const adapter = registry.get(adapterId)
+    if (!adapter) {
+      console.error(`Unknown destination: ${opts.destination}. Available: csv, json, google-sheets, webhook, ${SEQUENCER_FORMATS.join(', ')}`)
+      process.exit(1)
+    }
+
+    // Build options
+    let destination = opts.output || ''
+    if (opts.destination === 'webhook') {
+      destination = opts.url || ''
+      if (!destination) {
+        console.error('--url is required for webhook destination')
+        process.exit(1)
+      }
+    } else if (opts.destination === 'google-sheets') {
+      destination = opts.sheetId || ''
+      if (!destination) {
+        console.error('--sheet-id is required for google-sheets destination')
+        process.exit(1)
+      }
+    }
+
+    const fields = opts.fields ? opts.fields.split(',').map((f: string) => f.trim()) : undefined
+    const format = isSequencer ? opts.destination : (opts.headers || undefined)
+
+    const result = await adapter.export(data, {
+      destination,
+      fields,
+      format,
+      tenantId: getTenant(),
+    })
+
+    if (result.success) {
+      console.log(`Exported ${result.recordsExported} records to ${result.destination}`)
+    } else {
+      console.error(`Export failed: ${result.errors?.join('; ')}`)
+      if (result.recordsExported > 0) {
+        console.log(`  Partial export: ${result.recordsExported} records succeeded`)
+      }
+      process.exit(1)
+    }
+  }))
+
+// ─── research ────────────────────────────────────────────────────────────────
+program
+  .command('research')
+  .description('AI research agent — answer any question about a company, person, or topic with evidence')
+  .requiredOption('--question <text>', 'Research question to answer')
+  .requiredOption('--target <identifier>', 'Target identifier (domain, name, or topic)')
+  .option('--target-type <type>', 'Target type: company, person, or topic', 'company')
+  .option('--max-sources <n>', 'Maximum sources to scrape (1-10)', '5')
+  .action(withDiagnostics(async (opts) => {
+    const { runResearchAgent } = await import('../lib/scraping/research-agent')
+
+    const finding = await runResearchAgent(
+      {
+        question: opts.question,
+        target: opts.target,
+        targetType: opts.targetType as 'company' | 'person' | 'topic',
+        maxSources: parseInt(opts.maxSources, 10),
+        tenantId: getTenant(),
+      },
+      {
+        onProgress: (progress) => {
+          console.log(`[${progress.percent}%] [${progress.phase}] ${progress.message}`)
+        },
+      },
+    )
+
+    console.log('\n── Research Finding ──')
+    console.log(`  Question:   ${finding.question}`)
+    console.log(`  Answer:     ${finding.answer}`)
+    console.log(`  Confidence: ${finding.confidence}%`)
+    console.log(`  Sources:    ${finding.evidence.length}`)
+
+    if (finding.evidence.length > 0) {
+      console.log('\n── Evidence Chain ──')
+      for (const [i, e] of finding.evidence.entries()) {
+        console.log(`  [${i + 1}] ${e.url}`)
+        console.log(`      Relevance: ${e.relevanceScore}% | Scraped: ${e.scrapedAt}`)
+        console.log(`      Text: ${e.extractedText.slice(0, 150)}${e.extractedText.length > 150 ? '...' : ''}`)
+      }
+    }
+
+    if (Object.keys(finding.structuredData).length > 0) {
+      console.log('\n── Structured Data ──')
+      console.log(JSON.stringify(finding.structuredData, null, 2))
+    }
   }))
 
 program.parse()

@@ -25,10 +25,10 @@ yalc-gtm start
 
 The `start` command walks you through 4 steps:
 
-1. **Environment** — Collects API keys. Only an Anthropic key is required to begin; other providers (Crustdata, Unipile, Firecrawl, Notion) are optional and unlock additional capabilities.
+1. **Environment** — Collects API keys. All keys are optional; setup never blocks on a missing one. Without `ANTHROPIC_API_KEY` you can still complete onboarding — Steps 3–4 are skipped and can be finished later by running `yalc-gtm onboard` then `yalc-gtm configure`. When run inside Claude Code, both `ANTHROPIC_API_KEY` and `FIRECRAWL_API_KEY` default to skip (the parent CC session covers LLM + WebFetch).
 2. **Company Context** — Interactive interview about your company, ICP, pain points, competitors, and voice. Optionally scrapes your website for additional context.
-3. **Framework** — Claude synthesizes everything into a structured GTM framework (segments, signals, positioning, competitors).
-4. **Goals & Config** — Claude recommends goals and generates qualification rules, outreach templates, and search queries.
+3. **Framework** *(skipped without an Anthropic key)* — Claude synthesizes everything into a structured GTM framework (segments, signals, positioning, competitors).
+4. **Goals & Config** *(skipped without an Anthropic key)* — Claude recommends goals and generates qualification rules, outreach templates, and search queries.
 
 You'll end with a readiness report showing what's unlocked and a suggested first command.
 
@@ -95,6 +95,37 @@ If your `ANTHROPIC_API_KEY` is already in your environment (common in Claude Cod
 **Terminal (standalone):**
 Run commands directly. The interactive prompts work as expected in any terminal emulator.
 
+### Running YALC inside Claude Code (no extra keys required)
+
+When YALC detects a parent Claude Code session — via `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, or `CLAUDE_CODE_SSE_PORT` env vars set by Claude Code itself — both the **Anthropic** and **Firecrawl** keys become **optional**:
+
+- The parent CC session already provides LLM reasoning, so a separate Anthropic API key isn't needed for ad-hoc planning, qualification, or personalization (just ask Claude Code).
+- Claude Code's built-in `WebFetch` tool covers single-URL scrapes, so Firecrawl is only needed for JS-rendered pages, multi-page crawls, or web search.
+
+**What works in Claude Code mode with zero provider keys:**
+
+| Command | Works? | Notes |
+|---|---|---|
+| `start` | ✓ | Steps 1–2 complete; Steps 3–4 (framework synth, goals) are skipped with a "come back after adding ANTHROPIC_API_KEY" message |
+| `leads:import` | ✓ | Pure CSV/JSON ingest, no LLM |
+| `campaign:create` (with `--title` + `--hypothesis`) | ✓ | LLM is only used for the optional auto-plan path |
+| `campaign:track`, `campaign:schedule`, `campaign:report` (data-only) | ✓ | Pure CRUD against Notion / DB |
+| `notion:sync`, `notion:bootstrap` | ✓ | |
+| `email:send`, `email:status` | ✓ | Sends pre-written copy via Instantly |
+| `orchestrate`, `leads:qualify`, `personalize`, `competitive-intel` | Redirect | Print a "set ANTHROPIC_API_KEY or reformulate as a CC prompt" message and exit cleanly (no stack trace) |
+
+**When you DO still want an Anthropic key:**
+
+- Running YALC standalone (no parent CC session)
+- Running YALC under cron, launchd, CI, or any unattended scheduler
+- You want the qualifier / personalizer / orchestrator to run autonomously without you babysitting it from a CC chat
+
+**Web-fetch provider override** — set `WEB_FETCH_PROVIDER` in `.env.local`:
+
+- `auto` (default) — use Firecrawl if present, otherwise hand off to Claude Code's WebFetch
+- `firecrawl` — force Firecrawl, error if no key
+- `claude-code` — never call Firecrawl; commands that need a web fetch will emit a "fetch this URL with WebFetch and re-run with `--input <file>`" handoff
+
 **File Structure — Where Things Live:**
 
 ```
@@ -147,10 +178,10 @@ When talking to Claude Code, reference these locations directly:
 |----------|-------------|---------|
 | **Unipile** | LinkedIn search, connections, DMs, scraping | `UNIPILE_API_KEY`, `UNIPILE_DSN` |
 | **Crustdata** | Company/people search, enrichment | `CRUSTDATA_API_KEY` |
-| **Firecrawl** | Web scraping, search | `FIRECRAWL_API_KEY` |
+| **Firecrawl** | Web scraping, search (optional inside Claude Code) | `FIRECRAWL_API_KEY` |
 | **Notion** | Database sync, page management | `NOTION_API_KEY` |
 | **FullEnrich** | Email/phone enrichment | `FULLENRICH_API_KEY` |
-| **Anthropic** | AI planning, qualification, personalization | `ANTHROPIC_API_KEY` |
+| **Anthropic** | AI planning, qualification, personalization (optional inside Claude Code) | `ANTHROPIC_API_KEY` |
 
 ## Skills
 

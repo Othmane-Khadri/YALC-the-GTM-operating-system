@@ -1,0 +1,22 @@
+name: import-dedup-score
+description: Import leads from CSV, deduplicate, score with AI qualification, and export qualified leads
+version: "1.0"
+
+steps:
+  - skill: export-data
+    input:
+      source: csv
+      action: import
+    output: imported
+
+  - skill: qualify-leads
+    from: imported
+    condition: "count > 0"
+    output: scored
+
+  - skill: export-data
+    from: scored
+    condition: "score >= 50"
+    input:
+      format: csv
+      destination: notion

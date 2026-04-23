@@ -300,6 +300,17 @@ export function withDiagnostics<T extends (...args: any[]) => Promise<void>>(
       await action(...args)
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error))
+
+      // Claude Code redirects are an expected, friendly exit — not a failure.
+      // Print the message verbatim and exit 0 so parent CC sessions don't
+      // treat the spawn as broken.
+      if ((err as { isClaudeCodeRedirect?: boolean }).isClaudeCodeRedirect) {
+        console.error('')
+        console.error(`  ${err.message.replace(/\n/g, '\n  ')}`)
+        console.error('')
+        process.exit(0)
+      }
+
       const diagnostic = classifyError(err)
 
       if (diagnostic) {
@@ -315,10 +326,12 @@ export function withDiagnostics<T extends (...args: any[]) => Promise<void>>(
         console.error(`  Or:  gtm-os doctor --report — to generate a diagnostic report`)
         console.error('')
 
-        // Show stack trace in debug mode
-        if (process.env.DEBUG || process.env.GTM_OS_DEBUG) {
+        // Show stack trace in debug/verbose mode
+        if (process.env.DEBUG || process.env.GTM_OS_DEBUG || process.env.GTM_OS_VERBOSE) {
           console.error('Stack trace:')
           console.error(err.stack)
+        } else {
+          console.error(`  Tip: re-run with --verbose for full stack trace`)
         }
       }
 

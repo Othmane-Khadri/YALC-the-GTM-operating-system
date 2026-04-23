@@ -453,6 +453,116 @@ async function checkProviders(): Promise<LayerResult> {
     checks.push({ name: 'Notion', status: 'skip', detail: 'Not configured' })
   }
 
+  // Crustdata
+  if (process.env.CRUSTDATA_API_KEY) {
+    try {
+      const resp = await fetch('https://api.crustdata.com/screener/credit_check/', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Token ${process.env.CRUSTDATA_API_KEY}`,
+          'Accept': 'application/json',
+        },
+        signal: AbortSignal.timeout(10000),
+      })
+      if (resp.ok) {
+        checks.push({ name: 'Crustdata', status: 'pass', detail: '' })
+      } else if (resp.status === 401 || resp.status === 403) {
+        checks.push({ name: 'Crustdata', status: 'fail', detail: 'API key invalid or expired.' })
+      } else {
+        checks.push({ name: 'Crustdata', status: 'warn', detail: `HTTP ${resp.status}` })
+      }
+    } catch (e) {
+      checks.push({ name: 'Crustdata', status: 'fail', detail: `Connection failed: ${e instanceof Error ? e.message : String(e)}` })
+    }
+  } else {
+    checks.push({ name: 'Crustdata', status: 'skip', detail: 'Not configured' })
+  }
+
+  // Instantly
+  if (process.env.INSTANTLY_API_KEY) {
+    try {
+      const resp = await fetch(`https://api.instantly.ai/api/v1/account/list?api_key=${process.env.INSTANTLY_API_KEY}&limit=1`, {
+        signal: AbortSignal.timeout(10000),
+      })
+      if (resp.ok) {
+        checks.push({ name: 'Instantly', status: 'pass', detail: '' })
+      } else if (resp.status === 401 || resp.status === 403) {
+        checks.push({ name: 'Instantly', status: 'fail', detail: 'API key invalid.' })
+      } else {
+        checks.push({ name: 'Instantly', status: 'warn', detail: `HTTP ${resp.status}` })
+      }
+    } catch (e) {
+      checks.push({ name: 'Instantly', status: 'fail', detail: `Connection failed: ${e instanceof Error ? e.message : String(e)}` })
+    }
+  } else {
+    checks.push({ name: 'Instantly', status: 'skip', detail: 'Not configured' })
+  }
+
+  // FullEnrich
+  if (process.env.FULLENRICH_API_KEY) {
+    try {
+      const resp = await fetch('https://api.fullenrich.com/v1/credits', {
+        headers: {
+          'Authorization': `Bearer ${process.env.FULLENRICH_API_KEY}`,
+          'Accept': 'application/json',
+        },
+        signal: AbortSignal.timeout(10000),
+      })
+      if (resp.ok) {
+        checks.push({ name: 'FullEnrich', status: 'pass', detail: '' })
+      } else if (resp.status === 401 || resp.status === 403) {
+        checks.push({ name: 'FullEnrich', status: 'fail', detail: 'API key invalid.' })
+      } else {
+        // Some endpoints may return 404 but auth works — treat as warn
+        checks.push({ name: 'FullEnrich', status: 'warn', detail: `HTTP ${resp.status} (auth check inconclusive)` })
+      }
+    } catch (e) {
+      checks.push({ name: 'FullEnrich', status: 'fail', detail: `Connection failed: ${e instanceof Error ? e.message : String(e)}` })
+    }
+  } else {
+    checks.push({ name: 'FullEnrich', status: 'skip', detail: 'Not configured' })
+  }
+
+  // MCP Providers
+  try {
+    const { getMcpConfigDir } = await import('../providers/mcp-loader')
+    const { readdirSync, readFileSync } = await import('fs')
+    const mcpDir = getMcpConfigDir()
+    if (existsSync(mcpDir)) {
+      const configs = readdirSync(mcpDir).filter(f => f.endsWith('.json'))
+      if (configs.length > 0) {
+        const { getRegistryReady } = await import('../providers/registry')
+        const registry = await getRegistryReady()
+        const allProviders = registry.getAll()
+        const mcpProviders = allProviders.filter(p => p.type === 'mcp')
+
+        for (const p of mcpProviders) {
+          if (p.status === 'active') {
+            checks.push({ name: `MCP: ${p.name}`, status: 'pass', detail: `${p.capabilities.join(', ')}` })
+          } else {
+            checks.push({ name: `MCP: ${p.name}`, status: 'warn', detail: 'Unavailable — check config and env vars' })
+          }
+        }
+
+        // Report configs that failed to load
+        const loadedNames = new Set(mcpProviders.map(p => p.id.replace('mcp:', '')))
+        for (const file of configs) {
+          try {
+            const raw = JSON.parse(readFileSync(join(mcpDir, file), 'utf-8'))
+            const name = raw.name
+            if (name && !loadedNames.has(name)) {
+              checks.push({ name: `MCP: ${file}`, status: 'fail', detail: 'Config exists but provider failed to register — check JSON schema' })
+            }
+          } catch {
+            checks.push({ name: `MCP: ${file}`, status: 'fail', detail: 'Invalid JSON' })
+          }
+        }
+      }
+    }
+  } catch {
+    // MCP check is best-effort
+  }
+
   return { layer: 'Provider Connectivity', checks }
 }
 

@@ -5,6 +5,7 @@
 
 import type { Skill, SkillEvent, SkillContext } from '../types'
 import { getAnthropicClient, PLANNER_MODEL } from '../../ai/client'
+import { getWebFetchProvider } from '../../env/claude-code'
 
 interface CompetitiveIntelInput {
   competitor: string  // URL or company name
@@ -128,6 +129,20 @@ export const competitiveIntelSkill: Skill = {
     if (crustdataInfo) contextBlocks.push(`## Company Data (Crustdata)\n${crustdataInfo}`)
 
     if (contextBlocks.length === 0) {
+      const provider = getWebFetchProvider()
+      if (provider === 'claude-code' && url) {
+        yield {
+          type: 'error',
+          message:
+            `No web data fetched for "${competitor}". Running inside Claude Code without Firecrawl — ` +
+            `ask your parent CC session to fetch it for you:\n` +
+            `  "Use the WebFetch tool on ${url}, save the markdown to data/competitor.md, ` +
+            `then re-run \`yalc-gtm competitive-intel --competitor ${competitor}\` after I add Firecrawl, ` +
+            `or feed the file into the analysis directly."\n` +
+            `Or add FIRECRAWL_API_KEY to .env.local and re-run.`,
+        }
+        return
+      }
       yield { type: 'error', message: `No data found for "${competitor}". Provide a URL or check your API keys.` }
       return
     }

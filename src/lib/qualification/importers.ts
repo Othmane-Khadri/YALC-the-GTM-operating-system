@@ -42,6 +42,12 @@ export async function runImport(opts: ImportOptions): Promise<ImportResult> {
     case 'engagers':
       records = parseEngagers(input)
       break
+    case 'hubspot':
+    case 'salesforce':
+    case 'pipedrive':
+    case 'crm':
+      records = await importFromCrm(source === 'crm' ? input : source)
+      break
     default:
       throw new Error(`Unknown source type: ${source}`)
   }
@@ -245,4 +251,64 @@ function parseEngagers(filePath: string): Record<string, unknown>[] {
     provider_id: e.provider_id ?? e.providerId ?? '',
     source: 'content_engager',
   }))
+}
+
+async function importFromCrm(provider: string): Promise<Record<string, unknown>[]> {
+  const { loadCrmConfig } = await import('../crm/config-store')
+  const { McpCrmAdapter } = await import('../crm/mcp-crm-adapter')
+  const { existsSync, readFileSync: readFile } = await import('fs')
+  const { join } = await import('path')
+  const { homedir } = await import('os')
+  const { validateMcpConfig, expandEnvVars } = await import('../providers/mcp-loader')
+
+  // Load CRM config
+  const crmConfig = loadCrmConfig(provider)
+  if (!crmConfig) {
+    throw new Error(
+      `No CRM config for "${provider}". Run: npx tsx src/cli/index.ts crm:setup --provider ${provider}`,
+    )
+  }
+
+  // Load MCP config
+  const mcpPaths = [
+    join(homedir(), '.gtm-os', 'mcp', `${crmConfig.mcpServer}.json`),
+    join(process.cwd(), 'configs', 'mcp', `${crmConfig.mcpServer}.json`),
+  ]
+
+  let mcpConfig = null
+  for (const p of mcpPaths) {
+    if (existsSync(p)) {
+      try {
+        const raw = JSON.parse(readFile(p, 'utf-8'))
+        const validation = validateMcpConfig(raw, `${crmConfig.mcpServer}.json`)
+        if (validation.valid) {
+          const { result } = expandEnvVars(raw)
+          mcpConfig = result
+          break
+        }
+      } catch {
+        continue
+      }
+    }
+  }
+
+  if (!mcpConfig) {
+    throw new Error(`MCP config not found for "${crmConfig.mcpServer}"`)
+  }
+
+  // Connect and import
+  const adapter = new McpCrmAdapter(mcpConfig as any, crmConfig)
+  const records: Record<string, unknown>[] = []
+
+  try {
+    await adapter.connect()
+    for await (const batch of adapter.importContacts()) {
+      records.push(...batch)
+    }
+  } finally {
+    await adapter.disconnect()
+  }
+
+  // Tag source
+  return records.map(r => ({ ...r, source: `crm:${provider}` }))
 }

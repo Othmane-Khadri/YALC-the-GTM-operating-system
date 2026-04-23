@@ -1,0 +1,30 @@
+name: signal-to-campaign
+description: Detect buying signals, enrich matching companies, qualify leads, and add to outreach campaign
+version: "1.0"
+
+steps:
+  - skill: find-companies
+    input:
+      query: "hiring-surge OR funding-round last-30d"
+    output: signals
+
+  - skill: enrich-leads
+    from: signals
+    condition: "domain exists"
+    input:
+      types: [email, phone, linkedin]
+    transform:
+      company_url: domain
+    output: enriched
+
+  - skill: qualify-leads
+    from: enriched
+    condition: "email exists"
+    output: qualified
+
+  - skill: export-data
+    from: qualified
+    condition: "score >= 75"
+    input:
+      format: json
+      destination: campaign
