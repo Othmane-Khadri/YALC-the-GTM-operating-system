@@ -1323,9 +1323,10 @@ program
   .action(async () => {
     const { readdirSync, existsSync } = await import('fs')
     const { join } = await import('path')
+    const { homedir } = await import('os')
     const { AgentLogger } = await import('../lib/agents/logger')
 
-    const logBase = join(process.cwd(), 'data', 'agent-logs')
+    const logBase = join(homedir(), '.gtm-os', 'logs', 'agents')
     if (!existsSync(logBase)) {
       console.log('No agents have been run yet.')
       return

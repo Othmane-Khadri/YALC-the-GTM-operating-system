@@ -3,9 +3,10 @@
 
 import { writeFileSync, mkdirSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
+import { homedir } from 'os'
 import type { StepLog, AgentRunLog } from './types'
 
-const LOG_BASE = join(process.cwd(), 'data', 'agent-logs')
+const LOG_BASE = join(homedir(), '.gtm-os', 'logs', 'agents')
 
 export class AgentLogger {
   private agentId: string

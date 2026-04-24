@@ -63,11 +63,6 @@ const DEFAULT_CONFIG = {
     disqualifiers_path: join(GTM_OS_DIR, 'company_disqualifiers.md'),
     cache_ttl_days: 30,
   },
-  data: {
-    leads_dir: './data/leads',
-    intelligence_dir: './data/intelligence',
-    campaigns_dir: './data/campaigns',
-  },
   crustdata: { max_results_per_query: 50 },
   fullenrich: { poll_interval_ms: 2000, poll_timeout_ms: 300000 },
 }

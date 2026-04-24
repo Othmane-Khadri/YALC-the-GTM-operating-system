@@ -24,11 +24,6 @@ const DEFAULTS: GTMOSConfig = {
     disqualifiers_path: '',
     cache_ttl_days: 30,
   },
-  data: {
-    leads_dir: './data/leads',
-    intelligence_dir: './data/intelligence',
-    campaigns_dir: './data/campaigns',
-  },
 }
 
 let _config: GTMOSConfig | null = null
@@ -49,7 +44,6 @@ export function loadConfig(configPath: string): GTMOSConfig {
       },
     },
     qualification: { ...DEFAULTS.qualification, ...parsed.qualification },
-    data: { ...DEFAULTS.data, ...parsed.data },
     crustdata: { max_results_per_query: 50, ...parsed.crustdata },
     fullenrich: { poll_interval_ms: 2000, poll_timeout_ms: 300000, ...parsed.fullenrich },
     instantly: {

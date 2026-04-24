@@ -145,6 +145,7 @@ When YALC detects a parent Claude Code session — via `CLAUDECODE`, `CLAUDE_COD
 ├── qualification_rules.md          Lead qualification patterns (auto-generated)
 ├── campaign_templates.yaml         Outreach copy templates (auto-generated)
 ├── search_queries.txt              Monitoring keywords (auto-generated)
+├── logs/agents/                    Background agent run logs (JSON per run)
 └── tenants/<slug>/                 Per-tenant overrides (multi-company mode)
 
 ./data/                             Working data (in your project directory)

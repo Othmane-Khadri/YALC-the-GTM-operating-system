@@ -43,11 +43,6 @@ const DEFAULTS: GTMOSConfig = {
     disqualifiers_path: '',
     cache_ttl_days: 30,
   },
-  data: {
-    leads_dir: './data/leads',
-    intelligence_dir: './data/intelligence',
-    campaigns_dir: './data/campaigns',
-  },
 }
 
 /**
@@ -85,7 +80,6 @@ export function createGtmOS(options: GTMOSOptions = {}): GTMOSInstance {
         },
       },
       qualification: { ...config.qualification, ...options.config.qualification },
-      data: { ...config.data, ...options.config.data },
     }
   }
 

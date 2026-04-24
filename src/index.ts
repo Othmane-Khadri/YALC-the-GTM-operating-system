@@ -35,7 +35,6 @@ export type {
   NotionConfig,
   UnipileConfig,
   QualificationConfig,
-  DataConfig,
   CrustdataConfig,
   FullEnrichConfig,
 } from './lib/config/types'
