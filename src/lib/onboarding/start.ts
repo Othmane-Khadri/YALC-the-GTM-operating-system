@@ -139,7 +139,7 @@ export async function runStart(opts: StartOptions): Promise<void> {
     console.log('  Generated ENCRYPTION_KEY')
   }
   if (!collectedKeys.DATABASE_URL) {
-    collectedKeys.DATABASE_URL = 'file:./gtm-os.db'
+    collectedKeys.DATABASE_URL = `file:${join(GTM_OS_DIR, 'gtm-os.db')}`
     console.log('  Set DATABASE_URL (local SQLite)')
   }
 
@@ -290,57 +290,55 @@ export async function runStart(opts: StartOptions): Promise<void> {
 }
 
 /**
- * Bring the database up to the current schema via `drizzle-kit push`.
+ * Bring the database up to the current schema by replaying the checked-in
+ * migration SQL files directly. Idempotent: skips on existing DBs that
+ * already have the core tables.
  *
- * We don't use drizzle-orm's journal-based migrator: the repo's journal
- * only tracks 0000, and schema.ts defines tables (e.g. campaign_variants)
- * that no migration SQL file creates. Push diffs schema → DB directly, so
- * it's the only approach that keeps fresh installs and existing dev DBs
- * in sync with the schema source of truth.
+ * We don't rely on drizzle-kit at runtime because drizzle-kit's config
+ * loader uses Node's built-in TypeScript stripper, which Node 22+ refuses
+ * to run on files inside node_modules — globally-installed packages can't
+ * shell out to drizzle-kit. Raw SQL replay sidesteps that entirely and
+ * removes drizzle-kit from the runtime dependency surface.
  */
 async function applyMigrations(): Promise<void> {
-  const { spawn } = await import('node:child_process')
+  const { readdir, readFile } = await import('node:fs/promises')
   const { fileURLToPath } = await import('node:url')
   const { dirname, resolve } = await import('node:path')
-  const { existsSync } = await import('node:fs')
   const { rawClient } = await import('../db/index.js')
 
-  // If the DB already has core tables, the user bootstrapped it previously
-  // (either via a prior run or via `pnpm drizzle-kit push`). Skip — push can
-  // prompt interactively when it detects tables to drop, which would hang
-  // unattended runs.
+  // Skip if the DB already has core tables — user bootstrapped previously.
   try {
     const r = await rawClient.execute(
       "SELECT name FROM sqlite_master WHERE type='table' AND name = 'campaigns' LIMIT 1"
     )
     if (r.rows.length > 0) return
   } catch {
-    // DB file may not exist yet — fall through to push
+    // DB file may not exist yet — fall through to bootstrap
   }
 
   const here = dirname(fileURLToPath(import.meta.url))
-  const pkgRoot = resolve(here, '../../..')
-  const bin = resolve(pkgRoot, 'node_modules/.bin/drizzle-kit')
+  const migrationsFolder = resolve(here, '../db/migrations')
 
-  if (!existsSync(bin)) {
-    console.log('  ⚠ drizzle-kit not found. Run `pnpm install` in the package root, then `pnpm drizzle-kit push`.')
-    return
+  const files = (await readdir(migrationsFolder))
+    .filter((f) => f.endsWith('.sql'))
+    .sort()
+
+  for (const f of files) {
+    const sql = await readFile(resolve(migrationsFolder, f), 'utf-8')
+    const stmts = sql
+      .split(/-->\s*statement-breakpoint/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    for (const stmt of stmts) {
+      try {
+        await rawClient.execute(stmt)
+      } catch (err) {
+        const msg = String((err as { message?: string })?.message ?? '')
+        if (!/(already exists|duplicate column)/i.test(msg)) throw err
+      }
+    }
   }
 
-  const child = spawn(bin, ['push'], {
-    cwd: pkgRoot,
-    env: process.env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-  const chunks: Buffer[] = []
-  child.stdout.on('data', (c) => chunks.push(c))
-  child.stderr.on('data', (c) => chunks.push(c))
-  const code: number = await new Promise((res) => child.on('close', (c) => res(c ?? 0)))
-
-  if (code !== 0) {
-    console.error(Buffer.concat(chunks).toString('utf-8'))
-    throw new Error(`drizzle-kit push failed with exit code ${code}`)
-  }
   console.log('  ✓ Database ready')
 }
 

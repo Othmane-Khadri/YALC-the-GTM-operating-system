@@ -14,6 +14,9 @@ if (envPaths.length > 0) {
 }
 
 import { Command } from 'commander'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'node:path'
 import { loadConfig } from '../lib/config/loader'
 import { withDiagnostics } from '../lib/diagnostics/error-handler'
 import { installGlobalErrorBoundary, setVerbose } from '../lib/cli/error-boundary'
@@ -22,12 +25,23 @@ import { resolveTenant, DEFAULT_TENANT } from '../lib/tenant/index.js'
 // Install global error boundary to catch any uncaught errors
 installGlobalErrorBoundary()
 
+function readPackageVersion(): string {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url))
+    const pkgPath = resolve(here, '../../package.json')
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: string }
+    return pkg.version ?? '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+}
+
 const program = new Command()
 
 program
   .name('yalc-gtm')
   .description('YALC — open-source AI-native GTM operating system')
-  .version('0.5.0')
+  .version(readPackageVersion())
   .option('-c, --config <path>', 'Path to config YAML', '~/.gtm-os/config.yaml')
   .option('-t, --tenant <slug>', 'Tenant slug (overrides GTM_OS_TENANT env and .gtm-os-tenant file)')
   .option('-v, --verbose', 'Enable verbose output with full stack traces')

@@ -1,19 +1,3 @@
-CREATE TABLE `accounts` (
-	`userId` text NOT NULL,
-	`type` text NOT NULL,
-	`provider` text NOT NULL,
-	`providerAccountId` text NOT NULL,
-	`refresh_token` text,
-	`access_token` text,
-	`expires_at` integer,
-	`token_type` text,
-	`scope` text,
-	`id_token` text,
-	`session_state` text,
-	PRIMARY KEY(`provider`, `providerAccountId`),
-	FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
-);
---> statement-breakpoint
 CREATE TABLE `api_connections` (
 	`id` text PRIMARY KEY NOT NULL,
 	`provider` text NOT NULL,
@@ -26,6 +10,7 @@ CREATE TABLE `api_connections` (
 CREATE UNIQUE INDEX `api_connections_provider_unique` ON `api_connections` (`provider`);--> statement-breakpoint
 CREATE TABLE `campaign_content` (
 	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text DEFAULT 'default' NOT NULL,
 	`campaign_id` text NOT NULL,
 	`step_id` text NOT NULL,
 	`content_type` text NOT NULL,
@@ -44,8 +29,43 @@ CREATE TABLE `campaign_content` (
 	FOREIGN KEY (`step_id`) REFERENCES `campaign_steps`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE TABLE `campaign_leads` (
+	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text DEFAULT 'default' NOT NULL,
+	`campaign_id` text NOT NULL,
+	`variant_id` text,
+	`provider_id` text NOT NULL,
+	`linkedin_url` text,
+	`first_name` text,
+	`last_name` text,
+	`headline` text,
+	`company` text,
+	`lifecycle_status` text DEFAULT 'Queued' NOT NULL,
+	`qualification_score` integer,
+	`tags` text,
+	`source` text,
+	`connect_sent_at` text,
+	`connected_at` text,
+	`dm1_sent_at` text,
+	`dm2_sent_at` text,
+	`replied_at` text,
+	`email` text,
+	`instantly_campaign_id` text,
+	`email_sent_at` text,
+	`email_opened_at` text,
+	`email_replied_at` text,
+	`email_bounced_at` text,
+	`email_status` text,
+	`notion_page_id` text,
+	`created_at` text DEFAULT (datetime('now')),
+	`updated_at` text DEFAULT (datetime('now')),
+	FOREIGN KEY (`campaign_id`) REFERENCES `campaigns`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`variant_id`) REFERENCES `campaign_variants`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
 CREATE TABLE `campaign_steps` (
 	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text DEFAULT 'default' NOT NULL,
 	`campaign_id` text NOT NULL,
 	`step_index` integer NOT NULL,
 	`skill_id` text NOT NULL,
@@ -60,8 +80,29 @@ CREATE TABLE `campaign_steps` (
 	FOREIGN KEY (`campaign_id`) REFERENCES `campaigns`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE TABLE `campaign_variants` (
+	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text DEFAULT 'default' NOT NULL,
+	`campaign_id` text NOT NULL,
+	`name` text NOT NULL,
+	`status` text DEFAULT 'active' NOT NULL,
+	`connect_note` text NOT NULL,
+	`dm1_template` text NOT NULL,
+	`dm2_template` text NOT NULL,
+	`sends` integer DEFAULT 0,
+	`accepts` integer DEFAULT 0,
+	`accept_rate` real DEFAULT 0,
+	`dms_sent` integer DEFAULT 0,
+	`replies` integer DEFAULT 0,
+	`reply_rate` real DEFAULT 0,
+	`notion_page_id` text,
+	`created_at` text DEFAULT (datetime('now')),
+	FOREIGN KEY (`campaign_id`) REFERENCES `campaigns`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
 CREATE TABLE `campaigns` (
 	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text DEFAULT 'default' NOT NULL,
 	`conversation_id` text NOT NULL,
 	`title` text NOT NULL,
 	`hypothesis` text NOT NULL,
@@ -71,6 +112,13 @@ CREATE TABLE `campaigns` (
 	`success_metrics` text NOT NULL,
 	`metrics` text NOT NULL,
 	`verdict` text,
+	`linkedin_account_id` text,
+	`daily_limit` integer DEFAULT 30,
+	`sequence_timing` text,
+	`experiment_status` text,
+	`winner_variant` text,
+	`notion_page_id` text,
+	`schedule` text,
 	`created_at` text DEFAULT (datetime('now')),
 	`updated_at` text DEFAULT (datetime('now')),
 	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade
@@ -99,6 +147,7 @@ CREATE TABLE `data_quality_log` (
 --> statement-breakpoint
 CREATE TABLE `frameworks` (
 	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text DEFAULT 'default' NOT NULL,
 	`user_id` text DEFAULT 'default' NOT NULL,
 	`data` text NOT NULL,
 	`onboarding_step` integer DEFAULT 0,
@@ -109,6 +158,7 @@ CREATE TABLE `frameworks` (
 --> statement-breakpoint
 CREATE TABLE `intelligence` (
 	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text DEFAULT 'default' NOT NULL,
 	`category` text NOT NULL,
 	`insight` text NOT NULL,
 	`evidence` text NOT NULL,
@@ -126,6 +176,7 @@ CREATE TABLE `intelligence` (
 --> statement-breakpoint
 CREATE TABLE `knowledge_items` (
 	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text DEFAULT 'default' NOT NULL,
 	`title` text NOT NULL,
 	`type` text DEFAULT 'other' NOT NULL,
 	`file_name` text NOT NULL,
@@ -133,6 +184,21 @@ CREATE TABLE `knowledge_items` (
 	`metadata` text,
 	`created_at` integer,
 	`updated_at` integer
+);
+--> statement-breakpoint
+CREATE TABLE `lead_blocklist` (
+	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text DEFAULT 'default' NOT NULL,
+	`provider_id` text,
+	`linkedin_url` text,
+	`linkedin_slug` text,
+	`name` text,
+	`headline` text,
+	`company` text,
+	`scope` text DEFAULT 'permanent' NOT NULL,
+	`campaign_id` text,
+	`reason` text,
+	`created_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
 CREATE TABLE `mcp_servers` (
@@ -170,6 +236,7 @@ CREATE TABLE `notification_preferences` (
 --> statement-breakpoint
 CREATE TABLE `provider_preferences` (
 	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text DEFAULT 'default' NOT NULL,
 	`skill_id` text NOT NULL,
 	`segment` text,
 	`preferred_provider` text NOT NULL,
@@ -180,12 +247,24 @@ CREATE TABLE `provider_preferences` (
 --> statement-breakpoint
 CREATE TABLE `provider_stats` (
 	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text DEFAULT 'default' NOT NULL,
 	`provider_id` text NOT NULL,
 	`metric` text NOT NULL,
 	`value` real NOT NULL,
 	`sample_size` integer DEFAULT 1,
 	`segment` text,
 	`measured_at` text DEFAULT (datetime('now'))
+);
+--> statement-breakpoint
+CREATE TABLE `rate_limit_buckets` (
+	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text DEFAULT 'default' NOT NULL,
+	`provider` text NOT NULL,
+	`account_id` text NOT NULL,
+	`tokens_remaining` integer NOT NULL,
+	`max_tokens` integer NOT NULL,
+	`refill_at` text NOT NULL,
+	`created_at` integer
 );
 --> statement-breakpoint
 CREATE TABLE `result_rows` (
@@ -213,6 +292,7 @@ CREATE TABLE `result_sets` (
 --> statement-breakpoint
 CREATE TABLE `review_queue` (
 	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text DEFAULT 'default' NOT NULL,
 	`type` text NOT NULL,
 	`title` text NOT NULL,
 	`description` text NOT NULL,
@@ -229,15 +309,21 @@ CREATE TABLE `review_queue` (
 	`created_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
-CREATE TABLE `sessions` (
-	`sessionToken` text PRIMARY KEY NOT NULL,
-	`userId` text NOT NULL,
-	`expires` integer NOT NULL,
-	FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
+CREATE TABLE `signal_watches` (
+	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text DEFAULT 'default' NOT NULL,
+	`entity_type` text NOT NULL,
+	`entity_id` text NOT NULL,
+	`entity_name` text NOT NULL,
+	`signal_types` text NOT NULL,
+	`baseline` text DEFAULT '{}' NOT NULL,
+	`created_at` text DEFAULT (datetime('now')),
+	`last_checked_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
 CREATE TABLE `signals_log` (
 	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text DEFAULT 'default' NOT NULL,
 	`type` text NOT NULL,
 	`category` text NOT NULL,
 	`data` text NOT NULL,
@@ -245,22 +331,6 @@ CREATE TABLE `signals_log` (
 	`result_set_id` text,
 	`campaign_id` text,
 	`created_at` text DEFAULT (datetime('now'))
-);
---> statement-breakpoint
-CREATE TABLE `users` (
-	`id` text PRIMARY KEY NOT NULL,
-	`name` text,
-	`email` text NOT NULL,
-	`emailVerified` integer,
-	`image` text
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`);--> statement-breakpoint
-CREATE TABLE `verificationTokens` (
-	`identifier` text NOT NULL,
-	`token` text NOT NULL,
-	`expires` integer NOT NULL,
-	PRIMARY KEY(`identifier`, `token`)
 );
 --> statement-breakpoint
 CREATE TABLE `web_cache` (
@@ -276,6 +346,7 @@ CREATE TABLE `web_cache` (
 CREATE UNIQUE INDEX `web_cache_url_unique` ON `web_cache` (`url`);--> statement-breakpoint
 CREATE TABLE `web_research_tasks` (
 	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text DEFAULT 'default' NOT NULL,
 	`target_type` text NOT NULL,
 	`target_identifier` text NOT NULL,
 	`status` text DEFAULT 'pending' NOT NULL,
@@ -283,6 +354,15 @@ CREATE TABLE `web_research_tasks` (
 	`requested_by` text NOT NULL,
 	`created_at` text DEFAULT (datetime('now')),
 	`completed_at` text
+);
+--> statement-breakpoint
+CREATE TABLE `webhooks` (
+	`id` text PRIMARY KEY NOT NULL,
+	`url` text NOT NULL,
+	`event` text NOT NULL,
+	`campaign_id` text,
+	`active` integer DEFAULT 1,
+	`created_at` text DEFAULT (datetime('now'))
 );
 --> statement-breakpoint
 CREATE TABLE `workflow_steps` (
@@ -318,3 +398,90 @@ CREATE TABLE `workflows` (
 	FOREIGN KEY (`conversation_id`) REFERENCES `conversations`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`message_id`) REFERENCES `messages`(`id`) ON UPDATE no action ON DELETE no action
 );
+--> statement-breakpoint
+CREATE TABLE `entities` (
+	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text NOT NULL,
+	`type` text NOT NULL,
+	`name` text NOT NULL,
+	`aliases` text,
+	`properties` text,
+	`created_at` text DEFAULT (datetime('now'))
+);
+--> statement-breakpoint
+CREATE INDEX `entities_tenant_idx` ON `entities` (`tenant_id`);--> statement-breakpoint
+CREATE INDEX `entities_tenant_type_name_idx` ON `entities` (`tenant_id`,`type`,`name`);--> statement-breakpoint
+CREATE TABLE `memory_edges` (
+	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text NOT NULL,
+	`from_type` text NOT NULL,
+	`from_id` text NOT NULL,
+	`to_type` text NOT NULL,
+	`to_id` text NOT NULL,
+	`relation` text NOT NULL,
+	`weight` real DEFAULT 1 NOT NULL,
+	`created_at` text DEFAULT (datetime('now'))
+);
+--> statement-breakpoint
+CREATE INDEX `memory_edges_tenant_idx` ON `memory_edges` (`tenant_id`);--> statement-breakpoint
+CREATE INDEX `memory_edges_tenant_from_idx` ON `memory_edges` (`tenant_id`,`from_type`,`from_id`);--> statement-breakpoint
+CREATE INDEX `memory_edges_tenant_to_idx` ON `memory_edges` (`tenant_id`,`to_type`,`to_id`);--> statement-breakpoint
+CREATE INDEX `memory_edges_tenant_relation_idx` ON `memory_edges` (`tenant_id`,`relation`);--> statement-breakpoint
+CREATE TABLE `memory_embeddings` (
+	`node_id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text NOT NULL,
+	`embedding` blob NOT NULL,
+	`model` text NOT NULL,
+	`dims` integer NOT NULL,
+	`created_at` text DEFAULT (datetime('now'))
+);
+--> statement-breakpoint
+CREATE INDEX `memory_embeddings_tenant_idx` ON `memory_embeddings` (`tenant_id`);--> statement-breakpoint
+CREATE TABLE `memory_episodes` (
+	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text NOT NULL,
+	`kind` text NOT NULL,
+	`payload` text NOT NULL,
+	`summarized_to_node_id` text,
+	`created_at` text DEFAULT (datetime('now')),
+	`archived_at` text
+);
+--> statement-breakpoint
+CREATE INDEX `memory_episodes_tenant_idx` ON `memory_episodes` (`tenant_id`);--> statement-breakpoint
+CREATE INDEX `memory_episodes_tenant_kind_idx` ON `memory_episodes` (`tenant_id`,`kind`);--> statement-breakpoint
+CREATE TABLE `memory_index` (
+	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text NOT NULL,
+	`name` text NOT NULL,
+	`description` text NOT NULL,
+	`node_ids` text NOT NULL,
+	`category` text NOT NULL,
+	`priority` integer DEFAULT 50 NOT NULL,
+	`last_updated` text DEFAULT (datetime('now'))
+);
+--> statement-breakpoint
+CREATE INDEX `memory_index_tenant_idx` ON `memory_index` (`tenant_id`);--> statement-breakpoint
+CREATE TABLE `memory_nodes` (
+	`id` text PRIMARY KEY NOT NULL,
+	`tenant_id` text NOT NULL,
+	`type` text NOT NULL,
+	`content` text NOT NULL,
+	`entities` text,
+	`source_type` text NOT NULL,
+	`source_ref` text NOT NULL,
+	`source_hash` text NOT NULL,
+	`confidence` text DEFAULT 'hypothesis' NOT NULL,
+	`confidence_score` integer DEFAULT 0 NOT NULL,
+	`metadata` text,
+	`created_at` text DEFAULT (datetime('now')),
+	`last_accessed_at` text DEFAULT (datetime('now')),
+	`access_count` integer DEFAULT 0 NOT NULL,
+	`validated_at` text,
+	`supersedes` text,
+	`archived_at` text
+);
+--> statement-breakpoint
+CREATE INDEX `memory_nodes_tenant_idx` ON `memory_nodes` (`tenant_id`);--> statement-breakpoint
+CREATE INDEX `memory_nodes_tenant_type_idx` ON `memory_nodes` (`tenant_id`,`type`);--> statement-breakpoint
+CREATE INDEX `memory_nodes_tenant_source_hash_idx` ON `memory_nodes` (`tenant_id`,`source_hash`);--> statement-breakpoint
+CREATE INDEX `memory_nodes_tenant_confidence_idx` ON `memory_nodes` (`tenant_id`,`confidence`);
