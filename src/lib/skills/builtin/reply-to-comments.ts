@@ -41,10 +41,20 @@ export const replyToCommentsSkill: Skill = {
         items: { type: 'string' },
         description: 'Author names to skip (partial match, case-insensitive)',
       },
+      includeKeywords: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Only reply to comments containing any of these keywords (case-insensitive)',
+      },
+      templates: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Multiple reply templates to rotate through (alternative to single template)',
+      },
       maxReplies: { type: 'number', description: 'Max replies to send', default: 100 },
       dryRun: { type: 'boolean', description: 'Preview without sending', default: true },
     },
-    required: ['url', 'template'],
+    required: ['url'],
   },
   outputSchema: {
     type: 'object',
@@ -61,15 +71,26 @@ export const replyToCommentsSkill: Skill = {
     const {
       url,
       template,
+      templates,
       exclude = [],
+      includeKeywords,
       maxReplies = 100,
       dryRun = true,
     } = input as {
       url: string
-      template: string
+      template?: string
+      templates?: string[]
       exclude?: string[]
+      includeKeywords?: string[]
       maxReplies?: number
       dryRun?: boolean
+    }
+
+    // Build template list: either explicit templates array or single template
+    const templateList = templates?.length ? templates : template ? [template] : []
+    if (templateList.length === 0) {
+      yield { type: 'error', message: 'Provide either --template or --templates.' }
+      return
     }
 
     // ── Step 1: Resolve LinkedIn account ──────────────────────────────────
@@ -104,23 +125,71 @@ export const replyToCommentsSkill: Skill = {
     // ── Step 2: Resolve post via Unipile service ──────────────────────────
     yield { type: 'progress', message: 'Resolving post...', percent: 10 }
 
-    const activityMatch = url.match(/activity[/:-](\d+)/)
-    const ugcMatch = url.match(/urn:li:ugcPost:(\d+)/)
-    const postId = activityMatch?.[1] ?? (ugcMatch ? `urn:li:ugcPost:${ugcMatch[1]}` : null)
-    if (!postId) {
-      yield { type: 'error', message: `Cannot extract activity ID from URL: ${url}` }
-      return
-    }
-
     const { unipileService } = await import('../../services/unipile')
+
+    const activityMatch = url.match(/activity[/:-](\d+)/)
+    const shareMatch = url.match(/share[/:-](\d+)/)
+    const ugcMatch = url.match(/urn:li:ugcPost:(\d+)/)
+
     let post: Record<string, unknown>
-    try {
-      post = (await unipileService.getPost(accountId, postId)) as Record<string, unknown>
-    } catch (err) {
-      yield { type: 'error', message: `Failed to resolve post: ${err instanceof Error ? err.message : err}` }
+    let socialId: string
+
+    if (activityMatch) {
+      // Direct activity ID — resolve via getPost
+      const postId = activityMatch[1]
+      try {
+        post = (await unipileService.getPost(accountId, postId)) as Record<string, unknown>
+      } catch (err) {
+        yield { type: 'error', message: `Failed to resolve post: ${err instanceof Error ? err.message : err}` }
+        return
+      }
+      socialId = String(post.social_id ?? post.id ?? postId)
+    } else if (ugcMatch) {
+      const postId = `urn:li:ugcPost:${ugcMatch[1]}`
+      try {
+        post = (await unipileService.getPost(accountId, postId)) as Record<string, unknown>
+      } catch (err) {
+        yield { type: 'error', message: `Failed to resolve post: ${err instanceof Error ? err.message : err}` }
+        return
+      }
+      socialId = String(post.social_id ?? post.id ?? postId)
+    } else if (shareMatch) {
+      // Share URLs use a different ID than activity — must match via recent posts
+      yield { type: 'progress', message: 'Share URL detected, scanning recent posts...', percent: 12 }
+
+      // Extract the slug prefix from the URL (format: posts/username_slug-share-id-hash)
+      const slugMatch = url.match(/posts\/[^_]+_(.+?)-(?:share|activity)-\d+/)
+      const slug = slugMatch?.[1]?.toLowerCase() ?? ''
+
+      const ownProviderId = 'ACoAADrBZegB0cqWsSrghWwl1nFOzsh_goKAL7w'
+      const recentRes = (await unipileService.listUserPosts(accountId, ownProviderId, 10)) as Record<string, unknown>
+      const recentPosts: Record<string, unknown>[] = (recentRes.posts as Record<string, unknown>[])
+        ?? (recentRes.items as Record<string, unknown>[])
+        ?? (Array.isArray(recentRes) ? recentRes : [])
+
+      // Match by slug text in share_url or post text
+      const matched = recentPosts.find((p) => {
+        if (slug) {
+          const shareUrl = String(p.share_url ?? '').toLowerCase()
+          if (shareUrl.includes(slug)) return true
+        }
+        // Fallback: match first 50 chars of post text against slug words
+        const postText = String(p.text ?? '').toLowerCase()
+        const slugWords = slug.split('-').filter((w) => w.length > 3)
+        return slugWords.length >= 3 && slugWords.every((w) => postText.includes(w))
+      })
+
+      if (!matched) {
+        yield { type: 'error', message: `Could not find post matching slug "${slug}" in recent ${recentPosts.length} posts. Try using the activity URL format.` }
+        return
+      }
+
+      post = matched
+      socialId = String(post.social_id ?? post.id)
+    } else {
+      yield { type: 'error', message: `Cannot extract activity/share ID from URL: ${url}` }
       return
     }
-    const socialId = String(post.social_id ?? post.id ?? postId)
     const postText = String(post.text ?? '').slice(0, 120)
 
     yield { type: 'progress', message: `Post: "${postText}..."`, percent: 15 }
@@ -128,7 +197,7 @@ export const replyToCommentsSkill: Skill = {
     // ── Step 3: Fetch all comments via Unipile service (SDK) ────────────
     yield { type: 'progress', message: 'Fetching comments...', percent: 20 }
 
-    const allComments = await unipileService.listPostComments(accountId, socialId, 10)
+    const allComments = await unipileService.listPostComments(accountId, socialId, 20)
 
     // ── Step 4: Filter comments ───────────────────────────────────────────
     // Identify own comments (posted by connected account)
@@ -155,6 +224,13 @@ export const replyToCommentsSkill: Skill = {
         continue
       }
 
+      // Skip comments that already have replies (we likely already answered)
+      const replyCount = Number(c.reply_counter ?? 0)
+      if (replyCount > 0) {
+        skipped++
+        continue
+      }
+
       // Skip excluded names
       if (excludeLower.some((ex) => authorName.toLowerCase().includes(ex))) {
         skipped++
@@ -167,6 +243,15 @@ export const replyToCommentsSkill: Skill = {
         continue
       }
 
+      // Keyword include filter: only reply to comments matching any keyword
+      if (includeKeywords?.length) {
+        const textLower = commentText.toLowerCase()
+        if (!includeKeywords.some((kw) => textLower.includes(kw.toLowerCase()))) {
+          skipped++
+          continue
+        }
+      }
+
       // HARD REQUIREMENT: comment_id must exist
       if (!commentId || commentId === 'undefined' || commentId === 'null') {
         console.error(`[skip] No comment_id for ${authorName} — cannot thread reply`)
@@ -175,7 +260,9 @@ export const replyToCommentsSkill: Skill = {
       }
 
       const firstName = authorName.split(' ')[0]
-      const replyText = template.replace(/\{\{name\}\}/g, firstName)
+      // Rotate through templates round-robin
+      const selectedTemplate = templateList[targets.length % templateList.length]
+      const replyText = selectedTemplate.replace(/\{\{name\}\}/g, firstName)
 
       targets.push({ commentId, authorName, originalText: commentText, replyText })
     }
