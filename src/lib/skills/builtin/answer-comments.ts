@@ -69,7 +69,7 @@ export const answerCommentsSkill: Skill = {
     const accountId = String(linkedinAccount.id)
 
     // Extract post ID
-    const activityMatch = url.match(/activity[/:-](\d+)/)
+    const activityMatch = url.match(/(?:activity|share)[/:-](\d+)/)
     const ugcMatch = url.match(/urn:li:ugcPost:(\d+)/)
     const postId = activityMatch?.[1] ?? (ugcMatch ? `urn:li:ugcPost:${ugcMatch[1]}` : null)
     if (!postId) {

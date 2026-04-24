@@ -85,6 +85,17 @@ export class UnipileService {
     return c.users.getPost({ account_id: accountId, post_id: postId })
   }
 
+  async listUserPosts(accountId: string, userId: string, limit = 10) {
+    const dsn = process.env.UNIPILE_DSN!.replace(/\/+$/, '')
+    const apiKey = process.env.UNIPILE_API_KEY!
+    const res = await fetch(
+      `${dsn}/api/v1/users/${userId}/posts?account_id=${accountId}&limit=${limit}`,
+      { headers: { 'X-API-KEY': apiKey } },
+    )
+    if (!res.ok) throw new Error(`listUserPosts failed: ${res.status}`)
+    return res.json()
+  }
+
   async listPostReactions(accountId: string, postId: string, maxPages = 10): Promise<Record<string, unknown>[]> {
     const dsn = process.env.UNIPILE_DSN!
     const apiKey = process.env.UNIPILE_API_KEY!
