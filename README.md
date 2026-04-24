@@ -78,8 +78,8 @@ yalc-gtm start --non-interactive
 
 ## Features at a Glance
 
-- **16 built-in skills** — qualify, scrape, campaign, orchestrate, personalize, competitive-intel, and more
-- **7 providers** — Unipile, Crustdata, Firecrawl, Notion, FullEnrich, Instantly, Mock
+- **17 built-in skills** — qualify, scrape, campaign, orchestrate, personalize, competitive-intel, and more
+- **7 providers** — Unipile, Crustdata, Firecrawl, Notion, FullEnrich, Instantly, Anthropic
 - **Multi-channel campaigns** — LinkedIn + Email with A/B variant testing
 - **Intelligence store** — learns from every campaign outcome (hypothesis → validated → proven)
 - **Statistical significance** — chi-squared testing to pick variant winners
@@ -122,7 +122,7 @@ When YALC detects a parent Claude Code session — via `CLAUDECODE`, `CLAUDE_COD
 | `campaign:track`, `campaign:schedule`, `campaign:report` (data-only) | ✓ | Pure CRUD against Notion / DB |
 | `notion:sync`, `notion:bootstrap` | ✓ | |
 | `email:send`, `email:status` | ✓ | Sends pre-written copy via Instantly |
-| `orchestrate`, `leads:qualify`, `personalize`, `competitive-intel` | Redirect | Print a "set ANTHROPIC_API_KEY or reformulate as a CC prompt" message and exit cleanly (no stack trace) |
+| `orchestrate`, `leads:qualify`, `personalize`, `competitive-intel` | Redirect | Prints a message and exits cleanly without doing the work. Re-issue the request inside a Claude Code session so the parent LLM runs it, or add an `ANTHROPIC_API_KEY` and run again standalone. |
 
 **When you DO still want an Anthropic key:**
 
@@ -192,6 +192,7 @@ When talking to Claude Code, reference these locations directly:
 | **Firecrawl** | Web scraping, search (optional inside Claude Code) | `FIRECRAWL_API_KEY` |
 | **Notion** | Database sync, page management | `NOTION_API_KEY` |
 | **FullEnrich** | Email/phone enrichment | `FULLENRICH_API_KEY` |
+| **Instantly** | Cold email sending, sequence management | `INSTANTLY_API_KEY` |
 | **Anthropic** | AI planning, qualification, personalization (optional inside Claude Code) | `ANTHROPIC_API_KEY` |
 
 ## Skills
@@ -230,6 +231,8 @@ agent:install           Install agent as launchd service
 agent:list              List agents with last run status
 ```
 
+The listing above covers the common commands. The full surface also includes the `crm:*` (CRM sync and import), `email:*` (send, accounts, status), `provider:*`, `memory:*`, `context:*`, `pipeline:*`, `skills:*`, and `tenant:*` families, plus `configure`, `doctor`, `update`, `personalize`, `competitive-intel`, `test-run`, and `campaign:schedule`. Run `yalc-gtm --help` for the complete list.
+
 All commands that send or write support `--dry-run`. See [Command Reference](docs/commands.md) for full details, flags, and examples.
 
 ## Documentation
@@ -265,7 +268,14 @@ unipile:
   rate_limit_ms: 3000
 qualification:
   rules_path: ~/.gtm-os/qualification_rules.md
+  exclusion_path: ~/.gtm-os/exclusion_list.md
+  disqualifiers_path: ~/.gtm-os/company_disqualifiers.md
   cache_ttl_days: 30
+crustdata:
+  max_results_per_query: 50
+fullenrich:
+  poll_interval_ms: 2000
+  poll_timeout_ms: 300000
 ```
 
 ## Key Design Decisions
