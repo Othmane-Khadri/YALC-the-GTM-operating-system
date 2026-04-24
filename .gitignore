@@ -20,6 +20,9 @@ service-account*.json
 *.db-shm
 *.db-wal
 
+# npm pack artifacts
+*.tgz
+
 # OS
 .DS_Store
 Thumbs.db
