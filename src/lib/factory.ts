@@ -43,6 +43,8 @@ const DEFAULTS: GTMOSConfig = {
     disqualifiers_path: '',
     cache_ttl_days: 30,
   },
+  email: { provider: 'instantly' },
+  linkedin: { provider: 'unipile' },
 }
 
 /**
@@ -80,6 +82,8 @@ export function createGtmOS(options: GTMOSOptions = {}): GTMOSInstance {
         },
       },
       qualification: { ...config.qualification, ...options.config.qualification },
+      email: { ...(config.email ?? { provider: 'instantly' }), ...options.config.email },
+      linkedin: { ...(config.linkedin ?? { provider: 'unipile' }), ...options.config.linkedin },
     }
   }
 

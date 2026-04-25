@@ -8,7 +8,16 @@ export class MockProvider implements StepExecutor {
   name = 'Mock Provider'
   description = 'Generates realistic mock data via Claude for any step type. Fallback provider.'
   type = 'mock' as const
-  capabilities: ProviderCapability[] = ['search', 'enrich', 'qualify', 'filter', 'export', 'custom']
+  capabilities: ProviderCapability[] = [
+    'search',
+    'enrich',
+    'qualify',
+    'filter',
+    'export',
+    'custom',
+    'email_send',
+    'linkedin_send',
+  ]
 
   isAvailable(): boolean {
     return true // always available

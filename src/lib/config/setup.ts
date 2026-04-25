@@ -46,6 +46,8 @@ const DEFAULT_CONFIG = {
     poll_interval_ms: 2000,
     poll_timeout_ms: 300000,
   },
+  email: { provider: 'instantly' },
+  linkedin: { provider: 'unipile' },
 }
 
 interface ProviderValidation {

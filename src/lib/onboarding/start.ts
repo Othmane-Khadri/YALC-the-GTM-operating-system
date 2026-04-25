@@ -65,6 +65,8 @@ const DEFAULT_CONFIG = {
   },
   crustdata: { max_results_per_query: 50 },
   fullenrich: { poll_interval_ms: 2000, poll_timeout_ms: 300000 },
+  email: { provider: 'instantly' },
+  linkedin: { provider: 'unipile' },
 }
 
 export interface StartOptions {

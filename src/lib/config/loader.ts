@@ -24,6 +24,8 @@ const DEFAULTS: GTMOSConfig = {
     disqualifiers_path: '',
     cache_ttl_days: 30,
   },
+  email: { provider: 'instantly' },
+  linkedin: { provider: 'unipile' },
 }
 
 let _config: GTMOSConfig | null = null
@@ -58,6 +60,8 @@ export function loadConfig(configPath: string): GTMOSConfig {
       ...parsed.instantly,
     },
     slack: parsed.slack,
+    email: { ...DEFAULTS.email!, ...parsed.email },
+    linkedin: { ...DEFAULTS.linkedin!, ...parsed.linkedin },
   }
 
   return _config

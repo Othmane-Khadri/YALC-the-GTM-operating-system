@@ -18,7 +18,16 @@ import type { ProviderRegistry } from './registry'
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const MCP_CONFIG_DIR = join(homedir(), '.gtm-os', 'mcp')
-const VALID_CAPABILITIES: ProviderCapability[] = ['search', 'enrich', 'qualify', 'filter', 'export', 'custom']
+const VALID_CAPABILITIES: ProviderCapability[] = [
+  'search',
+  'enrich',
+  'qualify',
+  'filter',
+  'export',
+  'custom',
+  'email_send',
+  'linkedin_send',
+]
 const VALID_TRANSPORTS = ['stdio', 'sse'] as const
 
 // ─── Config validation ────────────────────────────────────────────────────────

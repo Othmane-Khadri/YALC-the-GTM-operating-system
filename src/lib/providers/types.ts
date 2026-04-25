@@ -1,7 +1,20 @@
 import type { ColumnDef } from '@/lib/ai/types'
 
-// ProviderCapability — what a provider can do
-export type ProviderCapability = 'search' | 'enrich' | 'qualify' | 'filter' | 'export' | 'custom'
+// ProviderCapability — what a provider can do.
+//
+// `email_send` and `linkedin_send` are outbound-channel slots so messaging
+// providers (Instantly, Brevo, Mailgun, SendGrid, Unipile, …) can register
+// against the same capability surface as search/enrich/qualify providers.
+// Routing through the registry is what makes outbound channels swappable.
+export type ProviderCapability =
+  | 'search'
+  | 'enrich'
+  | 'qualify'
+  | 'filter'
+  | 'export'
+  | 'custom'
+  | 'email_send'
+  | 'linkedin_send'
 
 // RowBatch — chunk of results yielded during execution
 export interface RowBatch {

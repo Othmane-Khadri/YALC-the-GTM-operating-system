@@ -14,6 +14,16 @@ export interface UnipileConfig {
   rate_limit_ms: number
 }
 
+export interface LinkedInConfig {
+  /** Provider id resolved against the registry for any `linkedin_send` step. */
+  provider: string
+}
+
+export interface EmailConfig {
+  /** Provider id resolved against the registry for any `email_send` step. */
+  provider: string
+}
+
 export interface QualificationConfig {
   rules_path: string
   exclusion_path: string
@@ -53,4 +63,8 @@ export interface GTMOSConfig {
   fullenrich?: FullEnrichConfig
   instantly?: InstantlyConfig
   slack?: SlackConfig
+  /** Outbound email channel selection (registry provider id). */
+  email?: EmailConfig
+  /** Outbound LinkedIn channel selection (registry provider id). */
+  linkedin?: LinkedInConfig
 }
