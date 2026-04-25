@@ -285,12 +285,27 @@ export async function runStart(opts: StartOptions): Promise<void> {
     console.log('\n── Step 3/4 — Building GTM Framework ──\n')
     console.log('  Claude is synthesizing your company context into a GTM framework...')
 
-    const { deriveFramework } = await import('../framework/derive.js')
-    const derivation = await deriveFramework(tenantId)
-    const fw = derivation.framework
+    const { deriveFramework, persistDerivedFramework } = await import('../framework/derive.js')
+    const derivation = await deriveFramework({ tenantId, dryRun: true })
+    let fw = derivation.framework
+
+    // Show a structured summary so the user can sanity-check the synthesis
+    // before it gets written to disk. Skipped under --non-interactive.
+    if (!opts.nonInteractive) {
+      printFrameworkSummary(fw, derivation.nodesConsidered)
+      const accept = await confirm({
+        message: 'Save this framework?',
+        default: true,
+      })
+      if (!accept) {
+        fw = await editFrameworkInEditor(fw)
+      }
+    }
+
+    await persistDerivedFramework(fw, tenantId)
     frameworkDerived = true
 
-    console.log(`\n  ✓ Framework built from ${derivation.nodesConsidered} data points`)
+    console.log(`\n  ✓ Framework saved (${derivation.nodesConsidered} data points considered)`)
     if (fw.company.name) console.log(`    Company:  ${fw.company.name}`)
     if (fw.positioning.valueProp) console.log(`    Value:    ${fw.positioning.valueProp}`)
     if (fw.segments.length > 0) console.log(`    Segments: ${fw.segments.map(s => s.name).join(', ')}`)
@@ -423,6 +438,80 @@ async function pickOutboundProvider(deps: { select: SelectFn }): Promise<void> {
     console.log('  ✓ Email provider set to instantly (built-in).')
   } else {
     console.log('  ⊘ Email provider left unset. Configure later under email.provider in ~/.gtm-os/config.yaml.')
+  }
+}
+
+/**
+ * Print a structured one-screen summary of a derived framework so the user
+ * can sanity-check Claude's output before persisting it.
+ */
+function printFrameworkSummary(
+  fw: import('../framework/types.js').GTMFramework,
+  nodesConsidered: number,
+): void {
+  const segments = fw.segments ?? []
+  const signals = [
+    ...(fw.signals?.buyingIntentSignals ?? []),
+    ...(fw.signals?.triggerEvents ?? []),
+    ...(fw.signals?.monitoringKeywords ?? []),
+  ]
+  const competitors = (fw.positioning?.competitors ?? []).map((c) => c.name).filter(Boolean)
+
+  console.log(`\n  -- Derived Framework --`)
+  console.log(`    Source:        ${nodesConsidered} memory nodes`)
+  console.log(`    Company:       ${fw.company?.name ?? '(unset)'}`)
+  console.log(`    Value prop:    ${fw.positioning?.valueProp ?? '(unset)'}`)
+  console.log(`    Segments (${segments.length}):`)
+  for (const s of segments) {
+    const desc = s.description ? ` — ${s.description}` : ''
+    console.log(`      - ${s.name}${desc}`)
+  }
+  console.log(`    Positioning:   ${fw.positioning?.category ?? '(unset)'}`)
+  console.log(`    Competitors:   ${competitors.length > 0 ? competitors.join(', ') : '(none)'}`)
+  console.log(`    Signals (${signals.length}):`)
+  for (const sig of signals.slice(0, 8)) {
+    console.log(`      - ${sig}`)
+  }
+  if (signals.length > 8) console.log(`      ... and ${signals.length - 8} more`)
+  console.log('')
+}
+
+/**
+ * Open $EDITOR with the framework as YAML so the user can hand-edit it
+ * before saving. Re-prompts on parse errors. Returns the edited framework.
+ */
+async function editFrameworkInEditor(
+  fw: import('../framework/types.js').GTMFramework,
+): Promise<import('../framework/types.js').GTMFramework> {
+  const { editor } = await import('@inquirer/prompts')
+  let draft = yaml.dump(fw)
+  for (;;) {
+    const edited = await editor({
+      message: 'Edit framework YAML (save and close to apply)',
+      default: draft,
+      postfix: '.yaml',
+      waitForUserInput: false,
+    })
+    try {
+      const parsed = yaml.load(edited) as import('../framework/types.js').GTMFramework
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('YAML must be a mapping')
+      }
+      return parsed
+    } catch (err) {
+      console.error(
+        `  YAML parse failed: ${err instanceof Error ? err.message : String(err)}`,
+      )
+      const retry = await (await import('@inquirer/prompts')).confirm({
+        message: 'Re-open editor to fix?',
+        default: true,
+      })
+      if (!retry) {
+        console.log('  Discarding edits — keeping derived framework as-is.')
+        return fw
+      }
+      draft = edited
+    }
   }
 }
 
