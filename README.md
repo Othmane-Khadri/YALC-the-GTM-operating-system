@@ -53,8 +53,8 @@ You'll end with a readiness report showing what's unlocked and a suggested first
 ### After Setup
 
 ```bash
-# Run your first qualification (dry-run)
-yalc-gtm leads:qualify --source csv --input data/leads/sample.csv --dry-run
+# Easiest: describe what you want in natural language and let YALC plan the work
+yalc-gtm orchestrate "find 10 SaaS CTOs matching my ICP and qualify them"
 
 # Create a campaign
 yalc-gtm campaign:create --title "Q2 Outbound" --hypothesis "VP Eng responds to pain-point messaging"
@@ -62,8 +62,8 @@ yalc-gtm campaign:create --title "Q2 Outbound" --hypothesis "VP Eng responds to 
 # Track campaign progress
 yalc-gtm campaign:track --dry-run
 
-# Or just describe what you want in natural language
-yalc-gtm orchestrate "find 10 companies matching my ICP"
+# Or qualify a lead list you already have (CSV or JSON)
+yalc-gtm leads:qualify --source csv --input ./your-leads.csv --dry-run
 ```
 
 ### Non-Interactive Setup
@@ -73,6 +73,18 @@ For CI or automation, set your keys in `.env.local` (see `.env.example`) and run
 ```bash
 yalc-gtm start --non-interactive
 ```
+
+## Recommended workflow: drive YALC from your IDE chat
+
+YALC is designed to be driven by an AI assistant — Claude Code, Cursor, Copilot, or whatever you have open. Once it's installed globally, you don't need to remember commands. You just talk to your assistant.
+
+Typical flow inside Cursor or VS Code with Claude Code:
+
+1. Install once: `npm i -g yalc-gtm-os`.
+2. Open your IDE and ask in plain language: *"Set up YALC for my company, then find 10 SaaS CTOs and qualify them."*
+3. The assistant runs the commands. Interactive prompts from `start` show up in the same chat panel; you answer them inline.
+
+Every command also works directly in a terminal if you prefer that style. The "Using YALC from Claude Code" section below has the details on how Claude Code integrates with YALC's commands and how the LLM hand-off works when no `ANTHROPIC_API_KEY` is set.
 
 ## Features at a Glance
 

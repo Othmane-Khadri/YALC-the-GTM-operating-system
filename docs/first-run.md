@@ -126,10 +126,16 @@ At the end, you see what's available based on your configured providers:
 
 ### 1. Qualify Your First Leads
 
-GTM-OS ships with a sample CSV. Run qualification in dry-run mode:
+Already have a lead list? Run qualification in dry-run mode against your CSV:
 
 ```bash
-yalc-gtm leads:qualify --source csv --input data/leads/sample.csv --dry-run
+yalc-gtm leads:qualify --source csv --input ./your-leads.csv --dry-run
+```
+
+Don't have a list yet? Let YALC find and qualify leads for you:
+
+```bash
+yalc-gtm orchestrate "find 10 SaaS CTOs matching my ICP and qualify them"
 ```
 
 This runs each lead through the 7-gate qualification pipeline:
@@ -181,9 +187,8 @@ Claude decomposes this into skills (find-companies → find-people → qualify-l
 ├── search_queries.txt              Monitoring keywords (auto-generated)
 └── tenants/<slug>/                 Per-tenant overrides (multi-company mode)
 
-./data/                             Working data (in your project directory)
-├── leads/                          CSV/JSON lead lists for qualification
-│   └── sample.csv                  Example lead file (ships with repo)
+./data/                             Working data (in your project directory, optional)
+├── leads/                          CSV/JSON lead lists you bring or generate
 ├── intelligence/                   Campaign learnings and insights
 └── campaigns/                      Campaign exports and reports
 ```
