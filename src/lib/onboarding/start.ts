@@ -561,7 +561,7 @@ function printReadinessReport(
 
   const capabilities: Array<{ check: boolean; label: string; command: string }> = [
     { check: hasAnthropic, label: 'AI-powered GTM planning', command: 'yalc-gtm orchestrate "find companies matching my ICP"' },
-    { check: hasAnthropic && has('CRUSTDATA_API_KEY'), label: 'Lead qualification', command: 'yalc-gtm leads:qualify --source csv --input data/leads/sample.csv --dry-run' },
+    { check: hasAnthropic && has('CRUSTDATA_API_KEY'), label: 'Lead qualification', command: 'yalc-gtm leads:qualify --source csv --input ./your-leads.csv --dry-run' },
     { check: has('UNIPILE_API_KEY'), label: 'LinkedIn campaigns', command: 'yalc-gtm campaign:create --title "First Campaign"' },
     { check: has('NOTION_API_KEY'), label: 'Notion CRM sync', command: 'yalc-gtm notion:sync' },
     { check: has('FIRECRAWL_API_KEY') || state.inClaudeCode, label: 'Web intelligence', command: 'yalc-gtm orchestrate "research competitors"' },
@@ -585,7 +585,7 @@ function printReadinessReport(
   // we can only safely recommend pure-CRUD commands.
   const firstAction = hasAnthropic
     ? capabilities.find(c => c.check)
-    : { command: 'yalc-gtm leads:import --source csv --input data/leads/sample.csv --dry-run' }
+    : { command: 'yalc-gtm campaign:create --title "First Campaign" --hypothesis "test"' }
   if (firstAction) {
     console.log(`  Try this first:
     ${firstAction.command}

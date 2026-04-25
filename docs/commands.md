@@ -118,8 +118,8 @@ yalc-gtm campaign:monthly-report
 Run leads through the 7-gate qualification pipeline.
 
 ```bash
-yalc-gtm leads:qualify --source csv --input data/leads/sample.csv --dry-run
-yalc-gtm leads:qualify --source csv --input data/leads/my-leads.csv
+yalc-gtm leads:qualify --source csv --input ./leads.csv --dry-run
+yalc-gtm leads:qualify --source csv --input ./leads.csv
 ```
 
 | Flag | Description |
