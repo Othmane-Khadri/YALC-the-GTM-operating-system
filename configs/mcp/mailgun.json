@@ -1,0 +1,17 @@
+{
+  "_comment": "Mailgun email send via MCP. No widely-shipped MCP server is published at @modelcontextprotocol/server-mailgun yet — this template makes the contract explicit so a user with a Mailgun MCP server (their own, or one published later) can drop it in by editing the command. To use a local stdio server, replace command/args with the path to your build (e.g. command: node, args: [/path/to/mailgun-mcp.js]).",
+  "name": "mailgun",
+  "displayName": "Mailgun (Email)",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-mailgun"],
+  "env": {
+    "MAILGUN_API_KEY": "${MAILGUN_API_KEY}",
+    "MAILGUN_DOMAIN": "${MAILGUN_DOMAIN}"
+  },
+  "capabilities": ["email_send"],
+  "healthCheck": {
+    "tool": "send_message",
+    "timeout": 5000
+  }
+}

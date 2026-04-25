@@ -1,0 +1,16 @@
+{
+  "_comment": "Brevo (formerly Sendinblue) email send via MCP. No widely-shipped MCP server is published at @modelcontextprotocol/server-brevo yet — this template makes the contract explicit so a user with a Brevo MCP server (their own, or one published later) can drop it in by editing the command. To use a local stdio server, replace command/args with the path to your build (e.g. command: node, args: [/path/to/brevo-mcp.js]).",
+  "name": "brevo",
+  "displayName": "Brevo (Email)",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-brevo"],
+  "env": {
+    "BREVO_API_KEY": "${BREVO_API_KEY}"
+  },
+  "capabilities": ["email_send"],
+  "healthCheck": {
+    "tool": "send_transactional_email",
+    "timeout": 5000
+  }
+}

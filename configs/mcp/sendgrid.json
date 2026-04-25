@@ -1,0 +1,16 @@
+{
+  "_comment": "SendGrid email send via MCP. No widely-shipped MCP server is published at @modelcontextprotocol/server-sendgrid yet — this template makes the contract explicit so a user with a SendGrid MCP server (their own, or one published later) can drop it in by editing the command. To use a local stdio server, replace command/args with the path to your build (e.g. command: node, args: [/path/to/sendgrid-mcp.js]).",
+  "name": "sendgrid",
+  "displayName": "SendGrid (Email)",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-sendgrid"],
+  "env": {
+    "SENDGRID_API_KEY": "${SENDGRID_API_KEY}"
+  },
+  "capabilities": ["email_send"],
+  "healthCheck": {
+    "tool": "send_email",
+    "timeout": 5000
+  }
+}

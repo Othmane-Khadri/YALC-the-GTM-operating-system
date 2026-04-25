@@ -1849,7 +1849,7 @@ program
 program
   .command('provider:add')
   .description('Add an MCP provider from a template config')
-  .requiredOption('--mcp <name>', 'Template name (hubspot, apollo, peopledatalabs, zoominfo)')
+  .requiredOption('--mcp <name>', 'Template name (hubspot, apollo, peopledatalabs, zoominfo, brevo, mailgun, sendgrid)')
   .action(withDiagnostics(async (opts) => {
     const { existsSync, copyFileSync, mkdirSync, readFileSync } = await import('fs')
     const { join } = await import('path')
