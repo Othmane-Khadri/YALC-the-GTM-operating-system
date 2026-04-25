@@ -232,10 +232,14 @@ export async function runStart(opts: StartOptions): Promise<void> {
   console.log('\n── Step 2/4 — Company Context ──\n')
 
   const { runOnboarding } = await import('../context/onboarding.js')
-  const hasFirecrawl = !!collectedKeys.FIRECRAWL_API_KEY || !!process.env.FIRECRAWL_API_KEY
+  const { getWebFetchProvider } = await import('../env/claude-code.js')
+  // Enable the website step whenever some fetch backend is available —
+  // Firecrawl directly, or a Claude Code parent that emits WebFetch
+  // handoffs. The ingestor itself decides what to do.
+  const canFetch = getWebFetchProvider() !== 'none'
   const report = await runOnboarding({
     tenantId,
-    scrapeWebsite: hasFirecrawl,
+    scrapeWebsite: canFetch,
     nonInteractive: opts.nonInteractive,
   })
 

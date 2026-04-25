@@ -159,15 +159,45 @@ async function ingestWebsite(
   companyUrl: string,
 ): Promise<number> {
   if (!companyUrl || !/^https?:\/\//i.test(companyUrl)) return 0
-  // Late-import so tests and the --nonInteractive path don't trigger the
-  // Firecrawl service just by importing this file.
-  const { firecrawlService } = await import('../services/firecrawl.js')
   const targets = [
     companyUrl,
     joinUrl(companyUrl, '/about'),
     joinUrl(companyUrl, '/pricing'),
     joinUrl(companyUrl, '/customers'),
   ]
+
+  // Resolve which web-fetch backend is available right now. The user may
+  // be running standalone (Firecrawl), inside a Claude Code session
+  // (parent-driven WebFetch), or with neither — never crash on the last
+  // case, just skip cleanly so onboarding can finish.
+  const { getWebFetchProvider } = await import('../env/claude-code.js')
+  const provider = getWebFetchProvider()
+
+  if (provider === 'none') {
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[onboard] No web fetch capability available — skipping website step. ' +
+        'Add FIRECRAWL_API_KEY or run inside Claude Code to enable.',
+    )
+    return 0
+  }
+
+  if (provider === 'claude-code') {
+    // Emit one structured handoff line per URL. The parent CC session can
+    // pick these up, run its built-in WebFetch tool, save the markdown,
+    // and re-run onboarding with --input <file>. Skip without crashing.
+    for (const url of targets) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[onboard] Claude Code WebFetch handoff: please run WebFetch on ${url} and re-run with --input <file>`,
+      )
+    }
+    return 0
+  }
+
+  // Late-import so tests and the --nonInteractive path don't trigger the
+  // Firecrawl service just by importing this file.
+  const { firecrawlService } = await import('../services/firecrawl.js')
   let count = 0
   for (const url of targets) {
     try {
