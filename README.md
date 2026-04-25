@@ -1,9 +1,10 @@
 # YALC — The Open-Source GTM Operating System
 
 ![CI](https://github.com/Othmane-Khadri/YALC-the-GTM-operating-system/actions/workflows/ci.yml/badge.svg)
+[![npm version](https://img.shields.io/npm/v/yalc-gtm-os.svg)](https://www.npmjs.com/package/yalc-gtm-os)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Node](https://img.shields.io/badge/Node-%3E%3D18-brightgreen.svg)](https://nodejs.org/)
+[![Node](https://img.shields.io/badge/Node-%3E%3D20-brightgreen.svg)](https://nodejs.org/)
 
 > AI plans your campaigns, qualifies your leads, and learns from every interaction.
 
@@ -11,27 +12,34 @@ YALC is an open-source, AI-native operating system for running any GTM campaign.
 
 ## Quick Start
 
-### Prerequisites
+Node.js 20 or higher required ([nodejs.org](https://nodejs.org/)).
 
-- Node.js version 20 or higher ([nodejs.org](https://nodejs.org/))
-- pnpm: run `corepack enable && corepack prepare pnpm@latest --activate` (or see the [pnpm install guide](https://pnpm.io/installation))
-- Git
+```bash
+npm install -g yalc-gtm-os
+yalc-gtm start
+```
+
+That is the whole installation. The `start` command writes its config to `~/.gtm-os/` and walks you through the rest.
+
+### Updating
+
+```bash
+npm update -g yalc-gtm-os
+```
+
+### From source (contributors)
+
+If you want to hack on YALC itself, clone the repo and link locally:
 
 ```bash
 git clone https://github.com/Othmane-Khadri/YALC-the-GTM-operating-system.git
 cd YALC-the-GTM-operating-system
+corepack enable && corepack prepare pnpm@latest --activate
 pnpm install
-
-# Make the CLI available
 pnpm link --global
-
-# One command to set up everything
-yalc-gtm start
 ```
 
-### If `pnpm link --global` fails
-
-If you see `ERR_PNPM_NO_GLOBAL_BIN_DIR`, or you are on Windows, skip the global link and run YALC in-repo: `pnpm cli start`. This uses the `cli` script defined in `package.json` and works without any global bin directory.
+If `pnpm link --global` fails with `ERR_PNPM_NO_GLOBAL_BIN_DIR` (or you are on Windows), run YALC in-repo with `pnpm cli start` instead.
 
 The `start` command walks you through 4 steps:
 
@@ -41,16 +49,6 @@ The `start` command walks you through 4 steps:
 4. **Goals & Config** *(skipped without an Anthropic key)* — Claude recommends goals and generates qualification rules, outreach templates, and search queries.
 
 You'll end with a readiness report showing what's unlocked and a suggested first command.
-
-### Updating
-
-Already set up? One command to pull the latest:
-
-```bash
-yalc-gtm update
-```
-
-This stashes any local changes, pulls from origin, reinstalls deps, and restores your changes. Your `~/.gtm-os/` config is never touched.
 
 ### After Setup
 
