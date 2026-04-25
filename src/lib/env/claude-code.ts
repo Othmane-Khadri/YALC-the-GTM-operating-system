@@ -23,9 +23,13 @@ export function isClaudeCode(): boolean {
 }
 
 export type WebFetchProvider = 'firecrawl' | 'claude-code' | 'none'
+export type WebSearchProvider = 'firecrawl' | 'claude-code' | 'none'
 
 /**
  * Resolve the effective web-fetch provider based on env + WEB_FETCH_PROVIDER.
+ *
+ * WebFetch = single URL → markdown page content. Used for scraping a known
+ * page (homepage, /pricing, a competitor URL).
  *
  * - `firecrawl`: Firecrawl key present (whether explicitly chosen or auto-detected).
  * - `claude-code`: running inside CC and no Firecrawl key — single-URL scrapes
@@ -35,6 +39,29 @@ export type WebFetchProvider = 'firecrawl' | 'claude-code' | 'none'
  */
 export function getWebFetchProvider(): WebFetchProvider {
   const choice = (process.env.WEB_FETCH_PROVIDER ?? 'auto').toLowerCase()
+  const hasFirecrawl = !!process.env.FIRECRAWL_API_KEY
+
+  if (choice === 'firecrawl') return hasFirecrawl ? 'firecrawl' : 'none'
+  if (choice === 'claude-code') return isClaudeCode() ? 'claude-code' : 'none'
+
+  // auto
+  if (hasFirecrawl) return 'firecrawl'
+  if (isClaudeCode()) return 'claude-code'
+  return 'none'
+}
+
+/**
+ * Resolve the effective web-search provider based on env + WEB_SEARCH_PROVIDER.
+ *
+ * WebSearch = query string → list of results (title + URL + snippet). Used
+ * when the target URL is unknown, e.g. "find <competitor> homepage".
+ *
+ * The auto rule mirrors getWebFetchProvider: prefer Firecrawl when keyed,
+ * otherwise fall back to Claude Code's WebSearch tool when running inside
+ * CC. Outside CC and without Firecrawl no search backend exists.
+ */
+export function getWebSearchProvider(): WebSearchProvider {
+  const choice = (process.env.WEB_SEARCH_PROVIDER ?? 'auto').toLowerCase()
   const hasFirecrawl = !!process.env.FIRECRAWL_API_KEY
 
   if (choice === 'firecrawl') return hasFirecrawl ? 'firecrawl' : 'none'
