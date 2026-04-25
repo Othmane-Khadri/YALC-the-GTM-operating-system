@@ -158,8 +158,17 @@ export async function runStart(opts: StartOptions): Promise<void> {
   // blocks on a missing one. In CC mode the default is to skip; standalone,
   // the recommendation is to add at least Anthropic.
   if (!opts.nonInteractive) {
-    const tier1 = PROVIDER_KEYS.filter(p => p.tier === 1 && !collectedKeys[p.key])
-    const tier2 = PROVIDER_KEYS.filter(p => p.tier === 2 && !collectedKeys[p.key])
+    // Inside Claude Code we drop Firecrawl from the prompt list entirely:
+    // the parent session provides built-in WebFetch and WebSearch tools,
+    // so the user shouldn't be asked for a key they don't need.
+    const skipKeys = new Set<string>()
+    if (inClaudeCode) {
+      skipKeys.add('FIRECRAWL_API_KEY')
+      console.log('  Web access: Claude Code (built-in WebFetch + WebSearch)')
+    }
+
+    const tier1 = PROVIDER_KEYS.filter(p => p.tier === 1 && !collectedKeys[p.key] && !skipKeys.has(p.key))
+    const tier2 = PROVIDER_KEYS.filter(p => p.tier === 2 && !collectedKeys[p.key] && !skipKeys.has(p.key))
     const missing = [...tier1, ...tier2]
 
     if (missing.length > 0) {
