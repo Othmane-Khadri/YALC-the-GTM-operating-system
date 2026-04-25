@@ -127,7 +127,26 @@ export interface DeriveFrameworkResult {
   interviewAnswersUsed: number
 }
 
-export async function deriveFramework(tenantId: string): Promise<DeriveFrameworkResult> {
+export interface DeriveFrameworkOptions {
+  tenantId: string
+  /**
+   * When true, skip the saveFramework() call so the caller can show the
+   * derivation to the user, accept edits, and persist later via
+   * persistDerivedFramework(). Default: false (legacy behavior).
+   */
+  dryRun?: boolean
+}
+
+/**
+ * Derive a GTMFramework from a tenant's memory nodes. Backwards-compatible:
+ * accepts either a tenantId string (legacy) or a DeriveFrameworkOptions
+ * object. When `dryRun` is set, the result is returned without writing to
+ * disk or DB — pair with `persistDerivedFramework()` to save afterwards.
+ */
+export async function deriveFramework(
+  arg: string | DeriveFrameworkOptions,
+): Promise<DeriveFrameworkResult> {
+  const { tenantId, dryRun } = typeof arg === 'string' ? { tenantId: arg, dryRun: false } : arg
   const store = new MemoryStore(tenantId)
 
   // 1. Collect candidates: all interview_answer rows, plus top proven/validated
@@ -141,7 +160,7 @@ export async function deriveFramework(tenantId: string): Promise<DeriveFramework
     // Empty tenant \u2014 write the blank template with onboardingComplete=false.
     const fw = createEmptyFramework()
     fw.onboardingComplete = false
-    await saveFramework(fw, tenantId)
+    if (!dryRun) await saveFramework(fw, tenantId)
     return { framework: fw, nodesConsidered: 0, interviewAnswersUsed: 0 }
   }
 
@@ -191,14 +210,32 @@ export async function deriveFramework(tenantId: string): Promise<DeriveFramework
   merged.lastUpdated = new Date().toISOString()
   merged.version = (base.version ?? 0) + 1
 
-  // 5. Persist.
-  await saveFramework(merged, tenantId)
+  // 5. Persist (unless dry run).
+  if (!dryRun) await saveFramework(merged, tenantId)
 
   return {
     framework: merged,
     nodesConsidered: candidates.length,
     interviewAnswersUsed: interviewAnswers.length,
   }
+}
+
+/**
+ * Persist a previously-derived framework returned from
+ * `deriveFramework({ dryRun: true })`. Refreshes lastUpdated and bumps the
+ * version so saved frameworks always reflect the moment they were accepted.
+ */
+export async function persistDerivedFramework(
+  framework: GTMFramework,
+  tenantId: string,
+): Promise<GTMFramework> {
+  const out: GTMFramework = {
+    ...framework,
+    lastUpdated: new Date().toISOString(),
+    version: (framework.version ?? 0) + 1,
+  }
+  await saveFramework(out, tenantId)
+  return out
 }
 
 function rank(c: string): number {
