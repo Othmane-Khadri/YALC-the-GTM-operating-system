@@ -5,7 +5,7 @@ import { db } from '../db'
 import { resultRows, campaignLeads, campaigns, conversations } from '../db/schema'
 import { IntelligenceStore } from '../intelligence/store'
 import { getRegistryReady } from '../providers/registry'
-import { buildFrameworkContext } from '../framework/context'
+import { buildFrameworkContext, loadFramework } from '../framework/context'
 import { notionService } from '../services/notion'
 import { runImport } from './importers'
 import { DedupEngine } from '../dedup/engine'
@@ -167,12 +167,25 @@ export async function runQualify(opts: QualifyOptions): Promise<QualifyResult> {
   // ─── Gate 3: Company disqualifiers ───────────────────────────────────────────
   console.log('[qualify] Gate 3: Company disqualifiers...')
   const disqualifiers = loadRulesFile(opts.config.qualification.disqualifiers_path)
-  if (disqualifiers.length > 0) {
+  {
     const companyPassed: Record<string, unknown>[] = []
     for (const lead of pipeline) {
+      // Employee count check: disqualify <11 or >200
+      const empCount = Number(lead.employee_count ?? 0)
+      const empRange = String(lead.employee_range ?? '').toLowerCase()
+      if (empCount > 0 && (empCount < 11 || empCount > 200)) {
+        result.skippedCompany++
+        continue
+      }
+      if (!empCount && (empRange.includes('201 to 500') || empRange.includes('501 to 1000') || empRange.includes('1001') || empRange.includes('myself only'))) {
+        result.skippedCompany++
+        continue
+      }
+
+      // Industry/company name text disqualifiers
       const company = String(lead.company ?? lead.company_name ?? '').toLowerCase()
       const industry = String(lead.industry ?? '').toLowerCase()
-      const disqualified = disqualifiers.some(dq =>
+      const disqualified = disqualifiers.length > 0 && disqualifiers.some(dq =>
         company.includes(dq.toLowerCase()) || industry.includes(dq.toLowerCase())
       )
       if (disqualified) {
@@ -237,7 +250,8 @@ export async function runQualify(opts: QualifyOptions): Promise<QualifyResult> {
         ? learnings.map(l => `- [${l.confidence}] ${l.insight}`).join('\n')
         : undefined
 
-      const frameworkContext = await buildFrameworkContext(null)
+      const framework = await loadFramework()
+      const frameworkContext = await buildFrameworkContext(framework)
 
       const scored: Record<string, unknown>[] = []
       const qualResults = qualifyProvider.execute(
@@ -255,6 +269,26 @@ export async function runQualify(opts: QualifyOptions): Promise<QualifyResult> {
         scored.push(...batch.rows)
       }
       pipeline = scored
+
+      // Persist scores back to result_rows
+      for (const lead of scored) {
+        const email = String(lead.email ?? '')
+        const linkedinUrl = String(lead.linkedin_url ?? '')
+        if (!email && !linkedinUrl) continue
+        const allRows = await db.select().from(resultRows).where(eq(resultRows.resultSetId, resultSetId))
+        for (const row of allRows) {
+          const rowData = JSON.parse(row.data)
+          if ((email && rowData.email === email) || (linkedinUrl && rowData.linkedin_url === linkedinUrl)) {
+            rowData.icp_score = lead.icp_score
+            rowData.icp_fit_level = lead.icp_fit_level
+            rowData.qualification_reason = lead.qualification_reason
+            rowData.qualification_signals = lead.qualification_signals
+            await db.update(resultRows).set({ data: JSON.stringify(rowData) }).where(eq(resultRows.id, row.id))
+            break
+          }
+        }
+      }
+      console.log(`[qualify] Persisted scores for ${scored.length} leads to result_rows`)
     } catch (err) {
       console.log(`[qualify] AI qualification skipped: ${err instanceof Error ? err.message : err}`)
     }
