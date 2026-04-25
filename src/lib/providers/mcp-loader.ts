@@ -7,8 +7,9 @@
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'fs'
-import { join } from 'path'
+import { dirname, join, resolve } from 'path'
 import { homedir } from 'os'
+import { fileURLToPath } from 'url'
 import type { ProviderCapability } from './types'
 import type { McpProviderConfig, McpStdioConfig, McpSseConfig } from './mcp-adapter'
 import { McpProviderAdapter } from './mcp-adapter'
@@ -254,11 +255,57 @@ export function getMcpConfigDir(): string {
 }
 
 /**
+ * Resolve the shipped `configs/mcp/` directory.
+ *
+ * Templates live alongside the package source, not in the user's CWD.
+ * After `npm install -g`, `pnpm link --global`, or any non-repo invocation
+ * `process.cwd()` will not contain the package files, so we anchor the
+ * lookup to this module's own location and walk upward until we find
+ * a directory that contains `configs/mcp/`. The CWD is checked last as
+ * a courtesy for the in-repo dev workflow.
+ *
+ * Returns `null` if no candidate exists — callers should treat that as
+ * "no templates available" rather than crashing.
+ */
+export function getMcpTemplateDir(): string | null {
+  const candidates: string[] = []
+
+  // Anchor 1: walk up from this file until we hit a `configs/mcp/`.
+  // In-repo this resolves to <repo>/configs/mcp; published it resolves
+  // to <package-root>/configs/mcp once configs/ is shipped in `files`.
+  try {
+    const here = dirname(fileURLToPath(import.meta.url))
+    let dir = here
+    // Cap at a reasonable depth — never traverse to the filesystem root.
+    for (let i = 0; i < 10; i++) {
+      const candidate = join(dir, 'configs', 'mcp')
+      if (existsSync(candidate)) {
+        candidates.push(candidate)
+        break
+      }
+      const parent = dirname(dir)
+      if (parent === dir) break
+      dir = parent
+    }
+  } catch {
+    // import.meta.url unavailable — fall through to CWD.
+  }
+
+  // Anchor 2: CWD fallback for dev workflow inside the repo.
+  candidates.push(resolve(process.cwd(), 'configs', 'mcp'))
+
+  for (const c of candidates) {
+    if (existsSync(c)) return c
+  }
+  return null
+}
+
+/**
  * List available template config names from the shipped configs/mcp/ directory.
  */
 export function listTemplateConfigs(): string[] {
-  const templateDir = join(process.cwd(), 'configs', 'mcp')
-  if (!existsSync(templateDir)) return []
+  const templateDir = getMcpTemplateDir()
+  if (!templateDir) return []
   return readdirSync(templateDir)
     .filter(f => f.endsWith('.json'))
     .map(f => f.replace('.json', ''))

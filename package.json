@@ -37,6 +37,7 @@
     "src/**/*.json",
     "!src/**/__tests__/**",
     "!src/**/*.test.ts",
+    "configs",
     "templates",
     "tsconfig.json"
   ],

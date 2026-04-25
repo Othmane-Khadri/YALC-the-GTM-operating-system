@@ -1742,18 +1742,21 @@ program
     const { existsSync, copyFileSync, mkdirSync, readFileSync } = await import('fs')
     const { join } = await import('path')
     const { homedir } = await import('os')
+    const { getMcpTemplateDir, listTemplateConfigs } = await import('../lib/providers/mcp-loader')
 
-    const templateDir = join(process.cwd(), 'configs', 'mcp')
+    const templateDir = getMcpTemplateDir()
     const targetDir = join(homedir(), '.gtm-os', 'mcp')
+
+    if (!templateDir) {
+      console.error('No MCP template directory found. The shipped `configs/mcp/` is missing — please reinstall the package.')
+      process.exit(1)
+    }
 
     const templatePath = join(templateDir, `${opts.mcp}.json`)
     const targetPath = join(targetDir, `${opts.mcp}.json`)
 
     if (!existsSync(templatePath)) {
-      const { readdirSync } = await import('fs')
-      const available = existsSync(templateDir)
-        ? readdirSync(templateDir).filter(f => f.endsWith('.json')).map(f => f.replace('.json', ''))
-        : []
+      const available = listTemplateConfigs()
       console.error(`Template "${opts.mcp}" not found. Available: ${available.join(', ') || 'none'}`)
       process.exit(1)
     }

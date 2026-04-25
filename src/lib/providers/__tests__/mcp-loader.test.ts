@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { validateMcpConfig, expandEnvVars } from '../mcp-loader'
+import { tmpdir } from 'os'
+import { validateMcpConfig, expandEnvVars, getMcpTemplateDir, listTemplateConfigs } from '../mcp-loader'
 
 // ─── Config Validation ───────────────────────────────────────────────────────
 
@@ -208,6 +209,33 @@ describe('expandEnvVars', () => {
     const { missing } = expandEnvVars(input)
     expect(missing).toContain('MISSING_A')
     expect(missing).toContain('MISSING_B')
+  })
+})
+
+// ─── Template Resolution ─────────────────────────────────────────────────────
+
+describe('getMcpTemplateDir / listTemplateConfigs', () => {
+  it('resolves the shipped configs/mcp directory regardless of CWD', () => {
+    const originalCwd = process.cwd()
+    try {
+      process.chdir(tmpdir())
+      const dir = getMcpTemplateDir()
+      expect(dir).not.toBeNull()
+      expect(dir!.endsWith('/configs/mcp')).toBe(true)
+    } finally {
+      process.chdir(originalCwd)
+    }
+  })
+
+  it('lists shipped template names from outside the repo', () => {
+    const originalCwd = process.cwd()
+    try {
+      process.chdir(tmpdir())
+      const names = listTemplateConfigs()
+      expect(names).toContain('apollo')
+    } finally {
+      process.chdir(originalCwd)
+    }
   })
 })
 
