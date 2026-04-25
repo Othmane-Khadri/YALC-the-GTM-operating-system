@@ -164,6 +164,65 @@ Generate an email drip sequence using Claude.
 yalc-gtm email:create-sequence
 ```
 
+### `email:send`
+Send a multi-step sequence or a single ad-hoc message via the configured email provider. Routed through the provider registry, so any provider that advertises the `email_send` capability can serve this command (Instantly is built in; Brevo, Mailgun, and SendGrid ship as MCP templates via `provider:add`).
+
+```bash
+# Single ad-hoc send through the default provider
+yalc-gtm email:send --to lead@example.com --subject "Quick question" --body "Hi there"
+
+# Send through a different provider for this invocation
+yalc-gtm email:send --provider brevo --to lead@example.com --body "Hi there"
+
+# Sequence mode (campaign + leads CSV)
+yalc-gtm email:send --campaign-name "Q2 Outbound" --source ./leads.csv --sequence ./sequence.yaml
+```
+
+| Flag | Description |
+|------|-------------|
+| `--provider <name>` | Override the configured email provider for this send. Defaults to `email.provider` in `~/.gtm-os/config.yaml`, falling back to `instantly`. |
+| `--to`, `--subject`, `--body` | Single-message ad-hoc send (no sequence required). |
+| `--campaign-name`, `--source`, `--sequence` | Sequence mode. `--source` is a CSV/JSON of qualified leads. |
+| `--generate-from <url>` | Generate a sequence from a target company URL instead of `--sequence`. |
+| `--save-sequence <path>` | Save the generated sequence to YAML for reuse. |
+| `--from <accountId>` | Email sending account id (provider-specific). |
+| `--dry-run` | Preview without sending. |
+
+---
+
+## Providers
+
+### `provider:list`
+List every registered provider (built-in plus any MCP templates loaded from `~/.gtm-os/mcp/`) with status and capabilities. Providers missing required env vars show as `needs API key`; providers that error out at runtime show as `unreachable`.
+
+```bash
+yalc-gtm provider:list
+```
+
+### `provider:add`
+Copy a shipped MCP template into `~/.gtm-os/mcp/` so it loads on the next CLI invocation. Templates include CRM (`hubspot`, `apollo`, `peopledatalabs`, `zoominfo`) and email (`brevo`, `mailgun`, `sendgrid`).
+
+```bash
+yalc-gtm provider:add --mcp brevo
+```
+
+The command prints which env vars the template references and which are already set.
+
+### `provider:test`
+Run the provider's health check (and, for MCP providers, list discovered tools).
+
+```bash
+yalc-gtm provider:test brevo
+yalc-gtm provider:test instantly
+```
+
+### `provider:remove`
+Delete an MCP provider config from `~/.gtm-os/mcp/`. The provider stops loading on the next invocation.
+
+```bash
+yalc-gtm provider:remove brevo
+```
+
 ---
 
 ## Notion Integration

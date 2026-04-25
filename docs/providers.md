@@ -176,6 +176,31 @@ Test provider for development. Returns synthetic data. No API key needed.
 
 ---
 
+## Bring your own email provider
+
+Instantly is the default email backend, but YALC can route `email:send` through any provider that advertises the `email_send` capability via the MCP registry. Brevo, Mailgun, and SendGrid ship as templates out of the box.
+
+Three steps to swap in a new provider:
+
+1. **Copy the template** into `~/.gtm-os/mcp/` so it loads on the next CLI invocation:
+   ```bash
+   yalc-gtm provider:add --mcp brevo
+   ```
+   The command prints the env vars the template references and whether each is already set.
+2. **Set the env var(s)** the template needs in `~/.gtm-os/.env` (or your shell):
+   ```bash
+   echo "BREVO_API_KEY=xkeysib-..." >> ~/.gtm-os/.env
+   ```
+3. **Verify connectivity** with the provider health check:
+   ```bash
+   yalc-gtm provider:test brevo
+   ```
+   On success, `provider:list` shows the provider as `OK` and you can route a send through it with `email:send --provider brevo`. To make it the default for all sends, set `email.provider: brevo` in `~/.gtm-os/config.yaml`.
+
+The same recipe works for `mailgun` and `sendgrid` — only the env var names change. To stop using a provider, run `yalc-gtm provider:remove <name>`.
+
+---
+
 ## Checking Your Setup
 
 Run the doctor command anytime to verify all providers:

@@ -45,10 +45,14 @@ The `start` command walks you through 4 steps:
 
 1. **Environment** — Collects API keys. All keys are optional; setup never blocks on a missing one. Without `ANTHROPIC_API_KEY` you can still complete onboarding — Steps 3–4 are skipped and can be finished later by running `yalc-gtm onboard` then `yalc-gtm configure`. When run inside Claude Code, both `ANTHROPIC_API_KEY` and `FIRECRAWL_API_KEY` default to skip (the parent CC session covers LLM + WebFetch).
 2. **Company Context** — Interactive interview about your company, ICP, pain points, competitors, and voice. Optionally scrapes your website for additional context.
-3. **Framework** *(skipped without an Anthropic key)* — Claude synthesizes everything into a structured GTM framework (segments, signals, positioning, competitors).
+3. **Framework** *(skipped without an Anthropic key)* — Claude synthesizes everything into a structured GTM framework (segments, signals, positioning, competitors). You see a summary and confirm before anything is written to disk.
 4. **Goals & Config** *(skipped without an Anthropic key)* — Claude recommends goals and generates qualification rules, outreach templates, and search queries.
 
 You'll end with a readiness report showing what's unlocked and a suggested first command.
+
+### Onboarding modes
+
+When you run `yalc-gtm start`, you can choose how to provide context: answer questions one by one, paste a long-form response covering all questions at once, or hand over your website + documents and let YALC infer the positioning for you. Pick whichever matches the material you already have ready.
 
 ### After Setup
 
@@ -64,6 +68,9 @@ yalc-gtm campaign:track --dry-run
 
 # Or qualify a lead list you already have (CSV or JSON)
 yalc-gtm leads:qualify --source csv --input ./your-leads.csv --dry-run
+
+# Send via a non-default email provider (e.g. Brevo via the MCP template)
+yalc-gtm email:send --provider brevo --to lead@example.com --body "Hi there"
 ```
 
 ### Non-Interactive Setup
@@ -98,6 +105,7 @@ Every command also works directly in a terminal if you prefer that style. The "U
 - **Outbound validation** — every message checked before send, hard blocks on violations
 - **Background agents** — launchd-integrated for automated campaign tracking
 - **Natural language orchestration** — describe what you want, YALC plans the workflow
+- **Swappable email providers** — Instantly built in, plus drop-in MCP templates for Brevo, Mailgun, and SendGrid (`provider:add --mcp <name>` then `email:send --provider <name>`)
 
 <!-- ## Demo
 ![YALC Demo](demo.gif)
@@ -121,6 +129,7 @@ When YALC detects a parent Claude Code session — via `CLAUDECODE`, `CLAUDE_COD
 
 - The parent CC session already provides LLM reasoning, so a separate Anthropic API key isn't needed for ad-hoc planning, qualification, or personalization (just ask Claude Code).
 - Claude Code's built-in `WebFetch` tool covers single-URL scrapes, so Firecrawl is only needed for JS-rendered pages, multi-page crawls, or web search.
+- Claude Code's `WebSearch` is also honored when onboarding needs to discover a company URL — if you skip the website prompt, YALC asks the parent CC session to run a `WebSearch` for `"<company> official website"` instead of calling Firecrawl.
 
 **What works in Claude Code mode with zero provider keys:**
 
@@ -232,6 +241,7 @@ leads:qualify           Run 7-gate qualification pipeline
 leads:scrape-post       Scrape LinkedIn post engagers
 leads:import            Import leads from CSV/JSON/Notion
 linkedin:answer-comments Reply to LinkedIn post comments
+email:send              Send a sequence or single message (pick the email provider with --provider <name>)
 email:create-sequence   Generate email drip sequence
 notion:sync             Bidirectional SQLite ↔ Notion sync
 notion:bootstrap        Import existing Notion data to SQLite
@@ -287,6 +297,10 @@ fullenrich:
   poll_interval_ms: 2000
   poll_timeout_ms: 300000
 ```
+
+### Env file precedence
+
+YALC loads `~/.gtm-os/.env` automatically on every run (followed by `.env.local` in the current working directory as a fallback). Variables already present in your shell environment win — `~/.gtm-os/.env` only fills in keys that aren't already set. To stop using a provider, remove its line from `~/.gtm-os/.env` rather than `unset`-ing it in your terminal, since the file is reloaded on the next invocation.
 
 ## Key Design Decisions
 

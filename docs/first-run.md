@@ -46,7 +46,13 @@ Everything gets saved to `.env.local`. You never need to manually edit this file
 
 ### Step 2/4 — Company Context
 
-The CLI asks 8-10 questions about your company. Answer as specifically as you can — this data drives everything that follows.
+The CLI first asks how you want to provide context. Three modes are available:
+
+- **A. Q&A** — answer the 10 onboarding questions one by one (the flow shown below).
+- **B. Long-form** — your editor opens with a markdown template; you paste a single response covering every heading and Claude maps it back to structured fields.
+- **C. Context-only** — give YALC your website URL plus any local docs, and Claude infers the answers for you. Falls back to Q&A if no Anthropic key is available.
+
+For Q&A mode, the CLI asks 10 questions about your company. Answer as specifically as you can — this data drives everything that follows.
 
 ```
 ? Company name: Acme Corp
@@ -82,7 +88,7 @@ The framework includes:
 - **ICP segments** — target roles, industries, company sizes, pain points, buying triggers
 - **Signals** — buying intent signals, monitoring keywords, trigger events
 
-Saved to `~/.gtm-os/framework.yaml` and the local database.
+Before anything is written to disk, the CLI prints a structured summary and asks you to confirm: `Save this framework? (Y/n)`. Answering `n` opens the framework YAML in your `$EDITOR` so you can fix anything Claude got wrong, then saves the edited version. Saved to `~/.gtm-os/framework.yaml` and the local database.
 
 ### Step 4/4 — Goals & Configuration
 
