@@ -76,7 +76,7 @@ export interface StartOptions {
 }
 
 export async function runStart(opts: StartOptions): Promise<void> {
-  const { password, input, confirm } = await import('@inquirer/prompts')
+  const { password, input, confirm, select } = await import('@inquirer/prompts')
   const { tenantId } = opts
   const inClaudeCode = isClaudeCode()
 
@@ -239,6 +239,13 @@ export async function runStart(opts: StartOptions): Promise<void> {
   writeFileSync(ENV_PATH, envContent)
   console.log(`\n  ✓ ${Object.keys(collectedKeys).length} keys saved to ${ENV_PATH}`)
 
+  // ── Step 1b: Outbound Channel Selection ─────────────────────────────────
+  // Pick the email provider so future `email:send` calls resolve through the
+  // registry to the right channel. Defaults to Instantly (built-in).
+  if (!opts.nonInteractive) {
+    await pickOutboundProvider({ select })
+  }
+
   // ── Step 2: Company Context ─────────────────────────────────────────────
   console.log('\n── Step 2/4 — Company Context ──\n')
 
@@ -355,6 +362,68 @@ async function applyMigrations(): Promise<void> {
   }
 
   console.log('  ✓ Database ready')
+}
+
+type SelectFn = (args: {
+  message: string
+  choices: Array<{ name: string; value: string; description?: string }>
+  default?: string
+}) => Promise<string>
+
+/**
+ * Prompt the user to pick an email (and optionally LinkedIn) provider, then
+ * persist the choice into ~/.gtm-os/config.yaml under `email.provider` and
+ * `linkedin.provider`. Defaults preserve current behavior (Instantly + Unipile).
+ *
+ * Picking a non-built-in provider does not install anything inline — we just
+ * print the follow-up `provider:add --mcp <name>` command.
+ */
+async function pickOutboundProvider(deps: { select: SelectFn }): Promise<void> {
+  const { select } = deps
+
+  // Read existing config if present so we can default to the current value.
+  let existing: Record<string, unknown> = {}
+  if (existsSync(CONFIG_PATH)) {
+    try {
+      existing = (yaml.load(readFileSync(CONFIG_PATH, 'utf-8')) as Record<string, unknown>) ?? {}
+    } catch {
+      existing = {}
+    }
+  }
+  const existingEmail = ((existing.email as Record<string, unknown> | undefined)?.provider as string | undefined) ?? 'instantly'
+  const existingLinkedIn = ((existing.linkedin as Record<string, unknown> | undefined)?.provider as string | undefined) ?? 'unipile'
+
+  console.log('\n  Which email provider do you want to use?')
+  const emailChoice = await select({
+    message: 'Email provider',
+    default: existingEmail,
+    choices: [
+      { name: 'Instantly (built-in)', value: 'instantly', description: 'Default cold email engine bundled with YALC.' },
+      { name: 'Brevo (via MCP)', value: 'brevo', description: 'Adds Brevo through an MCP server template.' },
+      { name: 'Mailgun (via MCP)', value: 'mailgun', description: 'Adds Mailgun through an MCP server template.' },
+      { name: 'SendGrid (via MCP)', value: 'sendgrid', description: 'Adds SendGrid through an MCP server template.' },
+      { name: 'None / decide later', value: 'none', description: 'Skip — pick later by editing ~/.gtm-os/config.yaml.' },
+    ],
+  })
+
+  // Persist (skip the literal 'none' sentinel — leave config untouched).
+  const merged: Record<string, unknown> = { ...existing }
+  if (emailChoice !== 'none') {
+    merged.email = { provider: emailChoice }
+  }
+  if (!merged.linkedin) {
+    merged.linkedin = { provider: existingLinkedIn }
+  }
+  writeFileSync(CONFIG_PATH, yaml.dump(merged))
+
+  if (emailChoice !== 'none' && emailChoice !== 'instantly') {
+    console.log(`  ✓ Email provider set to ${emailChoice}.`)
+    console.log(`    Run: yalc-gtm provider:add --mcp ${emailChoice}`)
+  } else if (emailChoice === 'instantly') {
+    console.log('  ✓ Email provider set to instantly (built-in).')
+  } else {
+    console.log('  ⊘ Email provider left unset. Configure later under email.provider in ~/.gtm-os/config.yaml.')
+  }
 }
 
 function printFileStructure(): void {
