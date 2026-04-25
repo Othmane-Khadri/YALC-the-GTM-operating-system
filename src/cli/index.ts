@@ -229,17 +229,31 @@ program
   .option('--dry-run', 'Preview without sending', true)
   .option('--send', 'Actually send replies (disables dry-run)')
   .option('--exclude <names...>', 'Author names to skip (partial match)')
+  .option('--provider <name>', 'Override the configured LinkedIn provider')
   .action(async (opts) => {
     const { answerCommentsSkill } = await import('../lib/skills/builtin/answer-comments')
     const { getSkillRegistryReady } = await import('../lib/skills/registry')
-    const registry = await getSkillRegistryReady()
-    const skill = registry.get('answer-comments')!
+    const { getRegistryReady } = await import('../lib/providers/registry')
+    const skillRegistry = await getSkillRegistryReady()
+    const providerRegistry = await getRegistryReady()
+    const skill = skillRegistry.get('answer-comments')!
     const dryRun = opts.send ? false : (opts.dryRun ?? true)
+
+    let providerName = opts.provider as string | undefined
+    if (!providerName) {
+      try {
+        const cfg = loadConfig(program.opts().config.replace('~', homedir()))
+        providerName = cfg.linkedin?.provider ?? 'unipile'
+      } catch {
+        providerName = 'unipile'
+      }
+    }
+    console.log(`[linkedin:answer-comments] Resolved provider: ${providerName}${dryRun ? ' (dry-run)' : ''}`)
 
     const context = {
       framework: null as any,
       intelligence: [],
-      providers: { resolve: () => ({ id: 'mock', name: 'mock', execute: async function*() {} }) } as any,
+      providers: providerRegistry as any,
       userId: 'default',
     }
 
@@ -269,14 +283,28 @@ program
   .option('--dry-run', 'Preview without sending', true)
   .option('--send', 'Actually send replies (disables dry-run)')
   .option('--exclude <names...>', 'Author names to skip (partial match)')
+  .option('--provider <name>', 'Override the configured LinkedIn provider')
   .action(async (opts) => {
     const { replyToCommentsSkill } = await import('../lib/skills/builtin/reply-to-comments')
+    const { getRegistryReady } = await import('../lib/providers/registry')
+    const providerRegistry = await getRegistryReady()
     const dryRun = opts.send ? false : (opts.dryRun ?? true)
+
+    let providerName = opts.provider as string | undefined
+    if (!providerName) {
+      try {
+        const cfg = loadConfig(program.opts().config.replace('~', homedir()))
+        providerName = cfg.linkedin?.provider ?? 'unipile'
+      } catch {
+        providerName = 'unipile'
+      }
+    }
+    console.log(`[linkedin:reply-to-comments] Resolved provider: ${providerName}${dryRun ? ' (dry-run)' : ''}`)
 
     const context = {
       framework: null as any,
       intelligence: [],
-      providers: { resolve: () => ({ id: 'mock', name: 'mock', execute: async function*() {} }) } as any,
+      providers: providerRegistry as any,
       userId: 'default',
     }
 
@@ -325,21 +353,105 @@ program
 // ─── email:send ────────────────────────────────────────────────────────────
 program
   .command('email:send')
-  .description('Send cold email sequence via Instantly.ai')
-  .requiredOption('--campaign-name <name>', 'Campaign name')
-  .requiredOption('--source <path>', 'CSV/JSON file of qualified leads')
+  .description('Send cold email sequence (or a single message) via the configured email provider')
+  .option('--campaign-name <name>', 'Campaign name (required for sequence sends)')
+  .option('--source <path>', 'CSV/JSON file of qualified leads (sequence mode)')
   .option('--sequence <path>', 'Sequence template YAML (or use --generate-from)')
   .option('--generate-from <url>', 'Generate sequence from target company URL (ColdIQ framework)')
   .option('--save-sequence <path>', 'Save generated sequence to YAML file')
-  .option('--from <accountId>', 'Instantly email account ID')
+  .option('--from <accountId>', 'Email sending account id')
+  .option('--to <email>', 'Single-message recipient (ad-hoc send)')
+  .option('--subject <text>', 'Single-message subject')
+  .option('--body <text>', 'Single-message body')
+  .option('--provider <name>', 'Override the configured email provider for this send')
   .option('--dry-run', 'Preview without sending', false)
   .action(async (opts) => {
     const { readFileSync, writeFileSync } = await import('fs')
     const yaml = (await import('js-yaml')).default
 
+    // Resolve email provider via the registry. This is the channel-swap seam:
+    // any provider that advertises `email_send` (builtin Instantly today; Brevo,
+    // Mailgun, SendGrid via MCP tomorrow) can serve this command.
+    const { getRegistryReady } = await import('../lib/providers/registry')
+    const registry = await getRegistryReady()
+
+    let providerName = opts.provider as string | undefined
+    if (!providerName) {
+      try {
+        const cfg = loadConfig(program.opts().config.replace('~', homedir()))
+        providerName = cfg.email?.provider ?? 'instantly'
+      } catch {
+        providerName = 'instantly'
+      }
+    }
+
+    // Single-message ad-hoc send — proves the registry seam end-to-end.
+    if (opts.to || opts.subject || opts.body) {
+      const to = String(opts.to ?? '')
+      const subject = opts.subject != null ? String(opts.subject) : undefined
+      const body = String(opts.body ?? '')
+      if (!to || !body) {
+        console.error('Error: --to and --body are required for ad-hoc single-message sends')
+        process.exit(1)
+      }
+
+      console.log(`\n[email:send] Resolved provider: ${providerName}`)
+
+      if (opts.dryRun) {
+        console.log('[email:send] dry-run — no message dispatched')
+        console.log(`  to:      ${to}`)
+        if (subject) console.log(`  subject: ${subject}`)
+        console.log(`  body:    ${body.slice(0, 120)}${body.length > 120 ? '...' : ''}`)
+        return
+      }
+
+      const executor = registry.resolve({ stepType: 'email_send', provider: providerName! })
+      const step = {
+        stepIndex: 0,
+        title: 'email:send',
+        stepType: 'email_send',
+        provider: executor.id,
+        description: 'ad-hoc single message send',
+        config: {
+          to,
+          subject,
+          body,
+          accountId: opts.from,
+          campaignName: opts.campaignName,
+        },
+      } as Record<string, unknown> & { stepIndex: number; title: string; stepType: string; provider: string; description: string }
+
+      const ctx = {
+        frameworkContext: '',
+        batchSize: 1,
+        totalRequested: 1,
+        tenantId: getTenant(),
+      }
+
+      const exec = executor.execute(step as any, ctx as any)
+      for await (const batch of exec) {
+        for (const row of batch.rows) {
+          console.log('Sent:', JSON.stringify(row))
+        }
+      }
+      return
+    }
+
     if (!opts.sequence && !opts.generateFrom) {
-      console.error('Error: provide --sequence <path> or --generate-from <url>')
+      console.error('Error: provide --sequence <path> or --generate-from <url> (or use --to/--subject/--body for a single send)')
       process.exit(1)
+    }
+    if (!opts.campaignName) {
+      console.error('Error: --campaign-name is required in sequence mode')
+      process.exit(1)
+    }
+    if (!opts.source) {
+      console.error('Error: --source is required in sequence mode')
+      process.exit(1)
+    }
+    console.log(`\n[email:send] Resolved provider: ${providerName} (sequence mode)`)
+    if (opts.dryRun) {
+      console.log('[email:send] dry-run — campaign will be previewed, no leads dispatched')
     }
 
     // Parse leads
