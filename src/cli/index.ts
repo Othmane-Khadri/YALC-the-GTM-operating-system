@@ -1810,6 +1810,24 @@ program
   }))
 
 // ─── provider:list ─────────────────────────────────────────────────────────
+// Map the underlying status enum (`active` / `disconnected` / `error`) to a
+// short user-facing label. Most "disconnected" cases in the wild are simply a
+// missing API key, so we surface that explicitly instead of the technical
+// `DISCONNECTED` tag. Genuine runtime failures keep a distinct `unreachable`
+// label so the user is not misled into hunting for a key that's already set.
+function renderProviderStatus(status: string): string {
+  switch (status) {
+    case 'active':
+      return 'OK'
+    case 'disconnected':
+      return 'needs API key'
+    case 'error':
+      return 'unreachable'
+    default:
+      return status.toUpperCase()
+  }
+}
+
 program
   .command('provider:list')
   .description('List all providers (builtin + MCP) with status')
@@ -1828,15 +1846,15 @@ program
 
     console.log('\n── Builtin Providers ──\n')
     for (const p of builtins) {
-      const statusTag = p.status === 'active' ? 'OK' : p.status.toUpperCase()
-      console.log(`  ${p.id.padEnd(24)} [${statusTag.padEnd(12)}] ${p.capabilities.join(', ').padEnd(28)} ${p.description}`)
+      const statusTag = renderProviderStatus(p.status)
+      console.log(`  ${p.id.padEnd(24)} [${statusTag.padEnd(13)}] ${p.capabilities.join(', ').padEnd(28)} ${p.description}`)
     }
 
     if (mcps.length > 0) {
       console.log('\n── MCP Providers ──\n')
       for (const p of mcps) {
-        const statusTag = p.status === 'active' ? 'OK' : p.status.toUpperCase()
-        console.log(`  ${p.id.padEnd(24)} [${statusTag.padEnd(12)}] ${p.capabilities.join(', ').padEnd(28)} ${p.name}`)
+        const statusTag = renderProviderStatus(p.status)
+        console.log(`  ${p.id.padEnd(24)} [${statusTag.padEnd(13)}] ${p.capabilities.join(', ').padEnd(28)} ${p.name}`)
       }
     } else {
       console.log('\n  No MCP providers loaded. Drop configs into ~/.gtm-os/mcp/ or run: provider:add --mcp <name>')
