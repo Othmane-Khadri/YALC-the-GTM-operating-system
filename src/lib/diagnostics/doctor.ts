@@ -657,18 +657,38 @@ function checkRuntimeState(): LayerResult {
     checks.push({ name: `Stored API connections: ${connCount}`, status: 'pass', detail: '' })
   }
 
-  // Data directories
-  const dataDirs = ['data/leads', 'data/intelligence', 'data/campaigns', 'data/content']
-  for (const dir of dataDirs) {
-    const fullPath = join(process.cwd(), dir)
-    if (existsSync(fullPath)) {
-      checks.push({ name: `${dir}/`, status: 'pass', detail: '' })
-    } else {
-      checks.push({ name: `${dir}/`, status: 'warn', detail: 'Will be created on first use' })
+  // Data directories. These are per-project — only check the cwd if it
+  // looks like a project. Avoids spurious warnings from /tmp or ~.
+  const cwd = process.cwd()
+  if (isProjectDirectory(cwd)) {
+    const dataDirs = ['data/leads', 'data/intelligence', 'data/campaigns', 'data/content']
+    for (const dir of dataDirs) {
+      const fullPath = join(cwd, dir)
+      if (existsSync(fullPath)) {
+        checks.push({ name: `${dir}/`, status: 'pass', detail: '' })
+      } else {
+        checks.push({ name: `${dir}/`, status: 'warn', detail: 'Will be created on first use' })
+      }
     }
+  } else {
+    checks.push({
+      name: 'Project data dirs',
+      status: 'skip',
+      detail: 'Per-project. Will be created in your project directory by leads:import / campaign:* commands.',
+    })
   }
 
   return { layer: 'Runtime State', checks }
+}
+
+function isProjectDirectory(cwd: string): boolean {
+  return (
+    existsSync(join(cwd, 'package.json')) ||
+    existsSync(join(cwd, '.gtm-os-tenant')) ||
+    existsSync(join(cwd, 'framework.yaml')) ||
+    existsSync(join(cwd, '.git')) ||
+    existsSync(join(cwd, 'node_modules'))
+  )
 }
 
 // ─── Generate Diagnostic Report ──────────────────────────────────────────────
