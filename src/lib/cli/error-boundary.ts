@@ -144,7 +144,7 @@ function handleFatalError(error: Error): void {
     console.error(error.stack)
   } else {
     console.error('  Tip: re-run with --verbose for full stack trace')
-    console.error('  Or:  gtm-os doctor — for a full system health check\n')
+    console.error('  Or:  yalc-gtm doctor — for a full system health check\n')
   }
 
   process.exit(1)

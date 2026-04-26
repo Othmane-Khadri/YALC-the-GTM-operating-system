@@ -184,7 +184,7 @@ export async function runBootstrap(opts: BootstrapOptions): Promise<void> {
   console.log(`  Campaigns: ${campaignPages.length}`)
   console.log(`  Variants:  ${variantNameToCampaignMap.size}`)
   console.log(`  Leads:     ${imported}`)
-  console.log(`\nRun \`gtm-os campaign:dashboard\` to visualize.`)
+  console.log(`\nRun \`yalc-gtm campaign:dashboard\` to visualize.`)
 }
 
 // ─── Notion Property Extractors ──────────────────────────────────────────────

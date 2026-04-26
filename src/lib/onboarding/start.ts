@@ -87,7 +87,7 @@ export async function runStart(opts: StartOptions): Promise<void> {
 
   console.log(`
   ╔══════════════════════════════════════╗
-  ║         GTM-OS — Getting Started     ║
+  ║         YALC — Getting Started       ║
   ╚══════════════════════════════════════╝
 `)
 
@@ -276,7 +276,7 @@ export async function runStart(opts: StartOptions): Promise<void> {
     console.log('\n── Step 3/4 — Building GTM Framework ──\n')
     console.log('  ⊘ Skipped — framework derivation needs an Anthropic key.')
     console.log('    Your company context is saved. To finish setup later:')
-    console.log('      1. Add ANTHROPIC_API_KEY to .env.local')
+    console.log('      1. Add ANTHROPIC_API_KEY to ~/.gtm-os/.env (or .env.local in your project)')
     console.log('      2. Run: yalc-gtm onboard --linkedin <url> --website <url>')
     console.log('      3. Run: yalc-gtm configure')
     console.log('\n── Step 4/4 — Goals & Configuration ──\n')

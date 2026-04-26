@@ -2,7 +2,7 @@
  * GTM-OS Doctor
  *
  * Proactive health check that runs through all 5 diagnostic layers.
- * Like `brew doctor` — users run `gtm-os doctor` to validate their setup
+ * Like `brew doctor` — users run `yalc-gtm doctor` to validate their setup
  * before anything breaks.
  *
  * Optionally generates a diagnostic report file for bug reports.
@@ -13,6 +13,7 @@ import { homedir } from 'os'
 import { join, resolve } from 'path'
 import { execSync } from 'child_process'
 import yaml from 'js-yaml'
+import { GTM_OS_DIR } from '../paths'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -272,19 +273,20 @@ function checkDatabase(): LayerResult {
 function checkConfiguration(): LayerResult {
   const checks: CheckResult[] = []
 
-  // gtm-os.yaml
-  const frameworkPath = join(process.cwd(), 'gtm-os.yaml')
+  // framework.yaml lives in ~/.gtm-os/
+  const frameworkPath = join(GTM_OS_DIR, 'framework.yaml')
+  const frameworkLabel = 'GTM framework (~/.gtm-os/framework.yaml)'
   if (!existsSync(frameworkPath)) {
     checks.push({
-      name: 'GTM framework (gtm-os.yaml)',
+      name: frameworkLabel,
       status: 'fail',
-      detail: 'Missing. Run: gtm-os onboard',
+      detail: 'Missing. Run: yalc-gtm onboard',
     })
   } else {
     try {
       const framework = yaml.load(readFileSync(frameworkPath, 'utf-8')) as Record<string, any> | null
       if (framework?.onboarding_complete) {
-        checks.push({ name: 'GTM framework (gtm-os.yaml)', status: 'pass', detail: '' })
+        checks.push({ name: frameworkLabel, status: 'pass', detail: '' })
         if (framework?.company?.name) {
           checks.push({ name: `Company: ${framework.company.name}`, status: 'pass', detail: '' })
         }
@@ -296,14 +298,14 @@ function checkConfiguration(): LayerResult {
         }
       } else {
         checks.push({
-          name: 'GTM framework (gtm-os.yaml)',
+          name: frameworkLabel,
           status: 'warn',
-          detail: 'File exists but onboarding_complete is false. Run: gtm-os onboard',
+          detail: 'File exists but onboarding_complete is false. Run: yalc-gtm onboard',
         })
       }
     } catch (e) {
       checks.push({
-        name: 'GTM framework (gtm-os.yaml)',
+        name: frameworkLabel,
         status: 'fail',
         detail: `Invalid YAML: ${e instanceof Error ? e.message : String(e)}`,
       })
@@ -316,7 +318,7 @@ function checkConfiguration(): LayerResult {
     checks.push({
       name: 'User config (~/.gtm-os/config.yaml)',
       status: 'warn',
-      detail: 'Missing. Run: gtm-os setup — to create with defaults.',
+      detail: 'Missing. Run: yalc-gtm setup — to create with defaults.',
     })
   } else {
     try {

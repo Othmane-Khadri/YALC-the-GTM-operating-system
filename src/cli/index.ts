@@ -1268,7 +1268,7 @@ program
     const { configureSkills } = await import('../lib/onboarding/skill-configurator')
     const framework = await loadFramework()
     if (!framework) {
-      console.log('No framework found. Run "gtm-os onboard" first.')
+      console.log('No framework found. Run "yalc-gtm onboard" first.')
       return
     }
     const goals = await setGoals(framework)
@@ -1514,7 +1514,7 @@ program
       const { loadCommunitySkills } = await import('../lib/marketplace/loader')
       const skills = await loadCommunitySkills()
       if (skills.length === 0) {
-        console.log('No community skills installed. Run `gtm-os skills:search <query>` to find skills.')
+        console.log('No community skills installed. Run `yalc-gtm skills:search <query>` to find skills.')
         return
       }
       console.log(`\n── Installed Community Skills (${skills.length}) ──\n`)
@@ -1538,7 +1538,7 @@ program
       const stars = s.downloads ? `★ ${s.downloads}` : ''
       console.log(`  ${s.id.padEnd(30)} ${s.author.padEnd(16)} ${stars.padEnd(8)} ${s.description.slice(0, 60)}`)
     }
-    console.log(`\nInstall with: gtm-os skills:install --github <owner>/<repo>`)
+    console.log(`\nInstall with: yalc-gtm skills:install --github <owner>/<repo>`)
   }))
 
 // ─── skills:search ────────────────────────────────────────────────────────
@@ -1560,7 +1560,7 @@ program
       const stars = s.downloads ? `★ ${s.downloads}` : ''
       console.log(`  ${s.id.padEnd(30)} ${s.author.padEnd(16)} ${stars.padEnd(8)} ${s.description.slice(0, 60)}`)
     }
-    console.log(`\nInstall with: gtm-os skills:install --github <owner>/<repo>`)
+    console.log(`\nInstall with: yalc-gtm skills:install --github <owner>/<repo>`)
   }))
 
 // ─── skills:create ───────────────────────────────────────────────────────
@@ -1603,7 +1603,7 @@ program
     if (result.success) {
       console.log(`\n✓ ${result.message}`)
       console.log(`  Path: ${result.installPath}`)
-      console.log(`\nThe skill is now available. Run \`gtm-os skills:browse --installed\` to verify.`)
+      console.log(`\nThe skill is now available. Run \`yalc-gtm skills:browse --installed\` to verify.`)
     } else {
       console.error(`\n✗ Installation failed: ${result.message}`)
       process.exit(1)
@@ -1620,7 +1620,7 @@ program
     const skill = registry.get(skillId)
 
     if (!skill) {
-      console.error(`Skill "${skillId}" not found. Run \`gtm-os skills:browse --installed\` to see installed skills.`)
+      console.error(`Skill "${skillId}" not found. Run \`yalc-gtm skills:browse --installed\` to see installed skills.`)
       process.exit(1)
     }
 
@@ -1924,7 +1924,7 @@ program
       console.log('\nAdd them to your .env.local or export them before running GTM-OS.')
     }
 
-    console.log('\nVerify with: npx tsx src/cli/index.ts provider:test ' + opts.mcp)
+    console.log('\nVerify with: yalc-gtm provider:test ' + opts.mcp)
   }))
 
 // ─── provider:test ─────────────────────────────────────────────────────────

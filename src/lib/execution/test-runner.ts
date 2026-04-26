@@ -123,5 +123,5 @@ export async function runTestBatch(config: GTMOSConfig, count = 10): Promise<voi
   await collectFeedback(imported.resultSetId)
 
   console.log('\n[test-run] Test batch complete. Intelligence has been updated.')
-  console.log('[test-run] Run "gtm-os test-run" again to see improved results.')
+  console.log('[test-run] Run "yalc-gtm test-run" again to see improved results.')
 }

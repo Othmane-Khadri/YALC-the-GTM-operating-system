@@ -78,7 +78,7 @@ const ERROR_PATTERNS: Array<{
       code: 'ENV_005',
       title: 'Missing .env.local file',
       cause: 'No .env.local file found. This file holds your API keys.',
-      fix: '1. Copy the example: cp .env.example .env.local\n   2. Fill in your API keys\n   3. Run: gtm-os setup',
+      fix: '1. Copy the example: cp .env.example .env.local\n   2. Fill in your API keys\n   3. Run: yalc-gtm setup',
     }),
   },
 
@@ -126,7 +126,7 @@ const ERROR_PATTERNS: Array<{
       code: 'CFG_001',
       title: 'Missing GTM framework',
       cause: 'gtm-os.yaml not found. This file defines your company identity, ICP, and messaging.',
-      fix: 'Run: gtm-os onboard\n   This walks you through 5 questions to set up your framework.',
+      fix: 'Run: yalc-gtm onboard\n   This walks you through 5 questions to set up your framework.',
     }),
   },
   {
@@ -146,7 +146,7 @@ const ERROR_PATTERNS: Array<{
       code: 'CFG_004',
       title: 'Missing user config',
       cause: 'No config file found at ~/.gtm-os/config.yaml',
-      fix: 'Run: gtm-os setup\n   This creates the config file with sensible defaults.',
+      fix: 'Run: yalc-gtm setup\n   This creates the config file with sensible defaults.',
     }),
   },
 
@@ -198,7 +198,7 @@ const ERROR_PATTERNS: Array<{
       code: 'PRV_007',
       title: 'Rate limit exceeded',
       cause: 'You\'ve hit the API rate limit for this provider.',
-      fix: 'Wait 60 seconds and try again. Rate limits reset daily.\n   Check current state: gtm-os doctor',
+      fix: 'Wait 60 seconds and try again. Rate limits reset daily.\n   Check current state: yalc-gtm doctor',
     }),
   },
 
@@ -230,7 +230,7 @@ const ERROR_PATTERNS: Array<{
       code: 'DB_005',
       title: 'Foreign key constraint violation',
       cause: 'Attempted to reference a record that doesn\'t exist.',
-      fix: 'This usually means stale data. Re-run the parent operation first.\n   Run: gtm-os doctor — to check database integrity.',
+      fix: 'This usually means stale data. Re-run the parent operation first.\n   Run: yalc-gtm doctor — to check database integrity.',
     }),
   },
 ]
@@ -263,7 +263,7 @@ function formatDiagnostic(diagnostic: Diagnostic, originalError: string): string
     lines.push(`  │    ${fixLine.trim()}`)
   }
   lines.push(`  │`)
-  lines.push(`  │  For a full system check, run: gtm-os doctor`)
+  lines.push(`  │  For a full system check, run: yalc-gtm doctor`)
   lines.push(`  └──────────────────────────────────────────────`)
   lines.push('')
   return lines.join('\n')
@@ -322,8 +322,8 @@ export function withDiagnostics<T extends (...args: any[]) => Promise<void>>(
         console.error(`  Error: ${err.message}`)
         console.error('')
         console.error(`  This error isn't in the known issues catalog.`)
-        console.error(`  Try: gtm-os doctor — for a full system health check`)
-        console.error(`  Or:  gtm-os doctor --report — to generate a diagnostic report`)
+        console.error(`  Try: yalc-gtm doctor — for a full system health check`)
+        console.error(`  Or:  yalc-gtm doctor --report — to generate a diagnostic report`)
         console.error('')
 
         // Show stack trace in debug/verbose mode
