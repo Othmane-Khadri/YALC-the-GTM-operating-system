@@ -38,6 +38,30 @@ From the systems architecture roadmap:
 | Social Pilot | MCP or API | Social media analytics |
 | Google Search Console | API | SEO rankings, clicks, impressions |
 
+## Adding Your Own MCP
+
+To add a custom MCP server (one that isn't shipped as a template), drop a JSON config file anywhere on disk and point `provider:add` at it:
+
+```bash
+# 1. Write your config (anywhere)
+cat > /tmp/pipedrive.json <<'EOF'
+{
+  "name": "pipedrive",
+  "command": "npx",
+  "args": ["-y", "@pipedrive/mcp-server"],
+  "env": { "PIPEDRIVE_API_TOKEN": "${PIPEDRIVE_API_TOKEN}" }
+}
+EOF
+
+# 2. Register it
+yalc-gtm provider:add --mcp /tmp/pipedrive.json
+
+# 3. Verify
+yalc-gtm provider:test pipedrive
+```
+
+The config is copied to `~/.gtm-os/mcp/<name>.json` (the `name` field decides the filename, not the input path). Pass `--force` to overwrite an existing provider of the same name. The `${ENV_VAR}` syntax inside any string field is expanded at load time from your shell environment / `.env`.
+
 ## Connecting External MCP Servers
 
 When MCP server support is fully shipped, connection will work like this:

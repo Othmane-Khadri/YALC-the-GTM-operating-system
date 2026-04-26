@@ -1908,34 +1908,132 @@ program
 // ─── provider:add ──────────────────────────────────────────────────────────
 program
   .command('provider:add')
-  .description('Add an MCP provider from a template config')
-  .requiredOption('--mcp <name>', 'Template name (hubspot, apollo, peopledatalabs, zoominfo, brevo, mailgun, sendgrid)')
+  .description('Add an MCP provider from a shipped template or a JSON config file')
+  .requiredOption('--mcp <name-or-path>', 'Template name (hubspot, apollo, ...) OR path to a JSON config file')
+  .option('--force', 'Overwrite an existing provider config of the same name')
   .action(withDiagnostics(async (opts) => {
-    const { existsSync, copyFileSync, mkdirSync, readFileSync } = await import('fs')
-    const { join } = await import('path')
+    const { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } = await import('fs')
+    const { join, resolve, isAbsolute } = await import('path')
     const { homedir } = await import('os')
     const { getMcpTemplateDir, listTemplateConfigs } = await import('../lib/providers/mcp-loader')
 
-    const templateDir = getMcpTemplateDir()
     const targetDir = join(homedir(), '.gtm-os', 'mcp')
+    const input = String(opts.mcp)
 
+    // Detect path-vs-template-name. A path either contains a separator,
+    // starts with ./ ../ / ~/ or ends with .json. Anything else is a name.
+    const looksLikePath =
+      input.includes('/') ||
+      input.startsWith('./') ||
+      input.startsWith('../') ||
+      input.startsWith('~') ||
+      input.endsWith('.json')
+
+    if (looksLikePath) {
+      // Resolve ~ to homedir, relative paths to cwd.
+      let resolved: string
+      if (input.startsWith('~/') || input === '~') {
+        resolved = join(homedir(), input.slice(input.startsWith('~/') ? 2 : 1))
+      } else if (isAbsolute(input)) {
+        resolved = input
+      } else {
+        resolved = resolve(process.cwd(), input)
+      }
+
+      if (!existsSync(resolved)) {
+        console.error(`Error: MCP config not found at ${resolved}`)
+        process.exit(1)
+      }
+
+      // Parse + minimal-shape validate (name/command/args). Full schema
+      // validation happens in mcp-loader on registry load; we just guard
+      // against typos here so the file you're copying isn't garbage.
+      let raw: unknown
+      try {
+        raw = JSON.parse(readFileSync(resolved, 'utf-8'))
+      } catch (err) {
+        console.error(`Error: MCP config is not valid JSON — ${err instanceof Error ? err.message : String(err)}`)
+        process.exit(1)
+      }
+
+      if (!raw || typeof raw !== 'object') {
+        console.error('Error: MCP config invalid — file must contain a JSON object')
+        process.exit(1)
+      }
+      const cfg = raw as Record<string, unknown>
+      const requiredField = (k: string) => {
+        if (cfg[k] === undefined || cfg[k] === null) {
+          console.error(`Error: MCP config invalid — missing field "${k}"`)
+          process.exit(1)
+        }
+      }
+      requiredField('name')
+      if (typeof cfg.name !== 'string' || cfg.name.length === 0) {
+        console.error('Error: MCP config invalid — "name" must be a non-empty string')
+        process.exit(1)
+      }
+      requiredField('command')
+      if (typeof cfg.command !== 'string' || cfg.command.length === 0) {
+        console.error('Error: MCP config invalid — "command" must be a non-empty string')
+        process.exit(1)
+      }
+      requiredField('args')
+      if (!Array.isArray(cfg.args)) {
+        console.error('Error: MCP config invalid — "args" must be an array')
+        process.exit(1)
+      }
+
+      const targetName = cfg.name as string
+      const targetPath = join(targetDir, `${targetName}.json`)
+
+      mkdirSync(targetDir, { recursive: true })
+      if (existsSync(targetPath) && !opts.force) {
+        console.error(`Error: provider "${targetName}" already exists at ${targetPath}. Pass --force to overwrite.`)
+        process.exit(1)
+      }
+      // Write the parsed object (canonicalizes formatting; survives --force).
+      writeFileSync(targetPath, JSON.stringify(cfg, null, 2) + '\n')
+
+      // Surface required env vars from the file.
+      const envVars: string[] = []
+      const jsonStr = JSON.stringify(cfg)
+      const matches = jsonStr.matchAll(/\$\{([^}]+)\}/g)
+      for (const match of matches) {
+        if (!envVars.includes(match[1])) envVars.push(match[1])
+      }
+
+      console.log(`\nAdded MCP provider "${targetName}" from ${resolved}.`)
+      if (envVars.length > 0) {
+        console.log('\nRequired environment variables:')
+        for (const v of envVars) {
+          const isSet = process.env[v] ? 'SET' : 'NOT SET'
+          console.log(`  ${v}: ${isSet}`)
+        }
+        console.log('\nAdd them to your .env.local or export them before running GTM-OS.')
+      }
+      console.log(`\nVerify with: yalc-gtm provider:test ${targetName}`)
+      return
+    }
+
+    // Template-name path (original behavior).
+    const templateDir = getMcpTemplateDir()
     if (!templateDir) {
       console.error('No MCP template directory found. The shipped `configs/mcp/` is missing — please reinstall the package.')
       process.exit(1)
     }
 
-    const templatePath = join(templateDir, `${opts.mcp}.json`)
-    const targetPath = join(targetDir, `${opts.mcp}.json`)
+    const templatePath = join(templateDir, `${input}.json`)
+    const targetPath = join(targetDir, `${input}.json`)
 
     if (!existsSync(templatePath)) {
       const available = listTemplateConfigs()
-      console.error(`Template "${opts.mcp}" not found. Available: ${available.join(', ') || 'none'}`)
+      console.error(`Template "${input}" not found. Available: ${available.join(', ') || 'none'}`)
       process.exit(1)
     }
 
-    if (existsSync(targetPath)) {
-      console.log(`Config already exists at ${targetPath}. Edit it directly or remove first.`)
-      return
+    if (existsSync(targetPath) && !opts.force) {
+      console.error(`Error: provider "${input}" already exists at ${targetPath}. Pass --force to overwrite.`)
+      process.exit(1)
     }
 
     mkdirSync(targetDir, { recursive: true })
@@ -1950,7 +2048,7 @@ program
       if (!envVars.includes(match[1])) envVars.push(match[1])
     }
 
-    console.log(`\nCopied ${opts.mcp} config to ${targetPath}`)
+    console.log(`\nCopied ${input} config to ${targetPath}`)
 
     if (envVars.length > 0) {
       console.log('\nRequired environment variables:')
@@ -1961,7 +2059,7 @@ program
       console.log('\nAdd them to your .env.local or export them before running GTM-OS.')
     }
 
-    console.log('\nVerify with: yalc-gtm provider:test ' + opts.mcp)
+    console.log('\nVerify with: yalc-gtm provider:test ' + input)
   }))
 
 // ─── provider:test ─────────────────────────────────────────────────────────

@@ -38,6 +38,7 @@
     "configs",
     "scripts",
     "templates",
+    "docs/mcp.md",
     "data/intelligence/README.md",
     "tsconfig.json"
   ],
