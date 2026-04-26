@@ -140,7 +140,15 @@ ${inputs.map(inp => `  "${inp.name}_result": ""`).join(',\n')}
 
   writeFileSync(filePath, content)
   console.log(`\nSkill created: ${filePath}`)
-  console.log(`\nThe skill is registered on next CLI run. Verify with:`)
+  console.log(`\nRun it:`)
+  const firstInput = inputs[0]
+  const moreInputs = inputs.length > 1 ? ' --input ...' : ''
+  if (firstInput) {
+    console.log(`  yalc-gtm skills:run md:${name} --input ${firstInput.name}=<value>${moreInputs}`)
+  } else {
+    console.log(`  yalc-gtm skills:run md:${name}`)
+  }
+  console.log(`Inspect schema:`)
   console.log(`  yalc-gtm skills:info md:${name}`)
   console.log(`\nEdit the prompt template in the file to customize the skill behavior.`)
 }

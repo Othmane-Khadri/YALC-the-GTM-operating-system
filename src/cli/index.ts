@@ -1535,6 +1535,11 @@ program
     await runDoctor({ report: opts.report })
   })
 
+// commander array-collector for repeated --input flags
+function collectArg(value: string, previous: string[]): string[] {
+  return previous.concat([value])
+}
+
 // ─── skills:browse ────────────────────────────────────────────────────────
 program
   .command('skills:browse')
@@ -1543,15 +1548,57 @@ program
   .option('--installed', 'Show only locally installed skills')
   .action(withDiagnostics(async (opts) => {
     if (opts.installed) {
+      const rows: Array<{ id: string; version: string; category: string; description: string; source: string }> = []
+
+      // Marketplace-installed (JSON-based community skills).
       const { loadCommunitySkills } = await import('../lib/marketplace/loader')
-      const skills = await loadCommunitySkills()
-      if (skills.length === 0) {
-        console.log('No community skills installed. Run `yalc-gtm skills:search <query>` to find skills.')
+      const community = await loadCommunitySkills()
+      for (const s of community) {
+        rows.push({ id: s.id, version: s.version, category: s.category, description: s.description, source: 'marketplace' })
+      }
+
+      // Markdown skills from ~/.gtm-os/skills/ (user) and configs/skills/ (bundled).
+      const { loadAllMarkdownSkills, loadMarkdownSkill, getMarkdownSkillsDir } = await import('../lib/skills/markdown-loader')
+      const { existsSync, readdirSync } = await import('fs')
+      const { join } = await import('path')
+
+      // User markdown skills (already loaded via loadAllMarkdownSkills).
+      const userMd = await loadAllMarkdownSkills()
+      for (const s of userMd) {
+        rows.push({ id: s.id, version: s.version, category: s.category, description: s.description, source: 'user' })
+      }
+
+      // Bundled markdown skills under <PKG_ROOT>/configs/skills/. We look up
+      // the dir lazily — paths.ts knows the package root.
+      try {
+        const { PKG_ROOT } = await import('../lib/paths')
+        const bundledDir = join(PKG_ROOT, 'configs', 'skills')
+        if (existsSync(bundledDir) && bundledDir !== getMarkdownSkillsDir()) {
+          for (const f of readdirSync(bundledDir).filter(f => f.endsWith('.md'))) {
+            try {
+              const result = await loadMarkdownSkill(join(bundledDir, f))
+              if (result.skill) {
+                rows.push({
+                  id: result.skill.id,
+                  version: result.skill.version,
+                  category: result.skill.category,
+                  description: result.skill.description,
+                  source: 'bundled',
+                })
+              }
+            } catch { /* ignore */ }
+          }
+        }
+      } catch { /* ignore */ }
+
+      if (rows.length === 0) {
+        console.log('No skills installed. Run `yalc-gtm skills:create` for a markdown skill, or `skills:search <query>` for marketplace skills.')
         return
       }
-      console.log(`\n── Installed Community Skills (${skills.length}) ──\n`)
-      for (const s of skills) {
-        console.log(`  ${s.id.padEnd(30)} ${s.version.padEnd(8)} ${s.category.padEnd(12)} ${s.description}`)
+
+      console.log(`\n── Installed Skills (${rows.length}) ──\n`)
+      for (const r of rows) {
+        console.log(`  ${r.id.padEnd(36)} ${r.version.padEnd(8)} ${r.category.padEnd(12)} [${r.source}] ${r.description}`)
       }
       return
     }
@@ -1647,6 +1694,47 @@ program
     }
   }))
 
+// ─── skills:run ───────────────────────────────────────────────────────────
+program
+  .command('skills:run <skillId>')
+  .description('Execute an installed skill with the given inputs')
+  .option('--input <kv>', 'Input as key=value (repeatable)', collectArg, [] as string[])
+  .option('--input-file <path>', 'Read inputs as a single JSON object from a file')
+  .option('--output <path>', 'Write output JSON to a file (default: stdout)')
+  .option('--tenant <slug>', 'Tenant slug (default: "default")')
+  .action(withDiagnostics(async (skillId: string, opts) => {
+    const { runSkill } = await import('../lib/skills/runner')
+    await runSkill(skillId, {
+      input: opts.input,
+      inputFile: opts.inputFile,
+      output: opts.output,
+      tenant: opts.tenant,
+    })
+  }))
+
+// ─── skills:validate ──────────────────────────────────────────────────────
+program
+  .command('skills:validate <path>')
+  .description('Validate a markdown skill file without registering it')
+  .action(withDiagnostics(async (filePath: string) => {
+    const { resolve } = await import('path')
+    const { existsSync } = await import('fs')
+    const { loadMarkdownSkill } = await import('../lib/skills/markdown-loader')
+    const abs = resolve(process.cwd(), filePath)
+    if (!existsSync(abs)) {
+      console.error(`File not found: ${abs}`)
+      process.exit(1)
+    }
+    const result = await loadMarkdownSkill(abs)
+    if (result.errors.length === 0 && result.skill) {
+      console.log(`OK — ${result.skill.id} (${result.skill.category})`)
+      return
+    }
+    console.error(`Validation failed for ${abs}:`)
+    for (const e of result.errors) console.error(`  - ${e}`)
+    process.exit(1)
+  }))
+
 // ─── skills:info ──────────────────────────────────────────────────────────
 program
   .command('skills:info <skillId>')
@@ -1654,7 +1742,11 @@ program
   .action(withDiagnostics(async (skillId: string) => {
     const { getSkillRegistryReady } = await import('../lib/skills/registry')
     const registry = await getSkillRegistryReady()
-    const skill = registry.get(skillId)
+    let skill = registry.get(skillId)
+    // Markdown skills register as md:<name>; try the prefix automatically.
+    if (!skill && !skillId.startsWith('md:')) {
+      skill = registry.get(`md:${skillId}`)
+    }
 
     if (!skill) {
       console.error(`Skill "${skillId}" not found. Run \`yalc-gtm skills:browse --installed\` to see installed skills.`)
