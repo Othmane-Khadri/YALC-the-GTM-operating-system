@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from 'fs'
 import { dirname, join, resolve } from 'path'
 import { homedir } from 'os'
 import { fileURLToPath } from 'url'
+import { PKG_ROOT } from '../paths'
 import type { ProviderCapability } from './types'
 import type { McpProviderConfig, McpStdioConfig, McpSseConfig } from './mcp-adapter'
 import { McpProviderAdapter } from './mcp-adapter'
@@ -300,7 +301,11 @@ export function getMcpTemplateDir(): string | null {
     // import.meta.url unavailable — fall through to CWD.
   }
 
-  // Anchor 2: CWD fallback for dev workflow inside the repo.
+  // Anchor 2: explicit PKG_ROOT candidate (covers symlinked installs where
+  // the walk-up above finds a different ancestor first).
+  candidates.push(resolve(PKG_ROOT, 'configs', 'mcp'))
+
+  // Anchor 3: CWD fallback for dev workflow inside the repo.
   candidates.push(resolve(process.cwd(), 'configs', 'mcp'))
 
   for (const c of candidates) {

@@ -21,9 +21,10 @@ import type {
   CRMObjectMapping,
   CRMObjectInfo,
 } from './types'
-import { existsSync, readFileSync } from 'fs'
-import { join } from 'path'
+import { existsSync, readFileSync, copyFileSync, mkdirSync } from 'fs'
+import { join, dirname } from 'path'
 import { homedir } from 'os'
+import { PKG_ROOT } from '../paths'
 
 // ─── Readline helper ────────────────────────────────────────────────────────
 
@@ -230,10 +231,15 @@ async function editMapping(
 // ─── MCP config loader ──────────────────────────────────────────────────────
 
 function loadMcpConfig(provider: string): McpProviderConfig | null {
-  // Check user config first, then shipped templates
+  // Resolution order: ~/.gtm-os/mcp (user override) → cwd (dev checkout)
+  // → PKG_ROOT (installed tarball). When the bundled template is the only
+  // copy we find, seed it into ~/.gtm-os/mcp so the user has a writable
+  // baseline going forward — matches the behavior of `provider:add`.
+  const userPath = join(homedir(), '.gtm-os', 'mcp', `${provider}.json`)
   const paths = [
-    join(homedir(), '.gtm-os', 'mcp', `${provider}.json`),
+    userPath,
     join(process.cwd(), 'configs', 'mcp', `${provider}.json`),
+    join(PKG_ROOT, 'configs', 'mcp', `${provider}.json`),
   ]
 
   for (const filePath of paths) {
@@ -245,6 +251,16 @@ function loadMcpConfig(provider: string): McpProviderConfig | null {
       if (!validation.valid) {
         console.warn(`  Invalid MCP config at ${filePath}: ${validation.errors.join('; ')}`)
         continue
+      }
+
+      // Seed into ~/.gtm-os/mcp on first use so users can edit the file.
+      if (filePath !== userPath && !existsSync(userPath)) {
+        try {
+          mkdirSync(dirname(userPath), { recursive: true })
+          copyFileSync(filePath, userPath)
+        } catch {
+          // Non-fatal — still return the resolved config.
+        }
       }
 
       const { result: expanded } = expandEnvVars(raw)

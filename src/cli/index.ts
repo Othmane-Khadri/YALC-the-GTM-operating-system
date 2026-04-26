@@ -18,6 +18,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { loadConfig } from '../lib/config/loader'
+import { PKG_ROOT } from '../lib/paths'
 import { withDiagnostics } from '../lib/diagnostics/error-handler'
 import { installGlobalErrorBoundary, setVerbose } from '../lib/cli/error-boundary'
 import { resolveTenant, DEFAULT_TENANT } from '../lib/tenant/index.js'
@@ -753,9 +754,11 @@ program
     }
 
     // Load MCP config
+    // Resolution order: ~/.gtm-os/mcp (user override) → cwd (dev checkout) → PKG_ROOT (installed tarball)
     const mcpPaths = [
       join(homedir(), '.gtm-os', 'mcp', `${crmConfig.mcpServer}.json`),
       join(process.cwd(), 'configs', 'mcp', `${crmConfig.mcpServer}.json`),
+      join(PKG_ROOT, 'configs', 'mcp', `${crmConfig.mcpServer}.json`),
     ]
     let mcpConfig = null
     for (const p of mcpPaths) {
@@ -2081,7 +2084,8 @@ program
 
     console.log(`\n── Pipelines (${pipelines.length}) ──\n`)
     for (const p of pipelines) {
-      console.log(`  ${p.name.padEnd(30)} ${String(p.steps).padEnd(4)} steps  ${p.description}`)
+      const tag = p.bundled ? '[bundled] ' : ''
+      console.log(`  ${tag}${p.name.padEnd(30)} ${String(p.steps).padEnd(4)} steps  ${p.description}`)
       console.log(`    ${p.file}`)
     }
   })

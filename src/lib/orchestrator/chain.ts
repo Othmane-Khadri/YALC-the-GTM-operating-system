@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 
 import { join, dirname } from 'path'
 import { homedir } from 'os'
 import yaml from 'js-yaml'
+import { PKG_ROOT } from '../paths'
 import { getSkillRegistryReady } from '../skills/registry'
 import { parseCondition, evaluateCondition, validateCondition } from './conditions'
 import { applyPipelineTransform, validateStepTransform } from './transforms'
@@ -410,16 +411,24 @@ export async function* executePipeline(
 
 // ─── Pipeline Listing ────────────────────────────────────────────────────────
 
-export function listPipelines(): Array<{ name: string; file: string; description: string; steps: number }> {
-  const dirs = [
+export function listPipelines(): Array<{ name: string; file: string; description: string; steps: number; bundled?: boolean }> {
+  // User pipelines take priority. We also surface bundled pipelines from
+  // PKG_ROOT/templates/sequences and PKG_ROOT/configs/pipelines so a fresh
+  // install isn't an empty list.
+  const userDirs = [
     join(homedir(), '.gtm-os', 'pipelines'),
     join(process.cwd(), 'configs', 'pipelines'),
   ]
+  const bundledDirs = [
+    join(PKG_ROOT, 'templates', 'sequences'),
+    join(PKG_ROOT, 'configs', 'pipelines'),
+  ]
 
-  const pipelines: Array<{ name: string; file: string; description: string; steps: number }> = []
+  const pipelines: Array<{ name: string; file: string; description: string; steps: number; bundled?: boolean }> = []
+  const seen = new Set<string>()
 
-  for (const dir of dirs) {
-    if (!existsSync(dir)) continue
+  const collect = (dir: string, bundled: boolean) => {
+    if (!existsSync(dir)) return
     const files = readdirSync(dir).filter(
       (f: string) => (f.endsWith('.yaml') || f.endsWith('.yml')) && !f.startsWith('.'),
     )
@@ -427,17 +436,23 @@ export function listPipelines(): Array<{ name: string; file: string; description
       const fullPath = join(dir, file)
       try {
         const def = loadPipeline(fullPath)
+        if (seen.has(def.name)) continue
+        seen.add(def.name)
         pipelines.push({
           name: def.name,
           file: fullPath,
           description: def.description ?? '',
           steps: def.steps.length,
+          ...(bundled ? { bundled: true } : {}),
         })
       } catch {
         // Skip invalid files
       }
     }
   }
+
+  for (const dir of userDirs) collect(dir, false)
+  for (const dir of bundledDirs) collect(dir, true)
 
   return pipelines
 }

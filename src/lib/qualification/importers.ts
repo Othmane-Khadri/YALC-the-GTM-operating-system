@@ -265,14 +265,17 @@ async function importFromCrm(provider: string): Promise<Record<string, unknown>[
   const crmConfig = loadCrmConfig(provider)
   if (!crmConfig) {
     throw new Error(
-      `No CRM config for "${provider}". Run: npx tsx src/cli/index.ts crm:setup --provider ${provider}`,
+      `No CRM config for "${provider}". Run: yalc-gtm crm:setup --provider ${provider}`,
     )
   }
 
   // Load MCP config
+  // Resolution order: ~/.gtm-os/mcp (user override) → cwd (dev checkout) → PKG_ROOT (installed tarball)
+  const { PKG_ROOT } = await import('../paths')
   const mcpPaths = [
     join(homedir(), '.gtm-os', 'mcp', `${crmConfig.mcpServer}.json`),
     join(process.cwd(), 'configs', 'mcp', `${crmConfig.mcpServer}.json`),
+    join(PKG_ROOT, 'configs', 'mcp', `${crmConfig.mcpServer}.json`),
   ]
 
   let mcpConfig = null

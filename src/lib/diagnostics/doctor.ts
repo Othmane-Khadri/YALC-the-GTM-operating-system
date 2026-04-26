@@ -61,16 +61,25 @@ function maskEnvValue(value: string | undefined): string {
 }
 
 function readEnvFile(): Map<string, string> {
+  // Read both ~/.gtm-os/.env (canonical) and ./.env.local (legacy). Later
+  // files do NOT override earlier ones — first writer wins, matching the
+  // dotenv array-of-paths behavior used by the CLI entrypoint.
   const envMap = new Map<string, string>()
-  const envPath = join(process.cwd(), '.env.local')
-  if (!existsSync(envPath)) return envMap
-  const content = readFileSync(envPath, 'utf-8')
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    const eqIdx = trimmed.indexOf('=')
-    if (eqIdx === -1) continue
-    envMap.set(trimmed.slice(0, eqIdx), trimmed.slice(eqIdx + 1))
+  const candidates = [
+    join(GTM_OS_DIR, '.env'),
+    join(process.cwd(), '.env.local'),
+  ]
+  for (const envPath of candidates) {
+    if (!existsSync(envPath)) continue
+    const content = readFileSync(envPath, 'utf-8')
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      const eqIdx = trimmed.indexOf('=')
+      if (eqIdx === -1) continue
+      const k = trimmed.slice(0, eqIdx)
+      if (!envMap.has(k)) envMap.set(k, trimmed.slice(eqIdx + 1))
+    }
   }
   return envMap
 }
@@ -97,18 +106,26 @@ function runSqlite(dbPath: string, query: string): string | null {
 
 function checkEnvironment(): LayerResult {
   const checks: CheckResult[] = []
-  const envPath = join(process.cwd(), '.env.local')
+  const globalEnvPath = join(GTM_OS_DIR, '.env')
+  const localEnvPath = join(process.cwd(), '.env.local')
 
-  // .env.local exists
-  if (!existsSync(envPath)) {
+  // env file exists in either canonical or legacy location
+  const hasGlobal = existsSync(globalEnvPath)
+  const hasLocal = existsSync(localEnvPath)
+  if (!hasGlobal && !hasLocal) {
     checks.push({
-      name: '.env.local file',
+      name: 'env file',
       status: 'fail',
-      detail: 'File missing. Run: cp .env.example .env.local',
+      detail: `Missing. Create ${globalEnvPath} or ./.env.local`,
     })
     return { layer: 'Environment', checks }
   }
-  checks.push({ name: '.env.local file', status: 'pass', detail: '' })
+  if (hasGlobal) {
+    checks.push({ name: '~/.gtm-os/.env', status: 'pass', detail: '' })
+  }
+  if (hasLocal) {
+    checks.push({ name: '.env.local (legacy)', status: 'pass', detail: '' })
+  }
 
   const envVars = readEnvFile()
 
@@ -170,8 +187,9 @@ function checkEnvironment(): LayerResult {
     }
   }
 
-  // Common mistakes
-  const envContent = readFileSync(envPath, 'utf-8')
+  // Common mistakes — scan whichever env file we actually have
+  const envFile = hasGlobal ? globalEnvPath : localEnvPath
+  const envContent = readFileSync(envFile, 'utf-8')
   const quotedLines = envContent.split('\n').filter(l => /^[A-Z_]+=".*"/.test(l.trim()))
   if (quotedLines.length > 0) {
     checks.push({
