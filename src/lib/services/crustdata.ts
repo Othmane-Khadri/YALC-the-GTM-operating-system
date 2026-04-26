@@ -13,6 +13,21 @@
 
 const BASE_URL = 'https://api.crustdata.com'
 
+// Configurable default for `limit` on search calls when the caller doesn't
+// override. Wired from `crustdata.max_results_per_query` in config.yaml via
+// `setCrustdataDefaults`.
+let _defaultMaxResults = 50
+
+export function setCrustdataDefaults(opts: { maxResultsPerQuery?: number }): void {
+  if (typeof opts.maxResultsPerQuery === 'number' && opts.maxResultsPerQuery > 0) {
+    _defaultMaxResults = opts.maxResultsPerQuery
+  }
+}
+
+export function getCrustdataDefaultMaxResults(): number {
+  return _defaultMaxResults
+}
+
 // Credit cost reference table (from MCP tool descriptions + observed behavior)
 export const CREDIT_COSTS = {
   company_identify: 0,
@@ -185,7 +200,7 @@ export class CrustdataService {
     if (filters.employeeRange) body.employee_range = filters.employeeRange
     if (filters.location) body.location = filters.location
     if (filters.keywords) body.keywords = filters.keywords
-    body.limit = filters.limit ?? 50
+    body.limit = filters.limit ?? _defaultMaxResults
 
     const res = await fetch(`${BASE_URL}/v1/companies/search`, {
       method: 'POST',
@@ -217,7 +232,8 @@ export class CrustdataService {
   }
 
   async searchPeople(filters: SearchPeopleFilters): Promise<CreditTrackResult<PeopleSearchResult>> {
-    const estimate = estimateCost('people_search_db', { resultCount: filters.limit ?? 100 })
+    const effectiveLimit = filters.limit ?? _defaultMaxResults
+    const estimate = estimateCost('people_search_db', { resultCount: effectiveLimit })
     const check = await this.preflight(estimate.credits)
     if (!check.ok) {
       throw new Error(`[crustdata] Preflight failed: ${check.message}`)
@@ -271,7 +287,7 @@ export class CrustdataService {
 
     const body: Record<string, unknown> = {
       filters: filterObj,
-      limit: Math.min(filters.limit ?? 100, 1000),
+      limit: Math.min(filters.limit ?? _defaultMaxResults, 1000),
     }
     if (filters.cursor) {
       body.cursor = filters.cursor

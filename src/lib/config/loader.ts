@@ -2,6 +2,7 @@ import { readFileSync } from 'fs'
 import { resolve } from 'path'
 import yaml from 'js-yaml'
 import type { GTMOSConfig } from './types'
+import { setCrustdataDefaults } from '../services/crustdata'
 
 const DEFAULTS: GTMOSConfig = {
   notion: {
@@ -48,21 +49,14 @@ export function loadConfig(configPath: string): GTMOSConfig {
     qualification: { ...DEFAULTS.qualification, ...parsed.qualification },
     crustdata: { max_results_per_query: 50, ...parsed.crustdata },
     fullenrich: { poll_interval_ms: 2000, poll_timeout_ms: 300000, ...parsed.fullenrich },
-    instantly: {
-      daily_send_limit: 50,
-      warmup_enabled: true,
-      schedule: {
-        timezone: 'America/New_York',
-        send_days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
-        send_hours: { start: 8, end: 17 },
-        ...parsed.instantly?.schedule,
-      },
-      ...parsed.instantly,
-    },
     slack: parsed.slack,
     email: { ...DEFAULTS.email!, ...parsed.email },
     linkedin: { ...DEFAULTS.linkedin!, ...parsed.linkedin },
   }
+
+  // Push the crustdata default into the singleton service so calls without
+  // an explicit limit honor the user's config.
+  setCrustdataDefaults({ maxResultsPerQuery: _config.crustdata?.max_results_per_query })
 
   return _config
 }

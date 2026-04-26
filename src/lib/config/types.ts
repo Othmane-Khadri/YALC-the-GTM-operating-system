@@ -40,16 +40,6 @@ export interface FullEnrichConfig {
   poll_timeout_ms: number
 }
 
-export interface InstantlyConfig {
-  daily_send_limit: number
-  warmup_enabled: boolean
-  schedule: {
-    timezone: string
-    send_days: string[]
-    send_hours: { start: number; end: number }
-  }
-}
-
 export interface SlackConfig {
   webhook_url: string
   notify_on: string[] // ['reply', 'demo_booked', 'deal_created', 'winner_declared', 'campaign_completed']
@@ -61,7 +51,6 @@ export interface GTMOSConfig {
   qualification: QualificationConfig
   crustdata?: CrustdataConfig
   fullenrich?: FullEnrichConfig
-  instantly?: InstantlyConfig
   slack?: SlackConfig
   /** Outbound email channel selection (registry provider id). */
   email?: EmailConfig

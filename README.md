@@ -21,6 +21,8 @@ yalc-gtm start
 
 That is the whole installation. The `start` command writes its config to `~/.gtm-os/` and walks you through the rest.
 
+YALC is a CLI; there's no public Node API to import.
+
 ### Updating
 
 ```bash

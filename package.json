@@ -22,10 +22,6 @@
     "linkedin",
     "qualification"
   ],
-  "main": "./src/index.ts",
-  "exports": {
-    ".": "./src/index.ts"
-  },
   "bin": {
     "yalc-gtm": "./bin/yalc-gtm.mjs"
   },
