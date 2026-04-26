@@ -42,6 +42,7 @@
     "configs",
     "scripts",
     "templates",
+    "data/intelligence/README.md",
     "tsconfig.json"
   ],
   "engines": {

@@ -75,10 +75,20 @@ yalc-gtm email:send --provider brevo --to lead@example.com --body "Hi there"
 
 ### Non-Interactive Setup
 
-For CI or automation, set your keys in `.env.local` (see `.env.example`) and run:
+For CI or automation, set your keys in `~/.gtm-os/.env` (or `.env.local` in your project) and run:
 
 ```bash
 yalc-gtm start --non-interactive
+```
+
+A minimal env file looks like:
+
+```env
+ANTHROPIC_API_KEY=sk-ant-...
+UNIPILE_API_KEY=...
+UNIPILE_DSN=https://api{N}.unipile.com:{PORT}
+NOTION_API_KEY=secret_...
+ENCRYPTION_KEY=$(openssl rand -hex 32)
 ```
 
 ## Recommended workflow: drive YALC from your IDE chat
@@ -95,7 +105,7 @@ Every command also works directly in a terminal if you prefer that style. The "U
 
 ## Features at a Glance
 
-- **17 built-in skills** — qualify, scrape, campaign, orchestrate, personalize, competitive-intel, and more
+- **20 built-in skills** — qualify, scrape, campaign, orchestrate, personalize, competitive-intel, and more
 - **7 providers** — Unipile, Crustdata, Firecrawl, Notion, FullEnrich, Instantly, Anthropic
 - **Multi-channel campaigns** — LinkedIn + Email with A/B variant testing
 - **Intelligence store** — learns from every campaign outcome (hypothesis → validated → proven)
@@ -213,6 +223,7 @@ When talking to Claude Code, reference these locations directly:
 | **FullEnrich** | Email/phone enrichment | `FULLENRICH_API_KEY` |
 | **Instantly** | Cold email sending, sequence management | `INSTANTLY_API_KEY` |
 | **Anthropic** | AI planning, qualification, personalization (optional inside Claude Code) | `ANTHROPIC_API_KEY` |
+| **Voyage** | Embeddings (memory) | `VOYAGE_API_KEY` |
 
 ## Skills
 
@@ -262,7 +273,7 @@ All commands that send or write support `--dry-run`. See [Command Reference](doc
 | [First Run Tutorial](docs/first-run.md) | Step-by-step walkthrough of `start`, plus 3 mini-tutorials |
 | [Provider Setup](docs/providers.md) | How to get and configure API keys for each provider |
 | [Command Reference](docs/commands.md) | Every CLI command with flags, examples, and expected output |
-| [Skills Catalog](docs/skills.md) | All 17 built-in skills with scenarios and decision tree |
+| [Skills Catalog](docs/skills.md) | All 20 built-in skills with scenarios and decision tree |
 | [MCP Integration](docs/mcp.md) | How MCP works with GTM-OS, current status, and roadmap |
 | [Troubleshooting](docs/troubleshooting.md) | Common errors and fixes, organized by layer |
 | [Background Agents](docs/background-agents.md) | Agent architecture, creation, scheduling |
@@ -296,6 +307,9 @@ crustdata:
 fullenrich:
   poll_interval_ms: 2000
   poll_timeout_ms: 300000
+memory:
+  embeddings:
+    provider: voyage   # voyage (default) | openai
 ```
 
 ### Env file precedence

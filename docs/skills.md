@@ -10,9 +10,12 @@ Skills are provider-agnostic — `find-companies` doesn't know about Crustdata o
 |-------|----------|-------------|--------------|
 | `find-companies` | research | Search companies by criteria | Crustdata |
 | `find-people` | research | Search people by title, company, role | Crustdata |
+| `find-linkedin` | research | Resolve LinkedIn URLs from name + email | Crustdata |
 | `scrape-linkedin` | research | Scrape post likers/commenters | Unipile |
 | `competitive-intel` | research | Research competitors (web + data) | Firecrawl + Crustdata |
+| `research` | research | Open-ended multi-step web research | Anthropic + Firecrawl |
 | `qualify-leads` | analysis | 7-gate ICP qualification scoring | Anthropic |
+| `track-campaign` | outreach | Poll providers, advance sequences, sync state | Unipile + Instantly |
 | `enrich-leads` | data | Add contact info, tech stack, signals | Crustdata, FullEnrich |
 | `export-data` | data | Export results as CSV/JSON | None (local) |
 | `personalize` | content | AI-personalize outreach messages | Anthropic + Unipile |

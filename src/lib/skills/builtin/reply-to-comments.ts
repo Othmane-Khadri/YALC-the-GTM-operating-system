@@ -218,8 +218,8 @@ export const replyToCommentsSkill: Skill = {
       const commentId = String(c.id ?? '')
       const commentText = String(c.text ?? '')
 
-      // Skip own comments
-      if (authorId === ownAuthorId || authorName.toLowerCase().includes('othmane')) {
+      // Skip own comments — match by author ID only
+      if (authorId === ownAuthorId) {
         skipped++
         continue
       }

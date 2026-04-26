@@ -501,7 +501,15 @@ async function checkProviders(): Promise<LayerResult> {
   // Instantly
   if (process.env.INSTANTLY_API_KEY) {
     try {
-      const resp = await fetch(`https://api.instantly.ai/api/v1/account/list?api_key=${process.env.INSTANTLY_API_KEY}&limit=1`, {
+      // Pass the API key as a Bearer header instead of a URL query string so
+      // it doesn't end up in proxy logs / shell history. NOTE: Instantly's
+      // legacy v1 endpoints historically accepted only `?api_key=`. If a
+      // future tenant reports 401/403 here while keys validate elsewhere,
+      // fall back to the query parameter.
+      const resp = await fetch('https://api.instantly.ai/api/v1/account/list?limit=1', {
+        headers: {
+          Authorization: `Bearer ${process.env.INSTANTLY_API_KEY}`,
+        },
         signal: AbortSignal.timeout(10000),
       })
       if (resp.ok) {

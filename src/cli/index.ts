@@ -216,14 +216,14 @@ program
     console.log(`\n✓ Scraped ${result.totalEngagers} engagers (${result.reactorCount} reactors, ${result.commenterCount} commenters)`)
     console.log(`  Result set: ${result.resultSetId}`)
     console.log(`  Output: ${result.outputPath}`)
-    console.log(`\nNext: npx tsx src/cli/index.ts leads:qualify --result-set ${result.resultSetId}`)
+    console.log(`\nNext: yalc-gtm leads:qualify --result-set ${result.resultSetId}`)
   }))
 
 // ─── linkedin:answer-comments ───────────────────────────────────────────────
 program
   .command('linkedin:answer-comments')
   .description('Reply to LinkedIn post comments (Lead Magnet or AI-personalized)')
-  .requiredOption('--url <url>', 'LinkedIn post URL')
+  .requiredOption('--url, --post-url <url>', 'LinkedIn post URL')
   .option('--mode <mode>', 'Reply mode: lead-magnet or general', 'general')
   .option('--template <text>', 'Reply template for lead-magnet mode')
   .option('--max <n>', 'Max replies', '50')
@@ -276,7 +276,7 @@ program
 program
   .command('linkedin:reply-to-comments')
   .description('Send threaded replies under LinkedIn post comments (never top-level)')
-  .requiredOption('--url <url>', 'LinkedIn post URL')
+  .requiredOption('--url, --post-url <url>', 'LinkedIn post URL')
   .option('--template <text>', 'Reply text (use {{name}} for first name)')
   .option('--templates <texts...>', 'Multiple reply templates to rotate through')
   .option('--include-keywords <words...>', 'Only reply to comments containing these keywords')
@@ -2166,7 +2166,7 @@ program
     }
 
     if (status.status === 'failed') {
-      console.log(`\n  Resume with: npx tsx src/cli/index.ts pipeline:resume --name "${status.pipelineName}"`)
+      console.log(`\n  Resume with: yalc-gtm pipeline:resume --name "${status.pipelineName}"`)
     }
   })
 
@@ -2174,31 +2174,38 @@ program
 program
   .command('pipeline:create')
   .description('Create a new pipeline YAML from a template')
-  .requiredOption('--name <name>', 'Pipeline name')
+  .argument('[name]', 'Pipeline name')
+  .option('--name <name>', 'Pipeline name (overrides positional argument)')
   .option('--output <path>', 'Output path (default: ~/.gtm-os/pipelines/<name>.yaml)')
-  .action(async (opts) => {
+  .action(async (positionalName, opts) => {
     const { existsSync, writeFileSync, mkdirSync } = await import('fs')
     const { join } = await import('path')
     const { homedir } = await import('os')
     const yaml = (await import('js-yaml')).default
 
+    const pipelineName = opts.name ?? positionalName
+    if (!pipelineName) {
+      console.error('Pipeline name required. Pass it as a positional argument or via --name.')
+      process.exit(1)
+    }
+
     const pipelinesDir = join(homedir(), '.gtm-os', 'pipelines')
     mkdirSync(pipelinesDir, { recursive: true })
 
-    const outputPath = opts.output ?? join(pipelinesDir, `${opts.name}.yaml`)
+    const outputPath = opts.output ?? join(pipelinesDir, `${pipelineName}.yaml`)
     if (existsSync(outputPath)) {
       console.error(`File already exists: ${outputPath}`)
       process.exit(1)
     }
 
     const template = {
-      name: opts.name,
-      description: 'TODO: describe this pipeline',
+      name: pipelineName,
+      description: 'Describe what this pipeline does in one sentence.',
       version: '1.0',
       steps: [
         {
           skill: 'find-companies',
-          input: { query: 'TODO: your search query' },
+          input: { query: '<your search query — e.g. "Series-A SaaS CTOs in EU">' },
           output: 'companies',
         },
         {
@@ -2212,7 +2219,7 @@ program
 
     writeFileSync(outputPath, yaml.dump(template, { lineWidth: 120 }))
     console.log(`Pipeline created: ${outputPath}`)
-    console.log(`Edit the YAML, then run: npx tsx src/cli/index.ts pipeline:run --file "${outputPath}" --dry-run`)
+    console.log(`Edit the YAML, then run: yalc-gtm pipeline:run --file "${outputPath}" --dry-run`)
   })
 
 // ─── signals:watch ──────────────────────────────────────────────────────────
@@ -2272,7 +2279,7 @@ program
     }
 
     console.log(`\n[signals] Estimated daily credit cost: ${projectedCost} credits`)
-    console.log(`[signals] Run detection: npx tsx src/cli/index.ts signals:detect`)
+    console.log(`[signals] Run detection: yalc-gtm signals:detect`)
   }))
 
 // ─── signals:detect ─────────────────────────────────────────────────────────
