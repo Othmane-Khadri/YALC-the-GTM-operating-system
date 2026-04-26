@@ -15,6 +15,7 @@ import { execSync } from 'child_process'
 import yaml from 'js-yaml'
 import { GTM_OS_DIR } from '../paths'
 import { isClaudeCode } from '../env/claude-code'
+import { isProviderDisabled } from '../config/loader'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -370,6 +371,21 @@ function checkConfiguration(): LayerResult {
 async function checkProviders(): Promise<LayerResult> {
   const checks: CheckResult[] = []
 
+  // Read user config to honor explicit provider opt-outs
+  let userConfig: Record<string, unknown> = {}
+  const userConfigPath = join(homedir(), '.gtm-os', 'config.yaml')
+  if (existsSync(userConfigPath)) {
+    try {
+      userConfig = (yaml.load(readFileSync(userConfigPath, 'utf-8')) as Record<string, unknown>) ?? {}
+    } catch {
+      userConfig = {}
+    }
+  }
+  const emailProvider = (userConfig.email as Record<string, unknown> | undefined)?.provider
+  const linkedinProvider = (userConfig.linkedin as Record<string, unknown> | undefined)?.provider
+  const emailDisabled = isProviderDisabled(emailProvider)
+  const linkedinDisabled = isProviderDisabled(linkedinProvider)
+
   // Anthropic
   const anthropicKey = process.env.ANTHROPIC_API_KEY
   if (anthropicKey) {
@@ -405,7 +421,9 @@ async function checkProviders(): Promise<LayerResult> {
   // Unipile
   const uKey = process.env.UNIPILE_API_KEY
   const uDsn = process.env.UNIPILE_DSN
-  if (uKey && uDsn) {
+  if (linkedinDisabled) {
+    checks.push({ name: 'Unipile (LinkedIn)', status: 'skip', detail: 'Opted out via config' })
+  } else if (uKey && uDsn) {
     try {
       const resp = await fetch(`${uDsn}/api/v1/accounts`, {
         headers: { 'X-API-KEY': uKey },
@@ -512,7 +530,9 @@ async function checkProviders(): Promise<LayerResult> {
   }
 
   // Instantly
-  if (process.env.INSTANTLY_API_KEY) {
+  if (emailDisabled) {
+    checks.push({ name: 'Instantly', status: 'skip', detail: 'Opted out via config' })
+  } else if (process.env.INSTANTLY_API_KEY) {
     try {
       // Pass the API key as a Bearer header instead of a URL query string so
       // it doesn't end up in proxy logs / shell history. NOTE: Instantly's

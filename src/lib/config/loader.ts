@@ -67,3 +67,19 @@ export function getConfig(): GTMOSConfig {
   }
   return _config
 }
+
+/**
+ * True when the given provider value should be treated as an explicit opt-out.
+ *
+ * Accepts the sentinel values that mean "no provider for this slot":
+ *   null, undefined, '', 'none', 'disabled' (case-insensitive).
+ *
+ * Used by setup, doctor, and the runtime to skip provider-specific validation
+ * when the user has opted out via ~/.gtm-os/config.yaml.
+ */
+export function isProviderDisabled(value: unknown): boolean {
+  if (value === null || value === undefined) return true
+  if (typeof value !== 'string') return false
+  const v = value.trim().toLowerCase()
+  return v === '' || v === 'none' || v === 'disabled'
+}

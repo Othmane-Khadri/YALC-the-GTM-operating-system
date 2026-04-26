@@ -417,27 +417,39 @@ async function pickOutboundProvider(deps: { select: SelectFn }): Promise<void> {
       { name: 'Brevo (via MCP)', value: 'brevo', description: 'Adds Brevo through an MCP server template.' },
       { name: 'Mailgun (via MCP)', value: 'mailgun', description: 'Adds Mailgun through an MCP server template.' },
       { name: 'SendGrid (via MCP)', value: 'sendgrid', description: 'Adds SendGrid through an MCP server template.' },
-      { name: 'None / decide later', value: 'none', description: 'Skip — pick later by editing ~/.gtm-os/config.yaml.' },
+      { name: 'None / decide later', value: 'none', description: 'Skip email entirely — no validation, no nags.' },
     ],
   })
 
-  // Persist (skip the literal 'none' sentinel — leave config untouched).
+  console.log('\n  Which LinkedIn provider do you want to use?')
+  const linkedinChoice = await select({
+    message: 'LinkedIn provider',
+    default: existingLinkedIn,
+    choices: [
+      { name: 'Unipile (built-in)', value: 'unipile', description: 'LinkedIn search, DMs, scraping.' },
+      { name: 'None / decide later', value: 'none', description: 'Skip LinkedIn entirely — no validation, no nags.' },
+    ],
+  })
+
+  // Persist both choices, including the explicit 'none' opt-out sentinel.
   const merged: Record<string, unknown> = { ...existing }
-  if (emailChoice !== 'none') {
-    merged.email = { provider: emailChoice }
-  }
-  if (!merged.linkedin) {
-    merged.linkedin = { provider: existingLinkedIn }
-  }
+  merged.email = { provider: emailChoice }
+  merged.linkedin = { provider: linkedinChoice }
   writeFileSync(CONFIG_PATH, yaml.dump(merged))
 
-  if (emailChoice !== 'none' && emailChoice !== 'instantly') {
-    console.log(`  ✓ Email provider set to ${emailChoice}.`)
-    console.log(`    Run: yalc-gtm provider:add --mcp ${emailChoice}`)
+  if (emailChoice === 'none') {
+    console.log('  ⊘ Email provider opted out. Doctor and setup will skip email checks.')
   } else if (emailChoice === 'instantly') {
     console.log('  ✓ Email provider set to instantly (built-in).')
   } else {
-    console.log('  ⊘ Email provider left unset. Configure later under email.provider in ~/.gtm-os/config.yaml.')
+    console.log(`  ✓ Email provider set to ${emailChoice}.`)
+    console.log(`    Run: yalc-gtm provider:add --mcp ${emailChoice}`)
+  }
+
+  if (linkedinChoice === 'none') {
+    console.log('  ⊘ LinkedIn provider opted out. Doctor and setup will skip LinkedIn checks.')
+  } else {
+    console.log('  ✓ LinkedIn provider set to unipile (built-in).')
   }
 }
 

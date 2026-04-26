@@ -3,6 +3,7 @@ import { join } from 'path'
 import { homedir } from 'os'
 import yaml from 'js-yaml'
 import { SIGNUP_URLS } from '../constants.js'
+import { isProviderDisabled } from './loader.js'
 
 const GTM_OS_DIR = join(homedir(), '.gtm-os')
 const CONFIG_PATH = join(GTM_OS_DIR, 'config.yaml')
@@ -54,6 +55,7 @@ interface ProviderValidation {
   provider: string
   valid: boolean
   error?: string
+  skipped?: boolean
 }
 
 async function validateProvider(name: string, check: () => Promise<void>): Promise<ProviderValidation> {
@@ -125,8 +127,24 @@ export async function runSetup(): Promise<void> {
   console.log('\n── Provider Validation ──')
   const validations: ProviderValidation[] = []
 
+  // Read config to honor explicit provider opt-outs
+  let userConfig: Record<string, unknown> = {}
+  if (existsSync(CONFIG_PATH)) {
+    try {
+      userConfig = (yaml.load(readFileSync(CONFIG_PATH, 'utf-8')) as Record<string, unknown>) ?? {}
+    } catch {
+      userConfig = {}
+    }
+  }
+  const emailProvider = (userConfig.email as Record<string, unknown> | undefined)?.provider
+  const linkedinProvider = (userConfig.linkedin as Record<string, unknown> | undefined)?.provider
+  const emailDisabled = isProviderDisabled(emailProvider)
+  const linkedinDisabled = isProviderDisabled(linkedinProvider)
+
   // Unipile — lightweight getAccounts() call with timeout
-  if (process.env.UNIPILE_API_KEY && process.env.UNIPILE_DSN) {
+  if (linkedinDisabled) {
+    validations.push({ provider: 'Unipile', valid: true, skipped: true, error: 'opted out via config' })
+  } else if (process.env.UNIPILE_API_KEY && process.env.UNIPILE_DSN) {
     const { unipileService } = await import('../services/unipile')
     validations.push(await validateProvider('Unipile', async () => {
       const timeoutPromise = new Promise<never>((_, reject) =>
@@ -190,7 +208,16 @@ export async function runSetup(): Promise<void> {
     validations.push({ provider: 'FullEnrich', valid: false, error: 'missing key' })
   }
 
+  // Surface the email opt-out as a skipped row so users see we honored it.
+  if (emailDisabled) {
+    console.log(`  ⊘ Email — skipped (opted out via config)`)
+  }
+
   for (const v of validations) {
+    if (v.skipped) {
+      console.log(`  ⊘ ${v.provider} — skipped (${v.error ?? 'opted out via config'})`)
+      continue
+    }
     const icon = v.valid ? '✓' : '✗'
     const detail = v.valid ? 'connected' : v.error ?? 'unknown error'
     console.log(`  ${icon} ${v.provider} — ${detail}`)
@@ -201,7 +228,7 @@ export async function runSetup(): Promise<void> {
   // every other provider is optional and only blocks individual workflows.
   const validCount = validations.filter(v => v.valid).length
   const requiredMissing = missingKeys.filter(k => k.key === 'ANTHROPIC_API_KEY').length
-  const optionalUnconfigured = missingKeys.length - requiredMissing + validations.filter(v => !v.valid).length
+  const optionalUnconfigured = missingKeys.length - requiredMissing + validations.filter(v => !v.valid && !v.skipped).length
 
   if (missingKeys.length === 0 && validCount === validations.length) {
     console.log('\n[setup] All API keys configured and validated. GTM-OS is ready.')
