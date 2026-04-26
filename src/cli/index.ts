@@ -2037,9 +2037,10 @@ program
         process.exit(1)
       }
 
-      // Parse + minimal-shape validate (name/command/args). Full schema
-      // validation happens in mcp-loader on registry load; we just guard
-      // against typos here so the file you're copying isn't garbage.
+      // Parse + validate against the same schema mcp-loader enforces at
+      // registry load time. We auto-fill safe defaults for fields users
+      // shouldn't have to know about (displayName, transport) so a minimal
+      // {name, command, args, capabilities} config "just works."
       let raw: unknown
       try {
         raw = JSON.parse(readFileSync(resolved, 'utf-8'))
@@ -2053,25 +2054,28 @@ program
         process.exit(1)
       }
       const cfg = raw as Record<string, unknown>
-      const requiredField = (k: string) => {
-        if (cfg[k] === undefined || cfg[k] === null) {
-          console.error(`Error: MCP config invalid — missing field "${k}"`)
-          process.exit(1)
+
+      // Auto-fill defaults so minimal configs pass loader validation.
+      if (typeof cfg.name === 'string' && cfg.name.length > 0) {
+        if (cfg.displayName === undefined || cfg.displayName === null || cfg.displayName === '') {
+          cfg.displayName = cfg.name
+        }
+        if (cfg.transport === undefined || cfg.transport === null) {
+          if (typeof cfg.command === 'string') cfg.transport = 'stdio'
+          else if (typeof cfg.url === 'string') cfg.transport = 'sse'
         }
       }
-      requiredField('name')
-      if (typeof cfg.name !== 'string' || cfg.name.length === 0) {
-        console.error('Error: MCP config invalid — "name" must be a non-empty string')
-        process.exit(1)
-      }
-      requiredField('command')
-      if (typeof cfg.command !== 'string' || cfg.command.length === 0) {
-        console.error('Error: MCP config invalid — "command" must be a non-empty string')
-        process.exit(1)
-      }
-      requiredField('args')
-      if (!Array.isArray(cfg.args)) {
-        console.error('Error: MCP config invalid — "args" must be an array')
+
+      const { validateMcpConfig } = await import('../lib/providers/mcp-loader')
+      const v = validateMcpConfig(cfg, resolved)
+      if (!v.valid) {
+        console.error('Error: MCP config invalid:')
+        for (const err of v.errors) {
+          console.error(`  - ${err}`)
+        }
+        console.error('\nMinimal config shape:')
+        console.error('  { "name": "<id>", "command": "<bin>", "args": [...], "capabilities": ["search"|"enrich"|"qualify"|"filter"|"export"|"custom"|"email_send"|"linkedin_send"] }')
+        console.error('See docs/mcp.md for the full schema.')
         process.exit(1)
       }
 
