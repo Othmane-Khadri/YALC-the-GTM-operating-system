@@ -307,11 +307,19 @@ function checkConfiguration(): LayerResult {
   const frameworkPath = join(GTM_OS_DIR, 'framework.yaml')
   const frameworkLabel = 'GTM framework (~/.gtm-os/framework.yaml)'
   if (!existsSync(frameworkPath)) {
-    checks.push({
-      name: frameworkLabel,
-      status: 'fail',
-      detail: 'Missing. Run: yalc-gtm onboard',
-    })
+    if (isClaudeCode() && !process.env.ANTHROPIC_API_KEY) {
+      checks.push({
+        name: frameworkLabel,
+        status: 'skip',
+        detail: 'Optional inside Claude Code. Run `yalc-gtm onboard` once you add ANTHROPIC_API_KEY to derive a framework.',
+      })
+    } else {
+      checks.push({
+        name: frameworkLabel,
+        status: 'fail',
+        detail: 'Missing. Run: yalc-gtm onboard',
+      })
+    }
   } else {
     try {
       const framework = yaml.load(readFileSync(frameworkPath, 'utf-8')) as Record<string, any> | null
