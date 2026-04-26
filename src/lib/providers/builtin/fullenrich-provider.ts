@@ -1,7 +1,7 @@
 import type { StepExecutor, RowBatch, ExecutionContext, WorkflowStepInput, ProviderCapability } from '../types'
-import type { ColumnDef } from '@/lib/ai/types'
-import { fullenrichService } from '@/lib/services/fullenrich'
-import type { FullEnrichContact } from '@/lib/services/fullenrich'
+import type { ColumnDef } from '../../ai/types'
+import { fullenrichService } from '../../services/fullenrich'
+import type { FullEnrichContact } from '../../services/fullenrich'
 
 const ENRICH_COLUMNS: ColumnDef[] = [
   { key: 'email', label: 'Email', type: 'text' },

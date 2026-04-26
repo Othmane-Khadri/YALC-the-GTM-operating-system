@@ -1,6 +1,6 @@
 import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability } from '../types'
-import type { ColumnDef } from '@/lib/ai/types'
-import { notionService } from '@/lib/services/notion'
+import type { ColumnDef } from '../../ai/types'
+import { notionService } from '../../services/notion'
 
 const EXPORT_COLUMNS: ColumnDef[] = [
   { key: 'exported', label: 'Exported', type: 'number' },

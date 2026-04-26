@@ -1,6 +1,6 @@
 import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability } from '../types'
-import type { ColumnDef } from '@/lib/ai/types'
-import { firecrawlService } from '@/lib/services/firecrawl'
+import type { ColumnDef } from '../../ai/types'
+import { firecrawlService } from '../../services/firecrawl'
 import { SEARCH_COLUMNS } from '../../execution/columns'
 
 export class FirecrawlProvider implements StepExecutor {

@@ -16,7 +16,7 @@ import type { ExecutionContext, WorkflowStepInput } from '../../types.js'
  */
 
 // ─── Mocks ────────────────────────────────────────────────────────────
-vi.mock('@/lib/services/crustdata', () => ({
+vi.mock('../../../services/crustdata', () => ({
   crustdataService: {
     isAvailable: () => true,
     preflight: vi.fn(),
@@ -25,12 +25,12 @@ vi.mock('@/lib/services/crustdata', () => ({
     searchPeople: vi.fn(),
   },
 }))
-vi.mock('@/lib/framework/context', () => ({
+vi.mock('../../../framework/context', () => ({
   loadFramework: vi.fn(),
 }))
 
-const { crustdataService } = await import('@/lib/services/crustdata')
-const { loadFramework } = await import('@/lib/framework/context')
+const { crustdataService } = await import('../../../services/crustdata')
+const { loadFramework } = await import('../../../framework/context')
 
 function baseContext(tenantId = 'p24-test'): ExecutionContext {
   return {

@@ -1,6 +1,6 @@
 import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability } from '../types'
-import type { ColumnDef } from '@/lib/ai/types'
-import { instantlyService, type SequenceStep } from '@/lib/services/instantly'
+import type { ColumnDef } from '../../ai/types'
+import { instantlyService, type SequenceStep } from '../../services/instantly'
 
 const EMAIL_COLUMNS: ColumnDef[] = [
   { key: 'email', label: 'Email', type: 'text' },

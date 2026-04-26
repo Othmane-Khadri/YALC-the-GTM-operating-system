@@ -1,6 +1,6 @@
 import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability } from '../types'
-import type { ColumnDef } from '@/lib/ai/types'
-import { getAnthropicClient, QUALIFIER_MODEL } from '@/lib/ai/client'
+import type { ColumnDef } from '../../ai/types'
+import { getAnthropicClient, QUALIFIER_MODEL } from '../../ai/client'
 
 export const QUALIFY_COLUMNS_FULL: ColumnDef[] = [
   { key: 'icp_score', label: 'ICP Score', type: 'score' },

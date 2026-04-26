@@ -1,6 +1,6 @@
 import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability } from '../types'
-import type { ColumnDef } from '@/lib/ai/types'
-import { unipileService } from '@/lib/services/unipile'
+import type { ColumnDef } from '../../ai/types'
+import { unipileService } from '../../services/unipile'
 import { SEARCH_COLUMNS } from '../../execution/columns'
 
 const LINKEDIN_COLUMNS: ColumnDef[] = [

@@ -1,5 +1,5 @@
-import type { ColumnDef, ColumnType } from '@/lib/ai/types'
-import type { ProposedStep } from '@/lib/ai/types'
+import type { ColumnDef, ColumnType } from '../ai/types'
+import type { ProposedStep } from '../ai/types'
 
 // Default columns for search steps
 export const SEARCH_COLUMNS: ColumnDef[] = [

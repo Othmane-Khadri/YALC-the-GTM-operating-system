@@ -1,4 +1,4 @@
-import type { ColumnDef } from '@/lib/ai/types'
+import type { ColumnDef } from '../ai/types'
 
 // ProviderCapability — what a provider can do.
 //

@@ -1,7 +1,7 @@
 import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability } from '../types'
 import { generateMockLeads } from '../../execution/mock-engine'
 import { SEARCH_COLUMNS, ENRICH_COLUMNS, QUALIFY_COLUMNS } from '../../execution/columns'
-import type { ColumnDef } from '@/lib/ai/types'
+import type { ColumnDef } from '../../ai/types'
 
 export class MockProvider implements StepExecutor {
   id = 'mock'

@@ -243,7 +243,7 @@ describe('getMcpTemplateDir / listTemplateConfigs', () => {
 
 import { ProviderRegistry } from '../registry'
 import type { StepExecutor, RowBatch, WorkflowStepInput, ExecutionContext, ProviderCapability } from '../types'
-import type { ColumnDef } from '@/lib/ai/types'
+import type { ColumnDef } from '../../ai/types'
 
 function makeFakeProvider(overrides: Partial<StepExecutor> & { id: string; type: 'builtin' | 'mcp' | 'mock' }): StepExecutor {
   return {

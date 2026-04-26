@@ -1,5 +1,5 @@
 import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability } from '../types'
-import type { ColumnDef } from '@/lib/ai/types'
+import type { ColumnDef } from '../../ai/types'
 
 export const RESEARCH_COLUMNS: ColumnDef[] = [
   { key: 'question', label: 'Question', type: 'text' },

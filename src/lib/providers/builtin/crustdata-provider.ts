@@ -1,11 +1,11 @@
 import type { StepExecutor, RowBatch, ExecutionContext, WorkflowStepInput, ProviderCapability } from '../types'
-import type { ColumnDef } from '@/lib/ai/types'
-import { crustdataService } from '@/lib/services/crustdata'
-import { loadFramework } from '@/lib/framework/context'
+import type { ColumnDef } from '../../ai/types'
+import { crustdataService } from '../../services/crustdata'
+import { loadFramework } from '../../framework/context'
 import { InsufficientCreditsError, EarlyStageSkipError } from '../errors'
-import { DEFAULT_TENANT } from '@/lib/tenant/index.js'
-import { db } from '@/lib/db/index.js'
-import { signalsLog } from '@/lib/db/schema'
+import { DEFAULT_TENANT } from '../../tenant/index.js'
+import { db } from '../../db/index.js'
+import { signalsLog } from '../../db/schema'
 import { randomUUID } from 'crypto'
 
 const EARLY_STAGES = new Set<string>(['pre-seed', 'seed'])

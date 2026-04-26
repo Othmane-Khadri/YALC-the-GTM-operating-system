@@ -1,6 +1,6 @@
 import type { StepExecutor, RowBatch, ExecutionContext, WorkflowStepInput, ProviderCapability } from '../types'
-import type { ColumnDef } from '@/lib/ai/types'
-import { orthogonalService } from '@/lib/services/orthogonal'
+import type { ColumnDef } from '../../ai/types'
+import { orthogonalService } from '../../services/orthogonal'
 
 export class OrthogonalProvider implements StepExecutor {
   id = 'orthogonal'

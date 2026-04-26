@@ -1,8 +1,8 @@
-import { getAnthropicClient, PLANNER_MODEL } from '@/lib/ai/client'
-import { db } from '@/lib/db'
-import { apiConnections } from '@/lib/db/schema'
+import { getAnthropicClient, PLANNER_MODEL } from '../ai/client'
+import { db } from '../db'
+import { apiConnections } from '../db/schema'
 import { eq } from 'drizzle-orm'
-import type { ColumnDef } from '@/lib/ai/types'
+import type { ColumnDef } from '../ai/types'
 
 interface GenerateLeadsParams {
   workflowTitle: string

@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 // ─── Mocks ────────────────────────────────────────────────────────────────
 
 // Mock the db module
-vi.mock('@/lib/db', () => {
+vi.mock('../../db', () => {
   const rows: Record<string, unknown>[] = []
   return {
     db: {
@@ -30,7 +30,7 @@ vi.mock('@/lib/db', () => {
 })
 
 // Mock firecrawl service
-vi.mock('@/lib/services/firecrawl', () => ({
+vi.mock('../../services/firecrawl', () => ({
   firecrawlService: {
     isAvailable: vi.fn().mockReturnValue(true),
     scrape: vi.fn(),
@@ -39,7 +39,7 @@ vi.mock('@/lib/services/firecrawl', () => ({
 }))
 
 // Mock intelligence store
-vi.mock('@/lib/intelligence/store', () => ({
+vi.mock('../../intelligence/store', () => ({
   IntelligenceStore: class MockIntelligenceStore {
     add = vi.fn().mockResolvedValue({ id: 'intel-123' })
   },
@@ -51,13 +51,13 @@ vi.mock('drizzle-orm', () => ({
 }))
 
 // Mock the schema
-vi.mock('@/lib/db/schema', () => ({
+vi.mock('../../db/schema', () => ({
   webCache: { url: 'url', content: 'content', contentType: 'content_type', id: 'id', fetchedAt: 'fetched_at', expiresAt: 'expires_at', extractedInsights: 'extracted_insights' },
   webResearchTasks: { id: 'id', tenantId: 'tenant_id', targetType: 'target_type', targetIdentifier: 'target_identifier', status: 'status', results: 'results', requestedBy: 'requested_by', createdAt: 'created_at', completedAt: 'completed_at' },
 }))
 
-const { firecrawlService } = await import('@/lib/services/firecrawl')
-const { db } = await import('@/lib/db')
+const { firecrawlService } = await import('../../services/firecrawl')
+const { db } = await import('../../db')
 
 // ─── Imports (after mocks) ───────────────────────────────────────────────
 

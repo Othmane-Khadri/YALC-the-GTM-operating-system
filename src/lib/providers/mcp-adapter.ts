@@ -19,7 +19,7 @@ import type {
   WorkflowStepInput,
   ProviderCapability,
 } from './types'
-import type { ColumnDef } from '@/lib/ai/types'
+import type { ColumnDef } from '../ai/types'
 
 // ─── Config types ─────────────────────────────────────────────────────────────
 

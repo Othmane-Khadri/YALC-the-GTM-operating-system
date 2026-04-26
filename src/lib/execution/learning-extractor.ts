@@ -1,5 +1,5 @@
-import { getAnthropicClient, QUALIFIER_MODEL, PLANNER_MODEL } from '@/lib/ai/client'
-import type { ColumnDef } from '@/lib/ai/types'
+import { getAnthropicClient, QUALIFIER_MODEL, PLANNER_MODEL } from '../ai/client'
+import type { ColumnDef } from '../ai/types'
 
 interface ExtractLearningsParams {
   approvedRows: Array<Record<string, unknown>>
