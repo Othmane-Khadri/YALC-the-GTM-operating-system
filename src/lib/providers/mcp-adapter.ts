@@ -50,6 +50,71 @@ export interface McpSseConfig extends McpProviderConfigBase {
 
 export type McpProviderConfig = McpStdioConfig | McpSseConfig
 
+// ─── Error classifier ─────────────────────────────────────────────────────────
+
+export type McpErrorKind =
+  | 'package_not_found'
+  | 'auth_failed'
+  | 'network_unreachable'
+  | 'timeout'
+  | 'tool_missing'
+  | 'unknown'
+
+export interface ClassifiedMcpError {
+  kind: McpErrorKind
+  message: string
+  hint: string
+}
+
+/**
+ * Map raw error text from `npm` / MCP transports / health checks into a
+ * stable shape with a user-actionable hint.
+ *
+ * The matchers are intentionally loose — npm registry errors, transport
+ * `ECONNREFUSED`, and SDK-level timeouts all surface as plain Error.message
+ * strings, so we pattern-match the common signatures first and fall back
+ * to 'unknown' so the raw text still reaches the user.
+ */
+export function classifyMcpError(err: unknown): ClassifiedMcpError {
+  const msg = err instanceof Error ? err.message : String(err)
+  if (/E404|404 Not Found|not found in registry|npm error 404/i.test(msg)) {
+    return {
+      kind: 'package_not_found',
+      message: 'MCP package not found on npm',
+      hint: 'Verify "command"/"args" in your config. If using a private package, ensure your npm auth is set.',
+    }
+  }
+  if (/401|403|unauthorized|forbidden|invalid.*token|expired|ENEEDAUTH/i.test(msg)) {
+    return {
+      kind: 'auth_failed',
+      message: 'MCP server rejected authentication',
+      hint: 'Check the API key/token referenced in your config\'s "env" block.',
+    }
+  }
+  if (/ENOTFOUND|ECONNREFUSED|getaddrinfo/i.test(msg)) {
+    return {
+      kind: 'network_unreachable',
+      message: 'MCP server is unreachable',
+      hint: 'Check the endpoint URL and your network. If using a local MCP, confirm it\'s running.',
+    }
+  }
+  if (/ETIMEDOUT|timeout|timed out/i.test(msg)) {
+    return {
+      kind: 'timeout',
+      message: 'MCP health check timed out',
+      hint: 'The server didn\'t respond in time. Increase healthCheck.timeout in the config or check for server load.',
+    }
+  }
+  if (/tool .* not found|no matching tool/i.test(msg)) {
+    return {
+      kind: 'tool_missing',
+      message: 'MCP server is up but the requested tool is not exposed',
+      hint: 'Run provider:test to list discovered tools, then update step.config.tool to one of them.',
+    }
+  }
+  return { kind: 'unknown', message: msg, hint: '' }
+}
+
 // ─── Adapter ──────────────────────────────────────────────────────────────────
 
 export class McpProviderAdapter implements StepExecutor {
@@ -63,6 +128,7 @@ export class McpProviderAdapter implements StepExecutor {
   private available = false
   private tools: Array<{ name: string; description?: string; inputSchema?: unknown }> = []
   private readonly config: McpProviderConfig
+  private lastConnectError: ClassifiedMcpError | null = null
 
   constructor(config: McpProviderConfig) {
     this.config = config
@@ -117,14 +183,24 @@ export class McpProviderAdapter implements StepExecutor {
 
       this.tools = (result as any).tools ?? []
       this.available = true
+      this.lastConnectError = null
     } catch (err) {
+      this.lastConnectError = classifyMcpError(err)
       // eslint-disable-next-line no-console
       console.warn(
-        `[mcp:${this.config.name}] Connection failed: ${err instanceof Error ? err.message : String(err)}`,
+        `[mcp:${this.config.name}] Connection failed (${this.lastConnectError.kind}): ${this.lastConnectError.message}`,
       )
       this.available = false
       this.client = null
     }
+  }
+
+  /**
+   * Surface the most recent classified connect failure (if any). Callers
+   * can use this to render a stable error block instead of the raw text.
+   */
+  getLastConnectError(): ClassifiedMcpError | null {
+    return this.lastConnectError
   }
 
   /**
@@ -244,17 +320,22 @@ export class McpProviderAdapter implements StepExecutor {
     ]
   }
 
-  async healthCheck(): Promise<{ ok: boolean; message: string }> {
+  async healthCheck(): Promise<{ ok: boolean; message: string; classified?: ClassifiedMcpError }> {
+    // Reuse a prior connect failure instead of running connect() a second
+    // time — this dedupes the npm error spam users were seeing.
+    if (!this.client || !this.available) {
+      if (this.lastConnectError) {
+        return { ok: false, message: this.lastConnectError.message, classified: this.lastConnectError }
+      }
+      await this.connect()
+      if (!this.client || !this.available) {
+        const classified = this.lastConnectError ?? classifyMcpError('Cannot connect to MCP server')
+        return { ok: false, message: classified.message, classified }
+      }
+    }
+
     if (!this.config.healthCheck) {
       return { ok: this.available, message: this.available ? 'Connected' : 'Unavailable' }
-    }
-
-    if (!this.client || !this.available) {
-      await this.connect()
-    }
-
-    if (!this.client || !this.available) {
-      return { ok: false, message: 'Cannot connect to MCP server' }
     }
 
     const { tool, timeout } = this.config.healthCheck
@@ -262,10 +343,12 @@ export class McpProviderAdapter implements StepExecutor {
     // Check if the tool exists in discovered tools
     const toolExists = this.tools.some(t => t.name === tool)
     if (!toolExists) {
-      return {
-        ok: false,
-        message: `Health check tool "${tool}" not found. Available: ${this.tools.map(t => t.name).join(', ')}`,
+      const classified: ClassifiedMcpError = {
+        kind: 'tool_missing',
+        message: `Health check tool "${tool}" not found`,
+        hint: `Available tools: ${this.tools.map(t => t.name).join(', ') || '(none discovered)'}`,
       }
+      return { ok: false, message: classified.message, classified }
     }
 
     try {
@@ -277,10 +360,8 @@ export class McpProviderAdapter implements StepExecutor {
       ])
       return { ok: true, message: `Tool "${tool}" responded` }
     } catch (err) {
-      return {
-        ok: false,
-        message: `Health check failed: ${err instanceof Error ? err.message : String(err)}`,
-      }
+      const classified = classifyMcpError(err)
+      return { ok: false, message: classified.message, classified }
     }
   }
 

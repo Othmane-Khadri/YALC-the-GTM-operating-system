@@ -2181,8 +2181,16 @@ program
       const executor = registry.resolve(step)
       if (executor.healthCheck) {
         console.log('\n  Running health check...')
-        const result = await executor.healthCheck()
-        console.log(`  Result: ${result.ok ? 'PASS' : 'FAIL'} — ${result.message}`)
+        const result = await executor.healthCheck() as { ok: boolean; message: string; classified?: { kind: string; message: string; hint: string } }
+        if (result.ok) {
+          console.log(`  Result: PASS — ${result.message}`)
+        } else if (result.classified) {
+          console.log(`  Result: FAIL — ${result.classified.kind}`)
+          console.log(`    ${result.classified.message}`)
+          if (result.classified.hint) console.log(`    Hint: ${result.classified.hint}`)
+        } else {
+          console.log(`  Result: FAIL — ${result.message}`)
+        }
 
         // Show discovered tools for MCP providers
         if (match.type === 'mcp') {
