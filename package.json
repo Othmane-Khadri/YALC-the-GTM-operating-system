@@ -35,9 +35,12 @@
     "src/**/*.md",
     "src/**/*.sql",
     "src/**/*.json",
+    "src/**/*.html",
+    "src/**/*.css",
     "!src/**/__tests__/**",
     "!src/**/*.test.ts",
     "configs",
+    "scripts",
     "templates",
     "tsconfig.json"
   ],

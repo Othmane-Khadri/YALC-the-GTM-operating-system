@@ -1432,8 +1432,13 @@ program
   .option('--minute <n>', 'Minute to run (0-59)', '0')
   .action(async (opts) => {
     const { execSync } = await import('child_process')
-    const { join } = await import('path')
-    const scriptPath = join(process.cwd(), 'scripts', 'install-agent.sh')
+    const { join: pathJoin } = await import('path')
+    const { existsSync: pathExists } = await import('fs')
+    const { PKG_ROOT } = await import('../lib/paths')
+    // Resolution order: cwd (dev checkout) → PKG_ROOT (installed tarball)
+    const cwdPath = pathJoin(process.cwd(), 'scripts', 'install-agent.sh')
+    const pkgPath = pathJoin(PKG_ROOT, 'scripts', 'install-agent.sh')
+    const scriptPath = pathExists(cwdPath) ? cwdPath : pkgPath
     try {
       const output = execSync(`bash "${scriptPath}" "${opts.agent.replace(/[^a-zA-Z0-9_-]/g, '')}" "${String(parseInt(opts.hour, 10))}" "${String(parseInt(opts.minute, 10))}"`, { encoding: 'utf-8' })
       console.log(output)

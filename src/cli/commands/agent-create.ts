@@ -154,7 +154,12 @@ export async function runAgentCreate(): Promise<void> {
   if (doInstall) {
     const { execSync } = await import('child_process')
     const { join: pathJoin } = await import('path')
-    const scriptPath = pathJoin(process.cwd(), 'scripts', 'install-agent.sh')
+    const { existsSync: pathExists } = await import('fs')
+    const { PKG_ROOT } = await import('../../lib/paths')
+    // Resolution order: cwd (dev checkout) → PKG_ROOT (installed tarball)
+    const cwdPath = pathJoin(process.cwd(), 'scripts', 'install-agent.sh')
+    const pkgPath = pathJoin(PKG_ROOT, 'scripts', 'install-agent.sh')
+    const scriptPath = pathExists(cwdPath) ? cwdPath : pkgPath
     try {
       const hour = String(schedule.hour ?? 8)
       const minute = String(schedule.minute ?? 0)
