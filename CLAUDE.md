@@ -41,5 +41,23 @@ Path-specific rules live in `.claude/rules/`. Claude Code auto-loads the relevan
 
 **Adding new rules:** Create a `.md` file in `.claude/rules/` with an "Applies to" header listing the directories it covers, a "Context to Load" section with key files to read, and "Hard Rules" for non-negotiable constraints.
 
+## Persisting User Preferences
+
+When the user expresses a durable rule, convention, or preference mid-session — phrases like "always X", "from now on", "we never Y", "remember that...", "for this project we..." — append it to the most specific matching file before continuing the task.
+
+| What user said about | Where to save |
+|---|---|
+| Skill conventions, naming, validation, run patterns | `.claude/rules/skills.md` |
+| Provider choices, MCP setup, credit policy, rate limits | `.claude/rules/enrichment.md` |
+| Qualification gate behavior, ICP scoring, exclusion rules | `.claude/rules/qualification.md` |
+| Campaign timing, message patterns, A/B testing rules | `.claude/rules/campaigns.md` |
+| Repo-wide conventions, workflow, tooling | `CLAUDE.md` (this file), inserted under the most relevant section |
+
+Write the rule in durable, generic wording — as a project rule, not a transcript. Bad: "User just said don't use HubSpot." Good: "Provider preference: do not configure HubSpot for this tenant."
+
+If the user's preference doesn't match any of the above buckets, ask once: "Should I save this as a project rule in `<file>`?" Default to yes.
+
+If the rule contradicts an existing line in the file, replace the old line and add a one-line `(updated YYYY-MM-DD)` annotation.
+
 ## Second Brain Context
 For Earleads-specific client context (ICP, playbooks, battlecards), read from the Second Brain workspace configured as `additionalDirectory`. Client files: `01_Projects/Clients/Active/{ClientName}/`.
