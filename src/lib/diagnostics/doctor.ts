@@ -716,4 +716,9 @@ export async function runDoctor(opts: { report?: boolean } = {}): Promise<void> 
     console.log(`  Diagnostic report saved to: ${reportPath}`)
     console.log('  (Contains no secrets — safe to share in bug reports)\n')
   }
+
+  // Exit non-zero when any FAIL was reported so CI / scripts can detect it.
+  if (failCount > 0) {
+    process.exit(1)
+  }
 }

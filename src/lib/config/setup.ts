@@ -197,12 +197,17 @@ export async function runSetup(): Promise<void> {
   }
 
   // Summary
+  // Only ANTHROPIC_API_KEY is strictly required for the CLI to function;
+  // every other provider is optional and only blocks individual workflows.
   const validCount = validations.filter(v => v.valid).length
+  const requiredMissing = missingKeys.filter(k => k.key === 'ANTHROPIC_API_KEY').length
+  const optionalUnconfigured = missingKeys.length - requiredMissing + validations.filter(v => !v.valid).length
+
   if (missingKeys.length === 0 && validCount === validations.length) {
     console.log('\n[setup] All API keys configured and validated. GTM-OS is ready.')
   } else {
-    const issues = missingKeys.length + validations.filter(v => !v.valid).length
-    console.log(`\n[setup] ${issues} issue(s) found. Check keys in your environment or ${ENV_PATH}.`)
+    console.log(`\n[setup] ${requiredMissing} required keys missing · ${optionalUnconfigured} optional providers unconfigured.`)
+    console.log(`        Edit ${ENV_PATH} (or your shell environment) to fill them in.`)
   }
 }
 
