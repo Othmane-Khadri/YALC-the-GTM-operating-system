@@ -1,9 +1,10 @@
-import { createInterface } from 'readline'
+import { input as promptInput } from '@inquirer/prompts'
 import { eq } from 'drizzle-orm'
 import { db } from '../db'
 import { resultRows, resultSets } from '../db/schema'
 import { extractLearnings } from './learning-extractor'
 import { IntelligenceStore } from '../intelligence/store'
+import { requireTTY } from '../cli/tty'
 import type { ColumnDef } from '../ai/types'
 
 export async function collectFeedback(resultSetId: string): Promise<void> {
@@ -31,8 +32,11 @@ export async function collectFeedback(resultSetId: string): Promise<void> {
 
   console.log(`[review] ${rows.length} rows to review. For each, enter: a (approve), r (reject), f (flag), s (skip)\n`)
 
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-  const prompt = (q: string): Promise<string> => new Promise(resolve => rl.question(q, resolve))
+  // This is an interactive review flow. Refuse to run without a real TTY
+  // — otherwise the prompts loop forever on piped/launchd stdin.
+  requireTTY('feedback-collector')
+
+  const prompt = (q: string): Promise<string> => promptInput({ message: q })
 
   const approved: Record<string, unknown>[] = []
   const rejected: Record<string, unknown>[] = []
@@ -47,7 +51,17 @@ export async function collectFeedback(resultSetId: string): Promise<void> {
       console.log(`  ${col.label}: ${data[col.key] ?? '—'}`)
     }
 
-    const answer = await prompt('\n  [a]pprove / [r]eject / [f]lag / [s]kip: ')
+    let answer: string
+    try {
+      answer = await prompt('  [a]pprove / [r]eject / [f]lag / [s]kip:')
+    } catch (err) {
+      const name = err instanceof Error ? err.name : ''
+      if (name === 'ExitPromptError') {
+        console.log('\n[review] Cancelled.')
+        break
+      }
+      throw err
+    }
     const choice = answer.trim().toLowerCase()
 
     let feedback: string | null = null
@@ -72,8 +86,6 @@ export async function collectFeedback(resultSetId: string): Promise<void> {
       await db.update(resultRows).set({ feedback, updatedAt: new Date() }).where(eq(resultRows.id, row.id))
     }
   }
-
-  rl.close()
 
   console.log(`\n── Review Summary ──`)
   console.log(`Approved: ${approved.length}`)

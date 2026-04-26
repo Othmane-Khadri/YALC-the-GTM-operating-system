@@ -1,17 +1,12 @@
-import { createInterface } from 'readline'
+import { input as promptInput, confirm as promptConfirm } from '@inquirer/prompts'
 import { mkdirSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
+import { requireTTY } from '../../lib/cli/tty'
 
 // ---------------------------------------------------------------------------
 // Interactive wizard for creating markdown skills
 // ---------------------------------------------------------------------------
-
-function ask(rl: ReturnType<typeof createInterface>, question: string): Promise<string> {
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => resolve(answer.trim()))
-  })
-}
 
 interface InputDef {
   name: string
@@ -20,81 +15,92 @@ interface InputDef {
 }
 
 export async function runSkillsCreate(): Promise<void> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  requireTTY('skills:create')
 
   try {
-    console.log('\n-- Create a Markdown Skill --\n')
-
-    // 1. Name
-    const name = await ask(rl, 'Skill name (lowercase-with-dashes): ')
-    if (!name || !/^[a-z][a-z0-9-]*$/.test(name)) {
-      console.error('Invalid name. Must be lowercase alphanumeric with hyphens, starting with a letter.')
-      return
+    await runSkillsCreateInner()
+  } catch (err) {
+    const name = err instanceof Error ? err.name : ''
+    if (name === 'ExitPromptError') {
+      console.error('\n  skills:create cancelled — no input received.\n')
+      process.exit(1)
     }
+    throw err
+  }
+}
 
-    // 2. Description
-    const description = await ask(rl, 'Description: ')
-    if (!description) {
-      console.error('Description is required.')
-      return
-    }
+async function runSkillsCreateInner(): Promise<void> {
+  console.log('\n-- Create a Markdown Skill --\n')
 
-    // 3. Category
-    const categories = ['research', 'content', 'outreach', 'analysis', 'data', 'integration']
-    console.log(`\nCategories: ${categories.join(', ')}`)
-    const category = await ask(rl, 'Category: ')
-    if (!categories.includes(category)) {
-      console.error(`Invalid category. Choose from: ${categories.join(', ')}`)
-      return
-    }
+  // 1. Name
+  const name = await promptInput({
+    message: 'Skill name (lowercase-with-dashes):',
+    validate: (val) => /^[a-z][a-z0-9-]*$/.test(val.trim())
+      ? true
+      : 'Must be lowercase alphanumeric with hyphens, starting with a letter.',
+  })
 
-    // 4. Inputs
-    const inputs: InputDef[] = []
-    console.log('\nDefine input fields (press Enter with empty name to finish):')
-    while (true) {
-      const inputName = await ask(rl, `  Input name: `)
-      if (!inputName) break
-      const inputDesc = await ask(rl, `  Description for "${inputName}": `)
-      const requiredStr = await ask(rl, `  Required? (y/n, default y): `)
-      const required = requiredStr.toLowerCase() !== 'n'
-      inputs.push({ name: inputName, description: inputDesc || inputName, required })
-    }
+  // 2. Description
+  const description = await promptInput({
+    message: 'Description:',
+    validate: (val) => val.trim().length > 0 ? true : 'Description is required.',
+  })
 
-    if (inputs.length === 0) {
-      console.error('At least one input is required.')
-      return
-    }
+  // 3. Category
+  const categories = ['research', 'content', 'outreach', 'analysis', 'data', 'integration']
+  console.log(`\nCategories: ${categories.join(', ')}`)
+  const category = await promptInput({
+    message: 'Category:',
+    validate: (val) => categories.includes(val.trim())
+      ? true
+      : `Choose from: ${categories.join(', ')}`,
+  })
 
-    // 5. Provider
-    console.log('\nAvailable providers: firecrawl, crustdata, fullenrich, unipile, notion, instantly, mock')
-    console.log('(Or any MCP provider you have installed)')
-    const provider = await ask(rl, 'Provider: ')
-    if (!provider) {
-      console.error('Provider is required.')
-      return
-    }
+  // 4. Inputs
+  const inputs: InputDef[] = []
+  console.log('\nDefine input fields (leave name empty to finish):')
+  while (true) {
+    const inputName = (await promptInput({ message: '  Input name (empty to finish):' })).trim()
+    if (!inputName) break
+    const inputDesc = (await promptInput({ message: `  Description for "${inputName}":` })).trim()
+    const required = await promptConfirm({ message: `  Required?`, default: true })
+    inputs.push({ name: inputName, description: inputDesc || inputName, required })
+  }
 
-    // 6. Capabilities
-    console.log('\nCapabilities: search, enrich, qualify, filter, export, custom')
-    const capInput = await ask(rl, 'Capabilities (comma-separated): ')
-    const capabilities = capInput
-      .split(',')
-      .map(c => c.trim())
-      .filter(Boolean)
+  if (inputs.length === 0) {
+    console.error('At least one input is required.')
+    return
+  }
 
-    // 7. Build the template
-    const inputsYaml = inputs
-      .map(inp => {
-        const lines = [`  - name: ${inp.name}`, `    description: ${inp.description}`]
-        if (!inp.required) lines.push(`    required: false`)
-        return lines.join('\n')
-      })
-      .join('\n')
+  // 5. Provider
+  console.log('\nAvailable providers: firecrawl, crustdata, fullenrich, unipile, notion, instantly, mock')
+  console.log('(Or any MCP provider you have installed)')
+  const provider = await promptInput({
+    message: 'Provider:',
+    validate: (val) => val.trim().length > 0 ? true : 'Provider is required.',
+  })
 
-    const templateVars = inputs.map(inp => `{{${inp.name}}}`).join(', ')
-    const capArray = capabilities.length > 0 ? `[${capabilities.join(', ')}]` : '[custom]'
+  // 6. Capabilities
+  console.log('\nCapabilities: search, enrich, qualify, filter, export, custom')
+  const capInput = await promptInput({ message: 'Capabilities (comma-separated):' })
+  const capabilities = capInput
+    .split(',')
+    .map(c => c.trim())
+    .filter(Boolean)
 
-    const content = `---
+  // 7. Build the template
+  const inputsYaml = inputs
+    .map(inp => {
+      const lines = [`  - name: ${inp.name}`, `    description: ${inp.description}`]
+      if (!inp.required) lines.push(`    required: false`)
+      return lines.join('\n')
+    })
+    .join('\n')
+
+  const templateVars = inputs.map(inp => `{{${inp.name}}}`).join(', ')
+  const capArray = capabilities.length > 0 ? `[${capabilities.join(', ')}]` : '[custom]'
+
+  const content = `---
 name: ${name}
 description: ${description}
 category: ${category}
@@ -119,25 +125,22 @@ ${inputs.map(inp => `  "${inp.name}_result": ""`).join(',\n')}
 \`\`\`
 `
 
-    // 8. Save
-    const skillsDir = join(homedir(), '.gtm-os', 'skills')
-    mkdirSync(skillsDir, { recursive: true })
-    const filePath = join(skillsDir, `${name}.md`)
+  // 8. Save
+  const skillsDir = join(homedir(), '.gtm-os', 'skills')
+  mkdirSync(skillsDir, { recursive: true })
+  const filePath = join(skillsDir, `${name}.md`)
 
-    if (existsSync(filePath)) {
-      const overwrite = await ask(rl, `\n${filePath} already exists. Overwrite? (y/n): `)
-      if (overwrite.toLowerCase() !== 'y') {
-        console.log('Aborted.')
-        return
-      }
+  if (existsSync(filePath)) {
+    const overwrite = await promptConfirm({ message: `\n${filePath} already exists. Overwrite?`, default: false })
+    if (!overwrite) {
+      console.log('Aborted.')
+      return
     }
-
-    writeFileSync(filePath, content)
-    console.log(`\nSkill created: ${filePath}`)
-    console.log(`\nThe skill is registered on next CLI run. Verify with:`)
-    console.log(`  npx tsx src/cli/index.ts skills:info md:${name}`)
-    console.log(`\nEdit the prompt template in the file to customize the skill behavior.`)
-  } finally {
-    rl.close()
   }
+
+  writeFileSync(filePath, content)
+  console.log(`\nSkill created: ${filePath}`)
+  console.log(`\nThe skill is registered on next CLI run. Verify with:`)
+  console.log(`  yalc-gtm skills:info md:${name}`)
+  console.log(`\nEdit the prompt template in the file to customize the skill behavior.`)
 }

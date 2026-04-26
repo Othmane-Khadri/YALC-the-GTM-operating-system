@@ -1236,8 +1236,15 @@ program
   .command('setup')
   .description('Check API keys and provider connectivity')
   .option('--wizard', 'Interactive guided setup for first-time users')
+  .option('--non-interactive', 'Fail instead of prompting for missing input')
   .action(withDiagnostics(async (opts) => {
     if (opts.wizard) {
+      if (opts.nonInteractive) {
+        console.error('  setup --wizard cannot run with --non-interactive (it requires prompts).')
+        process.exit(1)
+      }
+      const { requireTTY } = await import('../lib/cli/tty')
+      requireTTY('setup --wizard')
       const { runSetupWizard } = await import('../lib/config/setup')
       await runSetupWizard()
     } else {
@@ -1253,7 +1260,17 @@ program
   .option('--linkedin <url>', 'LinkedIn profile URL')
   .option('--website <url>', 'Company website URL')
   .option('--knowledge <paths...>', 'Paths to knowledge files (PDFs, docs)')
+  .option('--non-interactive', 'Fail instead of prompting for missing input')
   .action(withDiagnostics(async (opts) => {
+    if (opts.nonInteractive) {
+      if (!opts.linkedin && !opts.website && !opts.knowledge) {
+        console.error('  onboard --non-interactive needs at least one of --linkedin, --website, or --knowledge.')
+        process.exit(1)
+      }
+    } else {
+      const { requireTTY } = await import('../lib/cli/tty')
+      requireTTY('onboard')
+    }
     const { buildProfile } = await import('../lib/onboarding/profile-builder')
     await buildProfile({ linkedin: opts.linkedin, website: opts.website, knowledge: opts.knowledge })
   }))
@@ -1262,7 +1279,14 @@ program
 program
   .command('configure')
   .description('Set GTM goals and configure skills based on your framework')
-  .action(withDiagnostics(async () => {
+  .option('--non-interactive', 'Fail instead of prompting for missing input')
+  .action(withDiagnostics(async (opts) => {
+    if (opts.nonInteractive) {
+      console.error('  configure is interactive. Re-run without --non-interactive in a terminal.')
+      process.exit(1)
+    }
+    const { requireTTY } = await import('../lib/cli/tty')
+    requireTTY('configure')
     const { loadFramework } = await import('../lib/framework/context')
     const { setGoals } = await import('../lib/onboarding/goal-setter')
     const { configureSkills } = await import('../lib/onboarding/skill-configurator')
@@ -1380,7 +1404,12 @@ program
 program
   .command('agent:create')
   .description('Interactively create a new background agent config')
-  .action(async () => {
+  .option('--non-interactive', 'Fail instead of prompting for missing input')
+  .action(async (opts) => {
+    if (opts.nonInteractive) {
+      console.error('  agent:create is interactive. Re-run without --non-interactive in a terminal.')
+      process.exit(1)
+    }
     const { runAgentCreate } = await import('./commands/agent-create')
     await runAgentCreate()
   })
@@ -1568,8 +1597,13 @@ program
   .command('skills:create')
   .description('Create a new skill interactively')
   .option('--format <format>', 'Skill format: markdown or typescript', 'markdown')
+  .option('--non-interactive', 'Fail instead of prompting for missing input')
   .action(async (opts) => {
     if (opts.format === 'markdown') {
+      if (opts.nonInteractive) {
+        console.error('  skills:create is interactive. Re-run without --non-interactive in a terminal.')
+        process.exit(1)
+      }
       const { runSkillsCreate } = await import('./commands/skills-create')
       await runSkillsCreate()
     } else {

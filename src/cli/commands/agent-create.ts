@@ -6,11 +6,29 @@ import { join } from 'path'
 import { homedir } from 'os'
 import yaml from 'js-yaml'
 import { getSkillRegistryReady } from '../../lib/skills/registry'
+import { requireTTY } from '../../lib/cli/tty'
 
 const AGENTS_DIR = join(homedir(), '.gtm-os', 'agents')
 
 export async function runAgentCreate(): Promise<void> {
+  requireTTY('agent:create')
   console.log('\n  Agent Creator\n')
+
+  try {
+    await runAgentCreateInner()
+  } catch (err) {
+    // @inquirer/prompts throws ExitPromptError when the user hits Ctrl+C or
+    // the stream closes mid-prompt. Convert to a friendly message.
+    const name = err instanceof Error ? err.name : ''
+    if (name === 'ExitPromptError') {
+      console.error('\n  agent:create cancelled — no input received. Are you running in a TTY?\n')
+      process.exit(1)
+    }
+    throw err
+  }
+}
+
+async function runAgentCreateInner(): Promise<void> {
 
   // Ensure directory
   if (!existsSync(AGENTS_DIR)) {
