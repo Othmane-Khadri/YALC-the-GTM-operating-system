@@ -593,16 +593,22 @@ function printReadinessReport(
 `)
   }
 
-  // Suggest first action based on what's available. Without an Anthropic key
-  // we can only safely recommend pure-CRUD commands.
-  const firstAction = hasAnthropic
-    ? capabilities.find(c => c.check)
-    : { command: 'yalc-gtm campaign:create --title "First Campaign" --hypothesis "test"' }
-  if (firstAction) {
-    console.log(`  Try this first:
-    ${firstAction.command}
-`)
+  // Suggest a first command that will actually succeed in the user's
+  // current state. Decision tree (first match wins): explore-providers →
+  // research → scrape-post → browse-skills.
+  let firstCommand: string
+  if (!hasAnthropic && state.inClaudeCode) {
+    firstCommand = 'yalc-gtm provider:list'
+  } else if (hasAnthropic && has('CRUSTDATA_API_KEY')) {
+    firstCommand = 'yalc-gtm research --question "what does <my-target-company> do" --target acme.com'
+  } else if (has('UNIPILE_API_KEY')) {
+    firstCommand = 'yalc-gtm leads:scrape-post --url <linkedin-post-url>'
+  } else {
+    firstCommand = 'yalc-gtm skills:browse --installed'
   }
+  console.log(`  Try this first:
+    ${firstCommand}
+`)
 
   if (!state.frameworkDerived) {
     console.log('  Pending: GTM framework not yet derived (needs ANTHROPIC_API_KEY).')
