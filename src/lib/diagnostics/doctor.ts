@@ -14,6 +14,7 @@ import { join, resolve } from 'path'
 import { execSync } from 'child_process'
 import yaml from 'js-yaml'
 import { GTM_OS_DIR } from '../paths'
+import { isClaudeCode } from '../env/claude-code'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -129,14 +130,24 @@ function checkEnvironment(): LayerResult {
 
   const envVars = readEnvFile()
 
-  // Required vars
-  const required = ['ANTHROPIC_API_KEY']
+  // Required vars. Inside a Claude Code parent session the LLM calls are
+  // covered by the parent, so ANTHROPIC_API_KEY is optional.
+  const inClaudeCode = isClaudeCode()
+  const required = inClaudeCode ? [] : ['ANTHROPIC_API_KEY']
   for (const key of required) {
     const val = envVars.get(key) ?? process.env[key]
     if (val && val.trim()) {
       checks.push({ name: key, status: 'pass', detail: '' })
     } else {
       checks.push({ name: key, status: 'fail', detail: `Missing. Required for AI operations.` })
+    }
+  }
+  if (inClaudeCode) {
+    const val = envVars.get('ANTHROPIC_API_KEY') ?? process.env.ANTHROPIC_API_KEY
+    if (val && val.trim()) {
+      checks.push({ name: 'ANTHROPIC_API_KEY', status: 'pass', detail: '' })
+    } else {
+      checks.push({ name: 'ANTHROPIC_API_KEY', status: 'skip', detail: 'Optional inside Claude Code (parent session covers LLM)' })
     }
   }
 
@@ -385,6 +396,8 @@ async function checkProviders(): Promise<LayerResult> {
     } catch (e) {
       checks.push({ name: 'Anthropic API', status: 'fail', detail: `Connection failed: ${e instanceof Error ? e.message : String(e)}` })
     }
+  } else if (isClaudeCode()) {
+    checks.push({ name: 'Anthropic API', status: 'skip', detail: 'Optional inside Claude Code (parent session covers LLM)' })
   } else {
     checks.push({ name: 'Anthropic API', status: 'fail', detail: 'ANTHROPIC_API_KEY not set' })
   }
