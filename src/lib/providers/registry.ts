@@ -1,10 +1,19 @@
 import type { StepExecutor, ProviderMetadata } from './types'
 
 export class ProviderNotFoundError extends Error {
-  constructor(provider: string, available: string[], suggestion?: string) {
+  constructor(provider: string, available: string[], suggestion?: string, stepType?: string) {
+    let availList: string
+    if (available.length === 0) {
+      availList = stepType
+        ? `(none registered for step type "${stepType}")`
+        : '(none registered)'
+    } else {
+      availList = available.join(', ')
+    }
+    const tail = stepType ? '. Run: yalc-gtm provider:list to see what is installed.' : '.'
     const msg = suggestion
-      ? `Provider '${provider}' not found. Available: ${available.join(', ')}. Did you mean '${suggestion}'?`
-      : `Provider '${provider}' not found. Available: ${available.join(', ')}.`
+      ? `Provider '${provider}' not found. Available: ${availList}. Did you mean '${suggestion}'?`
+      : `Provider '${provider}' not found. Available: ${availList}${tail}`
     super(msg)
     this.name = 'ProviderNotFoundError'
   }
@@ -65,14 +74,18 @@ export class ProviderRegistry {
    *   4. Error with suggestion (NEVER silently fall back to mock)
    */
   resolve(step: { stepType: string; provider: string }): StepExecutor {
-    // 1. Exact match
-    const exact = this.providers.get(step.provider)
-    if (exact) return exact
+    const isAuto = step.provider === 'auto' || step.provider === ''
 
-    // 2. Normalized match
-    const normalizedTarget = normalize(step.provider)
-    for (const [id, executor] of this.providers) {
-      if (normalize(id) === normalizedTarget) return executor
+    // 1. Exact match (skip when 'auto' — it's never a real id)
+    if (!isAuto) {
+      const exact = this.providers.get(step.provider)
+      if (exact) return exact
+
+      // 2. Normalized match
+      const normalizedTarget = normalize(step.provider)
+      for (const [id, executor] of this.providers) {
+        if (normalize(id) === normalizedTarget) return executor
+      }
     }
 
     // 3. Capability match — find all that canExecute, sort by type priority
@@ -90,10 +103,14 @@ export class ProviderRegistry {
 
     if (candidates.length > 0) return candidates[0]
 
-    // 4. No match — throw with suggestion
-    const available = Array.from(this.providers.keys())
-    const suggestion = findClosest(step.provider, available)
-    throw new ProviderNotFoundError(step.provider, available, suggestion)
+    // 4. No match — throw with a useful list. Filter the "available"
+    // hint to providers that actually claim the requested step type so
+    // the user sees something meaningful instead of an empty list.
+    const matchingIds = Array.from(this.providers.values())
+      .filter(p => p.capabilities.includes(step.stepType as never))
+      .map(p => p.id)
+    const suggestion = isAuto ? undefined : findClosest(step.provider, Array.from(this.providers.keys()))
+    throw new ProviderNotFoundError(step.provider, matchingIds, suggestion, step.stepType)
   }
 
   async resolveAsync(step: { stepType: string; provider: string }): Promise<StepExecutor> {
