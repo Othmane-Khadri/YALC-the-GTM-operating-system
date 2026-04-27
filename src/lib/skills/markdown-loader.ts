@@ -1,5 +1,6 @@
 import { readdir, readFile } from 'fs/promises'
 import { join } from 'path'
+import { homedir } from 'node:os'
 import type { Skill, SkillEvent, SkillContext, SkillCategory } from './types'
 import { validateMarkdownSkill, type MarkdownSkillDefinition } from './markdown-validator'
 
@@ -267,7 +268,7 @@ function buildSkillFromDefinition(def: MarkdownSkillDefinition, promptTemplate: 
 // ---------------------------------------------------------------------------
 
 export function getMarkdownSkillsDir(): string {
-  return join(process.env.HOME!, '.gtm-os', 'skills')
+  return join(homedir(), '.gtm-os', 'skills')
 }
 
 export interface MarkdownSkillLoadResult {
