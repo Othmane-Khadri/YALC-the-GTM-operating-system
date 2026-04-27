@@ -386,14 +386,9 @@ export class McpProviderAdapter implements StepExecutor {
       }
     }
 
-    // Determine which MCP tool to call.
-    // Priority: step.config.tool > first tool matching step description > first tool
+    // Determine which MCP tool to call. Throws when `tool:` is not set in
+    // the skill frontmatter — see resolveToolName. No silent fallbacks.
     const toolName = this.resolveToolName(step)
-    if (!toolName) {
-      throw new Error(
-        `[mcp:${this.config.name}] No matching tool found for step "${step.title}". Available: ${this.tools.map(t => t.name).join(', ')}`,
-      )
-    }
 
     // Build arguments from step config + previous step rows.
     // `step.config` is, by construction, only tool args (skill-runtime
@@ -521,27 +516,26 @@ export class McpProviderAdapter implements StepExecutor {
 
   // ─── Internals ────────────────────────────────────────────────────────────
 
-  private resolveToolName(step: WorkflowStepInput): string | null {
-    // Explicit tool in config
+  private resolveToolName(step: WorkflowStepInput): string {
+    // Explicit tool name in config — the only path supported as of 0.7.0.
+    // Implicit fallbacks (first tool, keyword overlap with the step
+    // description) silently routed calls to the wrong tool when skills
+    // forgot to specify `tool:`. Removed.
     if (step.config?.tool && typeof step.config.tool === 'string') {
-      const match = this.tools.find(t => t.name === step.config!.tool)
-      if (match) return match.name
+      const match = this.tools.find((t) => t.name === step.config!.tool)
+      if (match) {
+        logMcp(
+          'log',
+          `[mcp:${this.config.name}] resolved tool "${match.name}" for step "${step.title}"`,
+        )
+        return match.name
+      }
     }
 
-    // Match by step description keywords
-    const desc = (step.description ?? '').toLowerCase()
-    for (const t of this.tools) {
-      const toolDesc = (t.description ?? t.name).toLowerCase()
-      if (desc.includes(t.name.toLowerCase())) return t.name
-      // Check for keyword overlap
-      const descWords = desc.split(/\s+/)
-      const toolWords = toolDesc.split(/\s+/)
-      const overlap = descWords.filter(w => w.length > 3 && toolWords.includes(w))
-      if (overlap.length >= 2) return t.name
-    }
-
-    // Fall back to first tool
-    return this.tools[0]?.name ?? null
+    const available = this.tools.map((t) => t.name).join(', ') || '(none discovered)'
+    throw new Error(
+      `No tool specified for MCP provider '${this.config.name}'. Set \`tool: <x>\` in skill frontmatter. Available: [${available}].`,
+    )
   }
 
   private parseToolResult(result: unknown): Record<string, unknown>[] {
