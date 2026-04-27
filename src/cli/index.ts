@@ -52,6 +52,9 @@ program
     if (opts.verbose) {
       setVerbose(true)
       process.env.GTM_OS_VERBOSE = '1'
+      // YALC_DEBUG is the canonical opt-in for transport-level chatter
+      // (e.g. MCP stdio child stderr). The MCP adapter reads it directly.
+      process.env.YALC_DEBUG = '1'
     }
 
     // Phase 1 / A3 — resolve once per invocation, cache on the program so
