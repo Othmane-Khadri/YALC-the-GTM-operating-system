@@ -197,11 +197,13 @@ export async function fetchForCapture(
     return null
   }
   if (provider === 'claude-code') {
-    // Inside CC the parent emits a handoff line so the user knows what to
-    // do. We return null (no content captured automatically) — the caller
-    // surfaces the handoff in its log.
+    // Inside CC: emit a structured handoff marker the parent can intercept.
+    // We return null (no content captured automatically) — the caller
+    // surfaces the handoff in its log and exits.
+    const { emitWebFetchHandoff } = await import('../web/fetcher.js')
+    emitWebFetchHandoff(url, 'start --non-interactive needs the page contents to seed onboarding capture')
     console.log(
-      `[start] Claude Code WebFetch handoff: please run WebFetch on ${url} and re-run with --input <file>`,
+      `[start] Claude Code WebFetch handoff requested for ${url}. Parent session should fetch and re-run.`,
     )
     return null
   }
