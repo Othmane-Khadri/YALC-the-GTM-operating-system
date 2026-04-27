@@ -1,5 +1,23 @@
 # MCP Integration
 
+## Claude Code MCP vs YALC MCP — at a glance
+
+YALC and Claude Code both have a thing called "MCP". They are different
+registries, live in different files, and serve different processes. Read this
+table before adding or editing any config.
+
+| Aspect | Claude Code MCP | YALC MCP |
+|---|---|---|
+| Used by | Claude Code itself, when you chat in the IDE | YALC's CLI providers — `provider:list`, `provider:add`, doctor |
+| Config location | `.mcp.json` (project) or `~/.claude.json` (user) | `~/.gtm-os/mcp/<name>.json` (one file per provider) |
+| Loader | Claude Code reads at startup of each chat | `getMcpConfigDir()` in `src/lib/providers/mcp-loader.ts` |
+| Schema | Claude Code's MCP server descriptor | YALC provider config (capabilities, healthCheck, env) |
+| Edited by | `claude mcp add ...` or hand-editing | `yalc-gtm provider:add --mcp <name>` |
+
+Rule of thumb: **never** point `provider:add` or any YALC tool at a
+`.mcp.json` / `~/.claude.json` path. YALC will refuse and redirect to
+`~/.gtm-os/mcp/`.
+
 ## What is MCP?
 
 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) is an open standard for connecting AI models to external tools and data sources. GTM-OS supports MCP as a provider type alongside built-in providers.

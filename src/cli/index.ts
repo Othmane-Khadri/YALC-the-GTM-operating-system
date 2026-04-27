@@ -2067,6 +2067,35 @@ program
     const targetDir = join(homedir(), '.gtm-os', 'mcp')
     const input = String(opts.mcp)
 
+    // Refuse Claude Code MCP locations — those are a different registry and
+    // editing them via YALC corrupts the host IDE's config. The two systems
+    // are documented side-by-side at the top of docs/mcp.md.
+    const claudeCodeMcpPaths = [
+      '.mcp.json',
+      join(homedir(), '.claude.json'),
+      join(homedir(), '.claude', '.mcp.json'),
+    ]
+    const inputResolved = input.startsWith('~/')
+      ? join(homedir(), input.slice(2))
+      : input
+    const matchesClaudeCode = claudeCodeMcpPaths.some((p) => {
+      const absoluteP = isAbsolute(p) ? p : resolve(process.cwd(), p)
+      const absoluteInput = isAbsolute(inputResolved) ? inputResolved : resolve(process.cwd(), inputResolved)
+      return absoluteP === absoluteInput || inputResolved.endsWith('/.mcp.json') || inputResolved.endsWith('.claude.json')
+    })
+    if (matchesClaudeCode) {
+      console.error(
+        'Error: That path is a Claude Code MCP registry, not a YALC one.',
+      )
+      console.error(
+        '  YALC MCP configs live in ~/.gtm-os/mcp/<name>.json — see docs/mcp.md for the side-by-side table.',
+      )
+      console.error(
+        '  Run `yalc-gtm provider:add --mcp <template>` or pass a path inside ~/.gtm-os/mcp/.',
+      )
+      process.exit(1)
+    }
+
     // Detect path-vs-template-name. A path either contains a separator,
     // starts with ./ ../ / ~/ or ends with .json. Anything else is a name.
     const looksLikePath =
