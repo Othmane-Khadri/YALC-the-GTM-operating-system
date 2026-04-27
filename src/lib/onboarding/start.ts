@@ -806,13 +806,18 @@ function printReadinessReport(
 
   // Suggest a first command that will actually succeed in the user's
   // current state. Decision tree (first match wins): explore-providers →
-  // research → scrape-post → browse-skills.
+  // research → scrape-post → browse-skills. We re-read the persisted
+  // email/linkedin opt-out state so we never suggest a LinkedIn command
+  // when `linkedin.provider: none` was just selected.
+  const { isChannelOptedOut } = require('../config/loader') as typeof import('../config/loader')
+  const linkedinOptedOut = isChannelOptedOut('linkedin')
+
   let firstCommand: string
   if (!hasAnthropic && state.inClaudeCode) {
     firstCommand = 'yalc-gtm provider:list'
   } else if (hasAnthropic && has('CRUSTDATA_API_KEY')) {
     firstCommand = 'yalc-gtm research --question "what does <my-target-company> do" --target acme.com'
-  } else if (has('UNIPILE_API_KEY')) {
+  } else if (has('UNIPILE_API_KEY') && !linkedinOptedOut) {
     firstCommand = 'yalc-gtm leads:scrape-post --url <linkedin-post-url>'
   } else {
     firstCommand = 'yalc-gtm skills:browse --installed'
