@@ -73,6 +73,15 @@ export interface StartOptions {
   tenantId: string
   /** Skip interactive prompts — use env vars as-is. */
   nonInteractive?: boolean
+  /** Flag-driven capture inputs (0.6.0). */
+  companyName?: string
+  website?: string
+  linkedin?: string
+  docs?: string
+  icpSummary?: string
+  voice?: string
+  /** Bypass the local scrape cache for this run. */
+  noCache?: boolean
 }
 
 export async function runStart(opts: StartOptions): Promise<void> {
@@ -249,21 +258,53 @@ export async function runStart(opts: StartOptions): Promise<void> {
   // ── Step 2: Company Context ─────────────────────────────────────────────
   console.log('\n── Step 2/4 — Company Context ──\n')
 
+  // 0.6.0: when running --non-interactive AND any capture flag is set, run
+  // the flag-driven capture pipeline that writes into _preview/. This is the
+  // path Claude Code uses to onboard without prompts. Falls through to the
+  // legacy interview pipeline otherwise.
+  const captureOpts = {
+    tenantId,
+    companyName: opts.companyName,
+    website: opts.website,
+    linkedin: opts.linkedin,
+    docs: opts.docs,
+    icpSummary: opts.icpSummary,
+    voice: opts.voice,
+    noCache: opts.noCache,
+  }
+  const { hasCaptureFlags, runFlagCapture, writeCapturedPreview, summarizeCapture } =
+    await import('./flag-capture.js')
+  const useFlagCapture = !!opts.nonInteractive && hasCaptureFlags(captureOpts)
+
+  let flagCaptureSummary: string | null = null
+  if (useFlagCapture) {
+    console.log('  Running flag-driven capture into _preview/')
+    const result = await runFlagCapture(captureOpts)
+    writeCapturedPreview(result, { tenantId })
+    flagCaptureSummary = summarizeCapture(result)
+    if (flagCaptureSummary) console.log(flagCaptureSummary)
+    console.log(`\n  ✓ Captured context written to ${join(GTM_OS_DIR, '_preview')} (or tenant-scoped equivalent)`)
+  }
+
   const { runOnboarding } = await import('../context/onboarding.js')
   const { getWebFetchProvider } = await import('../env/claude-code.js')
   // Enable the website step whenever some fetch backend is available —
   // Firecrawl directly, or a Claude Code parent that emits WebFetch
   // handoffs. The ingestor itself decides what to do.
   const canFetch = getWebFetchProvider() !== 'none'
-  const report = await runOnboarding({
-    tenantId,
-    scrapeWebsite: canFetch,
-    nonInteractive: opts.nonInteractive,
-  })
+  const report = useFlagCapture
+    ? { interviewAnswers: 0, websiteChunks: 0, uploadChunks: 0, configWritten: null, tenantId }
+    : await runOnboarding({
+        tenantId,
+        scrapeWebsite: canFetch,
+        nonInteractive: opts.nonInteractive,
+      })
 
-  console.log(`\n  ✓ Captured ${report.interviewAnswers} answers`)
-  if (report.websiteChunks > 0) console.log(`  ✓ Scraped ${report.websiteChunks} website sections`)
-  if (report.uploadChunks > 0) console.log(`  ✓ Ingested ${report.uploadChunks} file chunks`)
+  if (!useFlagCapture) {
+    console.log(`\n  ✓ Captured ${report.interviewAnswers} answers`)
+    if (report.websiteChunks > 0) console.log(`  ✓ Scraped ${report.websiteChunks} website sections`)
+    if (report.uploadChunks > 0) console.log(`  ✓ Ingested ${report.uploadChunks} file chunks`)
+  }
 
   // ── Step 3: Framework Derivation ────────────────────────────────────────
   // Steps 3-4 require an Anthropic key (framework synthesis + goal/skill

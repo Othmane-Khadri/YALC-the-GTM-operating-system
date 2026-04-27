@@ -1229,11 +1229,28 @@ program
   .command('start')
   .description('Guided onboarding — API keys, company context, framework, and goals in one flow')
   .option('--non-interactive', 'Skip prompts (use env vars and defaults)')
+  // Flag-driven capture inputs (0.6.0). When any of these are present in
+  // --non-interactive mode, runs the full capture + synthesis pipeline and
+  // writes the result into _preview/.
+  .option('--company-name <name>', 'Company name (flag-driven capture)')
+  .option('--website <url>', 'Company website URL — scraped for context')
+  .option('--linkedin <url>', 'LinkedIn profile URL — fetched for context')
+  .option('--docs <path>', 'Path to a folder of markdown/text files to ingest')
+  .option('--icp-summary <text>', 'One-line ICP description seed for synthesis')
+  .option('--voice <path>', 'Path to a file with voice samples for tone extraction')
+  .option('--no-cache', 'Bypass the local scrape cache for this run')
   .action(withDiagnostics(async (opts) => {
     const { runStart } = await import('../lib/onboarding/start')
     await runStart({
       tenantId: getTenant(),
       nonInteractive: opts.nonInteractive ?? false,
+      companyName: opts.companyName,
+      website: opts.website,
+      linkedin: opts.linkedin,
+      docs: opts.docs,
+      icpSummary: opts.icpSummary,
+      voice: opts.voice,
+      noCache: opts.cache === false,
     })
   }))
 
