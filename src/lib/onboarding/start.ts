@@ -82,12 +82,112 @@ export interface StartOptions {
   voice?: string
   /** Bypass the local scrape cache for this run. */
   noCache?: boolean
+  /** Preview lifecycle controls. */
+  commitPreview?: boolean
+  discardSections?: string[]
+  regenerateSection?: string
+  regenerateHint?: string
+  discardPreview?: boolean
+  forceOverwritePreview?: boolean
 }
 
 export async function runStart(opts: StartOptions): Promise<void> {
   const { password, input, confirm, select } = await import('@inquirer/prompts')
   const { tenantId } = opts
   const inClaudeCode = isClaudeCode()
+
+  // ─── Preview lifecycle short-circuits (0.6.0) ─────────────────────────────
+  // These flags terminate the start invocation early — they do not run
+  // capture or synthesis themselves.
+  const tenantCtx = { tenantId }
+  const {
+    previewExists,
+    commitPreview,
+    discardPreview,
+    previewCapturedAt,
+    previewRoot,
+    SECTION_NAMES,
+  } = await import('./preview.js')
+  type Section = typeof SECTION_NAMES[number]
+
+  if (opts.discardPreview) {
+    if (!previewExists(tenantCtx)) {
+      console.log('  No preview to discard.')
+      return
+    }
+    discardPreview(tenantCtx)
+    console.log(`  ✓ Discarded preview at ${previewRoot(tenantCtx)}`)
+    return
+  }
+
+  if (opts.commitPreview) {
+    if (!previewExists(tenantCtx)) {
+      console.error('  No preview to commit. Run `yalc-gtm start --non-interactive` with capture flags first.')
+      process.exitCode = 1
+      return
+    }
+    const discardSections = (opts.discardSections ?? []).filter((s): s is Section =>
+      (SECTION_NAMES as readonly string[]).includes(s),
+    )
+    const unknownDiscard = (opts.discardSections ?? []).filter(
+      (s) => !(SECTION_NAMES as readonly string[]).includes(s),
+    )
+    if (unknownDiscard.length > 0) {
+      console.error(`  Unknown --discard section(s): ${unknownDiscard.join(', ')}`)
+      console.error(`  Valid sections: ${SECTION_NAMES.join(', ')}`)
+      process.exitCode = 1
+      return
+    }
+    const result = commitPreview({ tenant: tenantCtx, discardSections })
+    console.log(`  ✓ Committed ${result.committed.length} path(s) to live`)
+    if (result.discarded.length > 0) {
+      console.log(`  ⊘ Left in preview (discarded): ${result.discarded.join(', ')}`)
+    }
+    return
+  }
+
+  if (opts.regenerateSection) {
+    await runRegenerateSection({
+      tenantId,
+      section: opts.regenerateSection,
+      hint: opts.regenerateHint,
+    })
+    return
+  }
+
+  // ─── Block on uncommitted preview (D2) ───────────────────────────────────
+  // Flag-driven capture is what triggers a fresh write into _preview/. If a
+  // preview already exists from a prior run, refuse to start unless the user
+  // explicitly resolves it.
+  const captureFlagsSet = !!(
+    opts.companyName ||
+    opts.website ||
+    opts.linkedin ||
+    opts.docs ||
+    opts.icpSummary ||
+    opts.voice
+  )
+  if (
+    opts.nonInteractive &&
+    captureFlagsSet &&
+    previewExists(tenantCtx) &&
+    !opts.forceOverwritePreview
+  ) {
+    const captured = previewCapturedAt(tenantCtx)
+    const when = captured
+      ? captured.toISOString().replace('T', ' ').slice(0, 16) + ' UTC'
+      : 'unknown timestamp'
+    console.error(
+      `Uncommitted preview detected at ${previewRoot(tenantCtx)} (captured ${when}).`,
+    )
+    console.error('Resolve before running start again:')
+    console.error('  yalc-gtm start --commit-preview               # ship as-is')
+    console.error('  yalc-gtm start --regenerate <section>         # rerun synthesis on a section')
+    console.error('  yalc-gtm start --discard-preview              # delete the preview entirely')
+    console.error('  yalc-gtm start --force-overwrite-preview      # advance anyway (power-user override)')
+    process.exitCode = 1
+    return
+  }
 
   // Apply DB migrations before anything else — fresh installs have no tables
   // yet, so the first query otherwise crashes with `SQLITE_ERROR: no such table`.
@@ -676,4 +776,76 @@ function printReadinessReport(
   }
   console.log('  Run "yalc-gtm doctor" anytime to check your setup health.')
   console.log('  Run "yalc-gtm start" again to reconfigure.\n')
+}
+
+/**
+ * Re-run synthesis for one preview section, reading the captured
+ * `company_context.yaml` as input. Honors `--hint <text>`. LLM-derived
+ * sections require an Anthropic key — without one, we emit the same
+ * "needs an LLM" handoff used elsewhere in the CLI.
+ */
+async function runRegenerateSection(args: {
+  tenantId: string
+  section: string
+  hint?: string
+}): Promise<void> {
+  const tenant = { tenantId: args.tenantId }
+  const { previewExists, previewPath } = await import('./preview.js')
+  const { ALL_SECTION_IDS, writeSynthesizedPreview } = await import('./synthesis.js')
+
+  if (!previewExists(tenant)) {
+    console.error('  No preview to regenerate. Run capture first: yalc-gtm start --non-interactive --website ...')
+    process.exitCode = 1
+    return
+  }
+
+  if (!ALL_SECTION_IDS.includes(args.section as (typeof ALL_SECTION_IDS)[number])) {
+    console.error(`  Unknown section "${args.section}". Valid: ${ALL_SECTION_IDS.join(', ')}`)
+    process.exitCode = 1
+    return
+  }
+
+  const ctxPath = previewPath('company_context.yaml', tenant)
+  if (!existsSync(ctxPath)) {
+    console.error(`  Missing ${ctxPath}. Re-run start with capture flags first.`)
+    process.exitCode = 1
+    return
+  }
+
+  const yamlMod = (await import('js-yaml')).default
+  const ctx = yamlMod.load(readFileSync(ctxPath, 'utf-8')) as
+    | import('../framework/context-types.js').CompanyContext
+    | null
+  if (!ctx) {
+    console.error('  Could not parse company_context.yaml.')
+    process.exitCode = 1
+    return
+  }
+
+  const inCC = isClaudeCode()
+  if (!process.env.ANTHROPIC_API_KEY && !inCC) {
+    console.error('  --regenerate needs an Anthropic key (or run inside Claude Code).')
+    console.error('  Add ANTHROPIC_API_KEY to ~/.gtm-os/.env and retry.')
+    process.exitCode = 1
+    return
+  }
+  if (!process.env.ANTHROPIC_API_KEY && inCC) {
+    console.log(
+      `[start] Claude Code handoff: please synthesize the "${args.section}" section using ` +
+        `${ctxPath} as input` +
+        (args.hint ? ` (hint: ${args.hint})` : '') +
+        '.',
+    )
+    return
+  }
+
+  const result = await writeSynthesizedPreview({
+    context: ctx,
+    tenant,
+    only: [args.section as (typeof ALL_SECTION_IDS)[number]],
+    hint: args.hint,
+  })
+  console.log(
+    `  ✓ Regenerated ${result.written.length} file(s) for section "${args.section}"`,
+  )
 }

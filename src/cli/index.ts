@@ -1239,6 +1239,15 @@ program
   .option('--icp-summary <text>', 'One-line ICP description seed for synthesis')
   .option('--voice <path>', 'Path to a file with voice samples for tone extraction')
   .option('--no-cache', 'Bypass the local scrape cache for this run')
+  // Preview lifecycle controls (0.6.0). Section names: framework, voice, icp,
+  // positioning, qualification_rules, campaign_templates, search_queries,
+  // company_context.
+  .option('--commit-preview', 'Move the staged _preview/ folder into the live tree')
+  .option('--discard <section>', 'Skip a section on commit (repeatable)', (val: string, prev: string[] = []) => prev.concat(val))
+  .option('--regenerate <section>', 'Re-run synthesis for a single preview section')
+  .option('--hint <text>', 'Hint forwarded to the synthesis prompt during --regenerate')
+  .option('--discard-preview', 'Delete the _preview/ folder entirely (no new capture)')
+  .option('--force-overwrite-preview', 'Proceed past the uncommitted-preview block')
   .action(withDiagnostics(async (opts) => {
     const { runStart } = await import('../lib/onboarding/start')
     await runStart({
@@ -1251,6 +1260,12 @@ program
       icpSummary: opts.icpSummary,
       voice: opts.voice,
       noCache: opts.cache === false,
+      commitPreview: opts.commitPreview ?? false,
+      discardSections: opts.discard,
+      regenerateSection: opts.regenerate,
+      regenerateHint: opts.hint,
+      discardPreview: opts.discardPreview ?? false,
+      forceOverwritePreview: opts.forceOverwritePreview ?? false,
     })
   }))
 
