@@ -51,6 +51,25 @@ export interface ProviderMetadata {
   status: 'active' | 'disconnected' | 'error'
 }
 
+/**
+ * Skill-runtime metadata that is NOT part of the underlying tool/provider
+ * argument shape. Loaders (e.g. the markdown skill loader) use this to
+ * carry the resolved prompt, intended output mode, originating skill name,
+ * etc. through to the executor without polluting `step.config` — which
+ * is forwarded verbatim as MCP tool `arguments` and rejected by
+ * strict-schema servers if it contains unknown keys.
+ *
+ * Convention: any field the executor needs that is NOT a real tool
+ * argument MUST live here, OR be prefixed with `_yalc_` inside `config`
+ * (also stripped before tool dispatch, see mcp-adapter).
+ */
+export interface StepMetadata {
+  prompt?: string
+  output?: string
+  skillName?: string
+  [key: string]: unknown
+}
+
 // WorkflowStepInput — the step shape from the workflow that providers receive
 export interface WorkflowStepInput {
   stepIndex: number
@@ -60,7 +79,17 @@ export interface WorkflowStepInput {
   description: string
   estimatedRows?: number
   requiredApiKey?: string
+  /**
+   * Tool arguments only. Anything in here is forwarded verbatim to MCP
+   * tool calls — never inject skill-runtime fields.
+   */
   config?: Record<string, unknown>
+  /**
+   * Skill-runtime metadata (resolved prompt, output mode, skill name).
+   * Builtin providers that need the rendered prompt should read from
+   * `metadata.prompt`. Never sent to MCP servers.
+   */
+  metadata?: StepMetadata
   [key: string]: unknown
 }
 

@@ -219,10 +219,18 @@ function buildSkillFromDefinition(def: MarkdownSkillDefinition, promptTemplate: 
         stepType: def.capabilities?.[0] ?? 'custom',
         provider: provider.id,
         description: resolvedPrompt,
-        config: {
+        // `config` carries ONLY the user's --input values, i.e. the
+        // tool's argument shape. Strict-schema MCP tools (Pydantic, Zod,
+        // JSON-schema) reject unknown keys, so we no longer inject
+        // `prompt` / `output` here.
+        config: { ...inputObj },
+        // Skill-runtime fields live on `metadata`. Builtin providers
+        // that previously expected `step.config.prompt` should now read
+        // `step.metadata.prompt`.
+        metadata: {
           prompt: resolvedPrompt,
-          ...inputObj,
           output: def.output ?? 'structured_json',
+          skillName: def.name,
         },
       }
 

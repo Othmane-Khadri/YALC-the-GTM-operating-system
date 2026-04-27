@@ -366,18 +366,22 @@ export class McpProviderAdapter implements StepExecutor {
       )
     }
 
-    // Build arguments from step config + previous step rows
-    const args: Record<string, unknown> = {
-      ...(step.config ?? {}),
+    // Build arguments from step config + previous step rows.
+    // `step.config` is, by construction, only tool args (skill-runtime
+    // fields live on `step.metadata`). We still strip `tool` (our routing
+    // key) and any `_yalc_*` keys as a defence-in-depth — third-party
+    // adapters or older callers may still smuggle internal fields here.
+    const args: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(step.config ?? {})) {
+      if (k === 'tool') continue
+      if (k.startsWith('_yalc_')) continue
+      args[k] = v
     }
 
     // If there are previous step rows, pass them as input
     if (context.previousStepRows && context.previousStepRows.length > 0) {
       args.input_rows = context.previousStepRows
     }
-
-    // Remove internal keys
-    delete args.tool
 
     try {
       const result = await Promise.race([
