@@ -238,7 +238,7 @@ function checkDatabase(): LayerResult {
     checks.push({
       name: 'Database file',
       status: 'fail',
-      detail: `Not found at ${dbPath}. Run: pnpm db:push`,
+      detail: `Not found at ${dbPath}. Run: yalc-gtm start to initialize.`,
     })
     return { layer: 'Database', checks }
   }
@@ -261,13 +261,13 @@ function checkDatabase(): LayerResult {
     checks.push({
       name: 'Core tables',
       status: 'fail',
-      detail: `All core tables missing. Run: pnpm db:push`,
+      detail: `All core tables missing. Run: yalc-gtm start to initialize.`,
     })
   } else {
     checks.push({
       name: `Core tables (${coreTables.length - missingTables.length}/${coreTables.length})`,
       status: 'fail',
-      detail: `Missing: ${missingTables.join(', ')}. Run: pnpm db:push`,
+      detail: `Missing: ${missingTables.join(', ')}. Run: yalc-gtm start to initialize.`,
     })
   }
 
