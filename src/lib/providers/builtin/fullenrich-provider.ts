@@ -1,4 +1,4 @@
-import type { StepExecutor, RowBatch, ExecutionContext, WorkflowStepInput, ProviderCapability } from '../types'
+import type { StepExecutor, RowBatch, ExecutionContext, WorkflowStepInput, ProviderCapability, ProviderHealthStatus } from '../types'
 import type { ColumnDef } from '../../ai/types'
 import { fullenrichService } from '../../services/fullenrich'
 import type { FullEnrichContact } from '../../services/fullenrich'
@@ -18,6 +18,32 @@ export class FullEnrichProvider implements StepExecutor {
 
   isAvailable(): boolean {
     return fullenrichService.isAvailable()
+  }
+
+  async selfHealthCheck(): Promise<ProviderHealthStatus> {
+    if (!process.env.FULLENRICH_API_KEY) {
+      return { status: 'warn', detail: 'FULLENRICH_API_KEY not set' }
+    }
+    try {
+      const resp = await fetch('https://api.fullenrich.com/v1/credits', {
+        headers: {
+          Authorization: `Bearer ${process.env.FULLENRICH_API_KEY}`,
+          Accept: 'application/json',
+        },
+        signal: AbortSignal.timeout(10000),
+      })
+      if (resp.ok) return { status: 'ok', detail: 'credits endpoint reachable' }
+      if (resp.status === 401 || resp.status === 403) {
+        return { status: 'fail', detail: 'API key invalid' }
+      }
+      // 404 still means auth worked — surface as warn
+      return { status: 'warn', detail: `HTTP ${resp.status} (auth check inconclusive)` }
+    } catch (err) {
+      return {
+        status: 'fail',
+        detail: `connection failed: ${err instanceof Error ? err.message : String(err)}`,
+      }
+    }
   }
 
   canExecute(step: WorkflowStepInput): boolean {

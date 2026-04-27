@@ -1,4 +1,4 @@
-import type { StepExecutor, RowBatch, ExecutionContext, WorkflowStepInput, ProviderCapability } from '../types'
+import type { StepExecutor, RowBatch, ExecutionContext, WorkflowStepInput, ProviderCapability, ProviderHealthStatus } from '../types'
 import type { ColumnDef } from '../../ai/types'
 import { crustdataService } from '../../services/crustdata'
 import { loadFramework } from '../../framework/context'
@@ -87,6 +87,37 @@ export class CrustdataProvider implements StepExecutor {
 
   isAvailable(): boolean {
     return crustdataService.isAvailable()
+  }
+
+  /**
+   * Hits Crustdata's credit-check endpoint — cheapest authenticated call.
+   * 401/403 → fail (key invalid). 5xx → warn. Network failure → fail.
+   */
+  async selfHealthCheck(): Promise<ProviderHealthStatus> {
+    if (!process.env.CRUSTDATA_API_KEY) {
+      return { status: 'warn', detail: 'CRUSTDATA_API_KEY not set' }
+    }
+    try {
+      const resp = await fetch('https://api.crustdata.com/screener/credit_check/', {
+        method: 'GET',
+        headers: {
+          Authorization: `Token ${process.env.CRUSTDATA_API_KEY}`,
+          Accept: 'application/json',
+        },
+        signal: AbortSignal.timeout(10000),
+      })
+      if (resp.ok) return { status: 'ok', detail: 'credit_check endpoint reachable' }
+      if (resp.status === 401 || resp.status === 403) {
+        return { status: 'fail', detail: `auth failed (HTTP ${resp.status})` }
+      }
+      if (resp.status >= 500) return { status: 'warn', detail: `HTTP ${resp.status}` }
+      return { status: 'warn', detail: `HTTP ${resp.status}` }
+    } catch (err) {
+      return {
+        status: 'fail',
+        detail: `connection failed: ${err instanceof Error ? err.message : String(err)}`,
+      }
+    }
   }
 
   canExecute(step: WorkflowStepInput): boolean {

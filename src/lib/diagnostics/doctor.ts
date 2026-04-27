@@ -433,6 +433,48 @@ async function checkProviders(): Promise<LayerResult> {
   const emailDisabled = isProviderDisabled(emailProvider)
   const linkedinDisabled = isProviderDisabled(linkedinProvider)
 
+  // Provider self-describing health checks (0.7.0). Walk the registry and
+  // call `selfHealthCheck()` for any builtin that exposes it. Builtins that
+  // have not migrated fall through to the legacy hardcoded blocks below.
+  const selfHealthDone = new Set<string>()
+  try {
+    const { getRegistryReady } = await import('../providers/registry')
+    const registry = await getRegistryReady()
+    const ordered: Array<{ id: string; label: string; gate?: 'email' | 'linkedin' }> = [
+      { id: 'crustdata', label: 'Crustdata' },
+      { id: 'unipile', label: 'Unipile (LinkedIn)', gate: 'linkedin' },
+      { id: 'firecrawl', label: 'Firecrawl' },
+      { id: 'notion', label: 'Notion' },
+      { id: 'fullenrich', label: 'FullEnrich' },
+      { id: 'instantly', label: 'Instantly', gate: 'email' },
+    ]
+    for (const entry of ordered) {
+      if (entry.gate === 'email' && emailDisabled) {
+        checks.push({ name: entry.label, status: 'skip', detail: 'Opted out via config' })
+        selfHealthDone.add(entry.id)
+        continue
+      }
+      if (entry.gate === 'linkedin' && linkedinDisabled) {
+        checks.push({ name: entry.label, status: 'skip', detail: 'Opted out via config' })
+        selfHealthDone.add(entry.id)
+        continue
+      }
+      const exec = registry.getAll().find((p) => p.id === entry.id)
+      if (!exec) continue
+      try {
+        const e = registry.resolve({ stepType: exec.capabilities[0] ?? 'search', provider: exec.id } as never)
+        if (typeof (e as { selfHealthCheck?: unknown }).selfHealthCheck !== 'function') continue
+        const result = await (e as { selfHealthCheck: () => Promise<{ status: 'ok' | 'fail' | 'warn'; detail: string }> }).selfHealthCheck()
+        checks.push({ name: entry.label, status: result.status === 'ok' ? 'pass' : result.status, detail: result.detail })
+        selfHealthDone.add(entry.id)
+      } catch {
+        // selfHealthCheck threw — fall through to legacy probe below.
+      }
+    }
+  } catch {
+    // Registry unavailable — fall through to legacy probes entirely.
+  }
+
   // Anthropic
   const anthropicKey = process.env.ANTHROPIC_API_KEY
   if (anthropicKey) {
@@ -465,10 +507,12 @@ async function checkProviders(): Promise<LayerResult> {
     checks.push({ name: 'Anthropic API', status: 'fail', detail: 'ANTHROPIC_API_KEY not set' })
   }
 
-  // Unipile
+  // Unipile (legacy probe — only if selfHealthCheck didn't already cover it)
   const uKey = process.env.UNIPILE_API_KEY
   const uDsn = process.env.UNIPILE_DSN
-  if (linkedinDisabled) {
+  if (selfHealthDone.has('unipile')) {
+    // already reported via selfHealthCheck
+  } else if (linkedinDisabled) {
     checks.push({ name: 'Unipile (LinkedIn)', status: 'skip', detail: 'Opted out via config' })
   } else if (uKey && uDsn) {
     try {
@@ -496,8 +540,10 @@ async function checkProviders(): Promise<LayerResult> {
     checks.push({ name: 'Unipile (LinkedIn)', status: 'skip', detail: 'Not configured' })
   }
 
-  // Firecrawl
-  if (process.env.FIRECRAWL_API_KEY) {
+  // Firecrawl (legacy probe)
+  if (selfHealthDone.has('firecrawl')) {
+    // already reported
+  } else if (process.env.FIRECRAWL_API_KEY) {
     try {
       const resp = await fetch('https://api.firecrawl.dev/v1/scrape', {
         method: 'POST',
@@ -524,8 +570,10 @@ async function checkProviders(): Promise<LayerResult> {
     checks.push({ name: 'Firecrawl', status: 'skip', detail: 'Not configured' })
   }
 
-  // Notion
-  if (process.env.NOTION_API_KEY) {
+  // Notion (legacy probe)
+  if (selfHealthDone.has('notion')) {
+    // already reported
+  } else if (process.env.NOTION_API_KEY) {
     try {
       const resp = await fetch('https://api.notion.com/v1/search', {
         method: 'POST',
@@ -551,8 +599,10 @@ async function checkProviders(): Promise<LayerResult> {
     checks.push({ name: 'Notion', status: 'skip', detail: 'Not configured' })
   }
 
-  // Crustdata
-  if (process.env.CRUSTDATA_API_KEY) {
+  // Crustdata (legacy probe)
+  if (selfHealthDone.has('crustdata')) {
+    // already reported
+  } else if (process.env.CRUSTDATA_API_KEY) {
     try {
       const resp = await fetch('https://api.crustdata.com/screener/credit_check/', {
         method: 'GET',
@@ -576,8 +626,10 @@ async function checkProviders(): Promise<LayerResult> {
     checks.push({ name: 'Crustdata', status: 'skip', detail: 'Not configured' })
   }
 
-  // Instantly
-  if (emailDisabled) {
+  // Instantly (legacy probe)
+  if (selfHealthDone.has('instantly')) {
+    // already reported
+  } else if (emailDisabled) {
     checks.push({ name: 'Instantly', status: 'skip', detail: 'Opted out via config' })
   } else if (process.env.INSTANTLY_API_KEY) {
     try {
@@ -606,8 +658,10 @@ async function checkProviders(): Promise<LayerResult> {
     checks.push({ name: 'Instantly', status: 'skip', detail: 'Not configured' })
   }
 
-  // FullEnrich
-  if (process.env.FULLENRICH_API_KEY) {
+  // FullEnrich (legacy probe)
+  if (selfHealthDone.has('fullenrich')) {
+    // already reported
+  } else if (process.env.FULLENRICH_API_KEY) {
     try {
       const resp = await fetch('https://api.fullenrich.com/v1/credits', {
         headers: {

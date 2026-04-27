@@ -1,4 +1,4 @@
-import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability } from '../types'
+import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability, ProviderHealthStatus } from '../types'
 import type { ColumnDef } from '../../ai/types'
 import { unipileService } from '../../services/unipile'
 import { SEARCH_COLUMNS } from '../../execution/columns'
@@ -48,6 +48,30 @@ export class UnipileProvider implements StepExecutor {
       return { ok: true, message: 'Unipile accounts endpoint reachable' }
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  async selfHealthCheck(): Promise<ProviderHealthStatus> {
+    if (!process.env.UNIPILE_API_KEY || !process.env.UNIPILE_DSN) {
+      return { status: 'warn', detail: 'UNIPILE_API_KEY or UNIPILE_DSN not set' }
+    }
+    try {
+      const accountsResponse = await Promise.race([
+        unipileService.getAccounts(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout after 8s')), 8000),
+        ),
+      ])
+      const items = (accountsResponse as { items?: unknown[] })?.items ?? []
+      if (items.length === 0) {
+        return { status: 'warn', detail: 'connected but no LinkedIn accounts attached' }
+      }
+      return { status: 'ok', detail: `${items.length} account(s) connected` }
+    } catch (err) {
+      return {
+        status: 'fail',
+        detail: err instanceof Error ? err.message : String(err),
+      }
     }
   }
 

@@ -1,4 +1,4 @@
-import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability } from '../types'
+import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability, ProviderHealthStatus } from '../types'
 import type { ColumnDef } from '../../ai/types'
 import { instantlyService, type SequenceStep } from '../../services/instantly'
 
@@ -46,6 +46,27 @@ export class InstantlyProvider implements StepExecutor {
       return { ok: true, message: 'Instantly accounts endpoint reachable' }
     } catch (err) {
       return { ok: false, message: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  async selfHealthCheck(): Promise<ProviderHealthStatus> {
+    if (!process.env.INSTANTLY_API_KEY) {
+      return { status: 'warn', detail: 'INSTANTLY_API_KEY not set' }
+    }
+    try {
+      await Promise.race([
+        instantlyService.listEmailAccounts(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout after 8s')), 8000),
+        ),
+      ])
+      return { status: 'ok', detail: 'accounts endpoint reachable' }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (/401|403|unauthorized|forbidden|invalid/i.test(msg)) {
+        return { status: 'fail', detail: 'API key invalid' }
+      }
+      return { status: 'fail', detail: msg }
     }
   }
 

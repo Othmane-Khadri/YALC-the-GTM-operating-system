@@ -1,4 +1,4 @@
-import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability } from '../types'
+import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability, ProviderHealthStatus } from '../types'
 import type { ColumnDef } from '../../ai/types'
 import { notionService } from '../../services/notion'
 
@@ -17,6 +17,32 @@ export class NotionProvider implements StepExecutor {
 
   isAvailable(): boolean {
     return notionService.isAvailable()
+  }
+
+  async selfHealthCheck(): Promise<ProviderHealthStatus> {
+    if (!process.env.NOTION_API_KEY) {
+      return { status: 'warn', detail: 'NOTION_API_KEY not set' }
+    }
+    try {
+      const resp = await fetch('https://api.notion.com/v1/search', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.NOTION_API_KEY}`,
+          'Notion-Version': '2022-06-28',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ page_size: 1 }),
+        signal: AbortSignal.timeout(10000),
+      })
+      if (resp.ok) return { status: 'ok', detail: 'search endpoint reachable' }
+      if (resp.status === 401) return { status: 'fail', detail: 'token invalid' }
+      return { status: 'warn', detail: `HTTP ${resp.status}` }
+    } catch (err) {
+      return {
+        status: 'fail',
+        detail: `connection failed: ${err instanceof Error ? err.message : String(err)}`,
+      }
+    }
   }
 
   canExecute(step: WorkflowStepInput): boolean {

@@ -93,6 +93,18 @@ export interface WorkflowStepInput {
   [key: string]: unknown
 }
 
+/**
+ * Self-describing health-check result. Providers that implement
+ * `selfHealthCheck()` own their own probe — the diagnostic layer does not
+ * have to know which API endpoint to hit. Required for builtins as of
+ * 0.7.0; doctor reads `selfHealthCheck` first and only falls back to its
+ * legacy hardcoded probes for providers that have not migrated.
+ */
+export interface ProviderHealthStatus {
+  status: 'ok' | 'fail' | 'warn'
+  detail: string
+}
+
 // StepExecutor — the core interface every provider implements
 export interface StepExecutor {
   id: string
@@ -106,5 +118,8 @@ export interface StepExecutor {
   canExecute(step: WorkflowStepInput): boolean
   execute(step: WorkflowStepInput, context: ExecutionContext): AsyncIterable<RowBatch>
   getColumnDefinitions(step: WorkflowStepInput): ColumnDef[]
+  /** Legacy health-check shape used by `provider:test`. */
   healthCheck?(): Promise<{ ok: boolean; message: string }>
+  /** Self-describing health probe used by doctor (0.7.0+). */
+  selfHealthCheck?(): Promise<ProviderHealthStatus>
 }

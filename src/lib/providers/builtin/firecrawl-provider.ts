@@ -1,4 +1,4 @@
-import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability } from '../types'
+import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability, ProviderHealthStatus } from '../types'
 import type { ColumnDef } from '../../ai/types'
 import { firecrawlService } from '../../services/firecrawl'
 import { SEARCH_COLUMNS } from '../../execution/columns'
@@ -12,6 +12,32 @@ export class FirecrawlProvider implements StepExecutor {
 
   isAvailable(): boolean {
     return firecrawlService.isAvailable()
+  }
+
+  async selfHealthCheck(): Promise<ProviderHealthStatus> {
+    if (!process.env.FIRECRAWL_API_KEY) {
+      return { status: 'warn', detail: 'FIRECRAWL_API_KEY not set' }
+    }
+    try {
+      const resp = await fetch('https://api.firecrawl.dev/v1/scrape', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.FIRECRAWL_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: 'https://example.com', formats: ['markdown'], timeout: 5000 }),
+        signal: AbortSignal.timeout(10000),
+      })
+      if (resp.ok) return { status: 'ok', detail: 'scrape endpoint reachable' }
+      if (resp.status === 401) return { status: 'fail', detail: 'API key invalid' }
+      if (resp.status === 402) return { status: 'fail', detail: 'credits exhausted' }
+      return { status: 'warn', detail: `HTTP ${resp.status}` }
+    } catch (err) {
+      return {
+        status: 'fail',
+        detail: `connection failed: ${err instanceof Error ? err.message : String(err)}`,
+      }
+    }
   }
 
   canExecute(step: WorkflowStepInput): boolean {
