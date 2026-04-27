@@ -132,13 +132,11 @@ export function classifyMcpError(err: unknown, childStderr?: string): Classified
   const haystack = childStderr ? `${sdkMsg}\n${childStderr}` : sdkMsg
 
   if (/E404|404 Not Found|not found in registry|npm error 404|npm error code E404/i.test(haystack)) {
-    // Surface the offending package name when we can extract it from npm chatter.
-    const pkgMatch = haystack.match(/(?:404\s+Not\s+Found[^\n]*?:\s*|GET\s+https?:\/\/[^\s]+\/)(@?[\w./-]+)/i)
-    const pkgHint = pkgMatch ? ` Package: ${pkgMatch[1]}` : ''
+    const pkgHint = extractNpmPackageFromError(haystack)
     return {
       kind: 'package_not_found',
       message: 'MCP package not found on npm',
-      hint: `Verify "command"/"args" in your config. If using a private package, ensure your npm auth is set.${pkgHint}`,
+      hint: `Verify "command"/"args" in your config. If using a private package, ensure your npm auth is set.${pkgHint ? ` Package: ${pkgHint}` : ''}`,
     }
   }
   if (/Cannot find module|MODULE_NOT_FOUND|command not found:/i.test(haystack)) {
@@ -177,6 +175,37 @@ export function classifyMcpError(err: unknown, childStderr?: string): Classified
     }
   }
   return { kind: 'unknown', message: sdkMsg, hint: '' }
+}
+
+/**
+ * Extract the offending npm package spec from an error blob. Handles the
+ * three common shapes npm emits:
+ *
+ *   1. `404 Not Found - GET https://registry.npmjs.org/@scope%2fname - Not found`
+ *      (registry URL with %2f-encoded slash for scopes)
+ *   2. `404 Not Found: @scope/name@1.2.3` (colon form, optional version)
+ *   3. `'@scope/name@1.2.3' is not in this registry`
+ *
+ * Returns the canonical npm spec (e.g. `@scope/name@1.2.3`) or empty.
+ */
+export function extractNpmPackageFromError(haystack: string): string {
+  // Decode %2f / %2F as `/` so registry-URL form normalizes to spec form.
+  const decoded = haystack.replace(/%2[fF]/g, '/')
+
+  // Form 1: registry URL — capture path component after the host slash.
+  const urlMatch = decoded.match(
+    /https?:\/\/registry\.[^\s/]+\/(@[\w.-]+\/[\w.-]+(?:@[\w.+-]+)?|[\w.-]+(?:@[\w.+-]+)?)/,
+  )
+  if (urlMatch) return urlMatch[1]
+
+  // Form 2 + 3: quoted or post-colon spec. Allow scoped + unscoped, with or
+  // without version. Avoid matching log preambles like "404 Not Found - GET".
+  const specMatch = decoded.match(
+    /(?:["']|:\s*|registry[/\s]+|in registry\s+|GET\s+)(@[\w.-]+\/[\w.-]+(?:@[\w.+-]+)?|[\w.-]+@[\w.+-]+)/,
+  )
+  if (specMatch) return specMatch[1]
+
+  return ''
 }
 
 // ─── Adapter ──────────────────────────────────────────────────────────────────
