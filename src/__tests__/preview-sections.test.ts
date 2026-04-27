@@ -37,6 +37,7 @@ describe('SECTION_NAMES + SECTION_PATHS', () => {
       'qualification_rules',
       'campaign_templates',
       'search_queries',
+      'config',
     ])
     // Every section maps to at least one canonical path.
     for (const s of SECTION_NAMES) {
