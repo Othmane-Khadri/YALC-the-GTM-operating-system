@@ -1,5 +1,10 @@
 import { Client } from '@notionhq/client'
 
+/** Required env vars for the Notion provider. */
+export const envVarSchema = {
+  NOTION_API_KEY: { pattern: '^(secret_|ntn_)', minLength: 30 },
+} as const
+
 let client: Client | null = null
 
 function getClient(): Client {

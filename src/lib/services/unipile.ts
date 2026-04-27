@@ -1,5 +1,18 @@
 import { UnipileClient } from 'unipile-node-sdk'
 
+/**
+ * Required env vars for the Unipile provider. Doctor walks each service's
+ * `envVarSchema` so per-provider validation rules live next to the code that
+ * uses them.
+ */
+export const envVarSchema = {
+  UNIPILE_DSN: {
+    pattern: '^https://api\\d+\\.unipile\\.com:\\d+$',
+    minLength: 28,
+  },
+  UNIPILE_API_KEY: { minLength: 20 },
+} as const
+
 let client: UnipileClient | null = null
 
 function getClient(): UnipileClient {

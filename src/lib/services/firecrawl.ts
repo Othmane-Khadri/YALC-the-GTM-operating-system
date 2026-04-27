@@ -1,5 +1,10 @@
 import FirecrawlApp from '@mendable/firecrawl-js'
 
+/** Required env vars for the Firecrawl provider. */
+export const envVarSchema = {
+  FIRECRAWL_API_KEY: { minLength: 20 },
+} as const
+
 let app: FirecrawlApp | null = null
 
 function getApp(): FirecrawlApp {

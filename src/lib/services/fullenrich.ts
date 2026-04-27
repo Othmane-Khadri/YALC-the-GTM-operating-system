@@ -3,6 +3,11 @@
 
 const BASE_URL = 'https://api.fullenrich.com'
 
+/** Required env vars for the FullEnrich provider. */
+export const envVarSchema = {
+  FULLENRICH_API_KEY: { minLength: 20 },
+} as const
+
 export interface FullEnrichContact {
   firstname: string
   lastname: string

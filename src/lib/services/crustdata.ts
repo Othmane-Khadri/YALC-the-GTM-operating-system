@@ -13,6 +13,11 @@
 
 const BASE_URL = 'https://api.crustdata.com'
 
+/** Required env vars for the Crustdata provider. */
+export const envVarSchema = {
+  CRUSTDATA_API_KEY: { minLength: 20 },
+} as const
+
 // Configurable default for `limit` on search calls when the caller doesn't
 // override. Wired from `crustdata.max_results_per_query` in config.yaml via
 // `setCrustdataDefaults`.

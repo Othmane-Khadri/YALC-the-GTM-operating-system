@@ -104,7 +104,89 @@ function runSqlite(dbPath: string, query: string): string | null {
   }
 }
 
+// ─── Provider env-var schema registry (0.7.0) ────────────────────────────────
+//
+// Each provider service exports its own `envVarSchema`. Doctor walks the
+// registry uniformly instead of hardcoding per-provider checks.
+
+interface EnvVarRule {
+  pattern?: string
+  minLength?: number
+}
+
+interface ProviderEnvSchema {
+  provider: string
+  schema: Record<string, EnvVarRule>
+}
+
+async function loadProviderEnvSchemas(): Promise<ProviderEnvSchema[]> {
+  const out: ProviderEnvSchema[] = []
+  const services: Array<{ name: string; importer: () => Promise<{ envVarSchema?: Record<string, EnvVarRule> }> }> = [
+    { name: 'unipile', importer: () => import('../services/unipile') },
+    { name: 'crustdata', importer: () => import('../services/crustdata') },
+    { name: 'firecrawl', importer: () => import('../services/firecrawl') },
+    { name: 'notion', importer: () => import('../services/notion') },
+    { name: 'fullenrich', importer: () => import('../services/fullenrich') },
+    { name: 'instantly', importer: () => import('../services/instantly') },
+  ]
+  for (const s of services) {
+    try {
+      const mod = await s.importer()
+      if (mod.envVarSchema) {
+        out.push({ provider: s.name, schema: mod.envVarSchema })
+      }
+    } catch {
+      // Service module didn't export a schema — skip.
+    }
+  }
+  return out
+}
+
+function validateEnvVar(value: string, rule: EnvVarRule): string | null {
+  if (rule.minLength !== undefined && value.length < rule.minLength) {
+    return `expected length ≥ ${rule.minLength}, got ${value.length}`
+  }
+  if (rule.pattern !== undefined) {
+    try {
+      const re = new RegExp(rule.pattern)
+      if (!re.test(value)) return `did not match pattern ${rule.pattern}`
+    } catch {
+      // Invalid regex in our own schema — treat as no rule.
+    }
+  }
+  return null
+}
+
 // ─── Layer 1: Environment ────────────────────────────────────────────────────
+
+async function checkEnvironmentSchemas(envVars: Map<string, string>): Promise<CheckResult[]> {
+  const results: CheckResult[] = []
+  const schemas = await loadProviderEnvSchemas()
+  for (const entry of schemas) {
+    for (const [varName, rule] of Object.entries(entry.schema)) {
+      const value = envVars.get(varName) ?? process.env[varName]
+      if (!value || !value.trim()) {
+        // Missing entirely — already covered by per-key checks; skip silently.
+        continue
+      }
+      const failure = validateEnvVar(value, rule)
+      if (failure) {
+        results.push({
+          name: `${entry.provider}: ${varName}`,
+          status: 'fail',
+          detail: `Schema check failed — ${failure}`,
+        })
+      } else {
+        results.push({
+          name: `${entry.provider}: ${varName}`,
+          status: 'pass',
+          detail: '',
+        })
+      }
+    }
+  }
+  return results
+}
 
 function checkEnvironment(): LayerResult {
   const checks: CheckResult[] = []
@@ -842,6 +924,15 @@ export async function runDoctor(opts: { report?: boolean } = {}): Promise<void> 
   // Layer 1
   console.log('── Environment ──')
   const envResult = checkEnvironment()
+  // Walk per-provider env-var schemas (0.7.0). Each service module exports
+  // its own validation rules; we surface them under the same Environment
+  // layer so users see them next to the per-key presence checks.
+  try {
+    const schemaChecks = await checkEnvironmentSchemas(readEnvFile())
+    envResult.checks.push(...schemaChecks)
+  } catch {
+    // Best-effort.
+  }
   layers.push(envResult)
   for (const check of envResult.checks) printCheck(check)
 

@@ -4,6 +4,11 @@
 
 const BASE_URL = 'https://api.instantly.ai'
 
+/** Required env vars for the Instantly provider. */
+export const envVarSchema = {
+  INSTANTLY_API_KEY: { minLength: 20 },
+} as const
+
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export interface InstantlyCampaign {
