@@ -371,6 +371,26 @@ function checkConfiguration(): LayerResult {
     }
   }
 
+  // 0.6.0: company_context.yaml is first-class. Pre-0.6.0 installs have a
+  // framework.yaml without a paired company_context.yaml — flag it so the
+  // user knows to run `yalc-gtm migrate`.
+  const companyContextPath = join(GTM_OS_DIR, 'company_context.yaml')
+  const hasFramework = existsSync(frameworkPath)
+  const hasCompanyContext = existsSync(companyContextPath)
+  if (hasFramework && !hasCompanyContext) {
+    checks.push({
+      name: 'Company context (~/.gtm-os/company_context.yaml)',
+      status: 'warn',
+      detail: 'Pre-0.6.0 install detected. Run yalc-gtm migrate to extract company context to its own file.',
+    })
+  } else if (hasCompanyContext) {
+    checks.push({
+      name: 'Company context (~/.gtm-os/company_context.yaml)',
+      status: 'pass',
+      detail: '',
+    })
+  }
+
   return { layer: 'Configuration', checks }
 }
 

@@ -1269,6 +1269,20 @@ program
     })
   }))
 
+// ─── migrate ────────────────────────────────────────────────────────────────
+program
+  .command('migrate')
+  .description('Extract company context from a pre-0.6.0 framework.yaml into its own file')
+  .action(withDiagnostics(async () => {
+    const { runMigrate } = await import('../lib/onboarding/migrate')
+    const result = runMigrate()
+    if (result.migrated) {
+      console.log(`  ✓ ${result.reason}`)
+    } else {
+      console.log(`  ⊘ ${result.reason}`)
+    }
+  }))
+
 // ─── setup ──────────────────────────────────────────────────────────────────
 program
   .command('setup')
