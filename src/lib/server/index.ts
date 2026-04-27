@@ -10,6 +10,7 @@ import { learningRoutes } from './routes/learning'
 import { campaignRoutes } from './routes/campaigns'
 import { swipeRoutes } from './routes/swipe'
 import { webhookRoutes } from './routes/webhooks'
+import { frameworkRoutes } from './routes/frameworks'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -30,6 +31,9 @@ export function createApp() {
   app.route('/api/campaigns', campaignRoutes)
   app.route('/api/swipe', swipeRoutes)
   app.route('/api/webhooks', webhookRoutes)
+
+  // Framework dashboard routes
+  app.route('/frameworks', frameworkRoutes)
 
   // Serve static HTML pages
   app.get('/review', (c) => {
@@ -68,6 +72,7 @@ a:hover{background:#242424;border-color:#f5c542}</style></head>
 <body><div class="container"><h1>GTM-OS</h1><p>Open-source GTM operating system</p>
 <a href="/campaigns">Campaign Dashboard</a>
 <a href="/review">Lead Review Dashboard</a>
+<a href="/frameworks">Frameworks</a>
 <a href="/swipe/demo">Skill Optimization (RL)</a>
 </div></body></html>`)
   })
@@ -80,6 +85,7 @@ export function startServer(port = 3847) {
   console.log(`\nGTM-OS Server: http://localhost:${port}`)
   console.log('  /campaigns — Campaign dashboard')
   console.log('  /review    — Lead review dashboard')
+  console.log('  /frameworks — Installed framework dashboards')
   console.log('  /swipe     — Skill optimization\n')
   serve({ fetch: app.fetch, port })
 }
