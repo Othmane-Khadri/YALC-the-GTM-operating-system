@@ -59,5 +59,23 @@ If the user's preference doesn't match any of the above buckets, ask once: "Shou
 
 If the rule contradicts an existing line in the file, replace the old line and add a one-line `(updated YYYY-MM-DD)` annotation.
 
+## Persisting Runtime Context (the GTM brain)
+
+Project rules above describe how Claude Code should behave. Runtime context is different — it describes the user's company, ICP, voice, and outreach assets, and lives under `~/.gtm-os/`. When the user shares context mid-session that should land in the GTM brain, route the change through the preview/commit flow, never write directly to the live file.
+
+| When user says... | Save to (in `_preview/`) |
+|---|---|
+| "my voice is...", "tone should be..." | `voice/tone-of-voice.md` |
+| "my ICP is...", "we sell to..." | `company_context.yaml` (`icp.*` fields) |
+| "qualify a lead like X", "score this kind of lead..." | `qualification_rules.md` |
+| "my outreach should...", "connect note should say..." | `campaign_templates.yaml` |
+| "monitor this signal", "watch for X" | `search_queries.txt` |
+| "we compete with X" | `company_context.yaml` (`icp.competitors`) |
+| "our segment is...", "primary segment description..." | `icp/segments.yaml` |
+
+Hard rule: **runtime context modifications must go through `_preview/` and a commit step.** Never write directly to `~/.gtm-os/<live-file>`. Use `yalc-gtm start --regenerate <section>` to refresh a section, then `yalc-gtm start --commit-preview` (optionally with `--discard <section>`) to promote it. If the user asks for an immediate edit, write the change into `_preview/` and tell them to review + commit.
+
+For per-tenant runs (`--tenant acme`), substitute `~/.gtm-os/tenants/acme/_preview/<file>`.
+
 ## Second Brain Context
 For Earleads-specific client context (ICP, playbooks, battlecards), read from the Second Brain workspace configured as `additionalDirectory`. Client files: `01_Projects/Clients/Active/{ClientName}/`.
