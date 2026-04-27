@@ -1,0 +1,35 @@
+---
+name: qualify-engagers
+description: Score post engagers (commenters/likers) against the user's ICP and return only those above a threshold
+category: qualification
+inputs:
+  - name: engagers
+    description: Array of engager profiles (LinkedIn URN, name, headline, company)
+    required: true
+  - name: min_score
+    description: ICP score threshold (0-100). Engagers below this are filtered out.
+    required: true
+provider: anthropic
+capabilities: [qualify]
+output: structured_json
+---
+
+For each engager, score against the user's captured ICP (read `~/.gtm-os/icp.yaml`). Use:
+
+- **role fit (0-40)** — how close their title is to the target roles.
+- **company fit (0-40)** — industry, size, stage match.
+- **signal strength (0-20)** — recent role change, hiring, content engagement.
+
+Sum to a total `icp_score` (0-100). Drop any engager with score below {{min_score}}.
+
+Return:
+```json
+{
+  "...original fields": "",
+  "icp_score": 0,
+  "role_fit": 0,
+  "company_fit": 0,
+  "signal_strength": 0,
+  "rationale": ""
+}
+```

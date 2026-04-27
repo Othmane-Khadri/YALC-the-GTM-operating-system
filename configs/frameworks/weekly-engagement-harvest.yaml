@@ -1,0 +1,63 @@
+name: weekly-engagement-harvest
+display_name: "Weekly Engagement Harvest"
+description: >
+  Each week, scrapes likers and commenters of your most recent LinkedIn
+  posts via Unipile, scores them against your ICP, and exports the
+  qualified list as a lead set ready for outreach.
+
+requires:
+  providers:
+    - unipile
+  any_of_keys:
+    - ANTHROPIC_API_KEY
+
+recommended_when:
+  has_provider: unipile
+  not_has_active_framework: weekly-engagement-harvest
+
+inputs:
+  - name: posts_lookback
+    description: "How many of your most recent LinkedIn posts to scrape engagement from."
+    default: 8
+  - name: min_quality_score
+    description: "ICP qualification score threshold (0-100). Only engagers above this score are exported."
+    default: 60
+  - name: max_per_run
+    description: "Maximum qualified leads to surface per run."
+    default: 50
+
+schedule:
+  cron: "0 9 * * 1"
+  timezone: "$context.company.timezone"
+
+steps:
+  - skill: list-recent-linkedin-posts
+    input:
+      lookback: "{{posts_lookback}}"
+  - skill: scrape-post-engagers
+    input:
+      posts: "{{steps[0].output}}"
+  - skill: qualify-engagers
+    input:
+      engagers: "{{steps[1].output}}"
+      min_score: "{{min_quality_score}}"
+  - skill: rank-and-truncate
+    input:
+      mentions: "{{steps[2].output}}"
+      n: "{{max_per_run}}"
+
+output:
+  destination_choice:
+    - notion:
+        when: "$has_provider:notion"
+        page_template: "configs/frameworks/templates/notion/weekly-engagement-harvest.md"
+        target_db: "$config.notion.parent_page"
+    - dashboard:
+        when: "$has_provider:dashboard_local"
+        route: "/frameworks/weekly-engagement-harvest"
+        view_template: "configs/frameworks/templates/html/weekly-engagement-harvest.hbs"
+
+seed_run:
+  description: "On install, run once over a 30-day lookback to build the initial engager pool."
+  override_inputs:
+    posts_lookback: 30

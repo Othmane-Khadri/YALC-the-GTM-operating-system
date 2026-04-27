@@ -1,0 +1,64 @@
+name: daily-icp-signal-detection
+display_name: "Daily ICP Signal Detection"
+description: >
+  Runs a daily Crustdata search for new companies that match your ICP
+  filters (industry, size, geography, funding). Dedupes against prior
+  runs so you only see new accounts. Output ranks by recency and ICP fit.
+
+requires:
+  providers:
+    - crustdata
+  any_of_keys:
+    - ANTHROPIC_API_KEY
+  context_fields:
+    - icp.segments_freeform
+
+recommended_when:
+  has_provider: crustdata
+  has_icp_segments: true
+  not_has_active_framework: daily-icp-signal-detection
+
+inputs:
+  - name: segments
+    description: "ICP segments to search (free-form description, defaults to your captured ICP summary)."
+    default: "$context.icp.segments_freeform"
+  - name: pain_points
+    description: "Pain points the search should bias towards. Comma-separated."
+    default: "$context.icp.pain_points"
+  - name: max_per_run
+    description: "Maximum new accounts to surface per run."
+    default: 25
+
+schedule:
+  cron: "0 8 * * *"
+  timezone: "$context.company.timezone"
+
+steps:
+  - skill: crustdata-icp-search
+    input:
+      segments: "{{segments}}"
+      pain_points: "{{pain_points}}"
+  - skill: dedupe-against-history
+    input:
+      candidates: "{{steps[0].output}}"
+      lookback_days: 30
+  - skill: rank-and-truncate
+    input:
+      mentions: "{{steps[1].output}}"
+      n: "{{max_per_run}}"
+
+output:
+  destination_choice:
+    - notion:
+        when: "$has_provider:notion"
+        page_template: "configs/frameworks/templates/notion/daily-icp-signal-detection.md"
+        target_db: "$config.notion.parent_page"
+    - dashboard:
+        when: "$has_provider:dashboard_local"
+        route: "/frameworks/daily-icp-signal-detection"
+        view_template: "configs/frameworks/templates/html/daily-icp-signal-detection.hbs"
+
+seed_run:
+  description: "On install, run once with a 14-day window to backfill recent matches."
+  override_inputs:
+    lookback_days: 14

@@ -1,0 +1,59 @@
+name: inbound-reply-triage
+display_name: "Inbound Reply Triage"
+description: >
+  Reads inbox replies from your cold-email tool (Instantly today; Brevo
+  when its MCP ships) and classifies each reply as interested,
+  objection, not-now, or unsubscribe. Suggests a next action so you can
+  triage the queue in minutes instead of hours.
+
+requires:
+  any_of_keys:
+    - INSTANTLY_API_KEY
+    - BREVO_MCP
+
+recommended_when:
+  not_has_active_framework: inbound-reply-triage
+
+inputs:
+  - name: lookback_hours
+    description: "How many hours of inbox replies to triage per run."
+    default: 24
+  - name: include_unsubscribes
+    description: "Surface unsubscribes too, or filter them out (yes/no)."
+    default: "no"
+
+schedule:
+  cron: "0 */4 * * *"
+  timezone: "$context.company.timezone"
+
+steps:
+  - skill: fetch-inbox-replies
+    input:
+      lookback_hours: "{{lookback_hours}}"
+  - skill: classify-replies
+    input:
+      replies: "{{steps[0].output}}"
+      categories:
+        - interested
+        - objection
+        - not-now
+        - unsubscribe
+  - skill: suggest-reply-action
+    input:
+      replies: "{{steps[1].output}}"
+
+output:
+  destination_choice:
+    - notion:
+        when: "$has_provider:notion"
+        page_template: "configs/frameworks/templates/notion/inbound-reply-triage.md"
+        target_db: "$config.notion.parent_page"
+    - dashboard:
+        when: "$has_provider:dashboard_local"
+        route: "/frameworks/inbound-reply-triage"
+        view_template: "configs/frameworks/templates/html/inbound-reply-triage.hbs"
+
+seed_run:
+  description: "On install, triage the last 7 days of replies."
+  override_inputs:
+    lookback_hours: 168
