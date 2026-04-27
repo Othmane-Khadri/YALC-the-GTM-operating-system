@@ -1,5 +1,6 @@
 {
-  "_comment": "Mailgun email send via MCP. No widely-shipped MCP server is published at @modelcontextprotocol/server-mailgun yet — this template makes the contract explicit so a user with a Mailgun MCP server (their own, or one published later) can drop it in by editing the command. To use a local stdio server, replace command/args with the path to your build (e.g. command: node, args: [/path/to/mailgun-mcp.js]).",
+  "disabled": true,
+  "_comment": "Mailgun email send via MCP. The package @modelcontextprotocol/server-mailgun does not exist on npm — provider:add refuses to register this template by default. To enable: (a) point command/args at your own Mailgun MCP server (e.g. command: node, args: [/path/to/mailgun-mcp.js]) AND remove this disabled flag, or (b) re-run with --accept-disabled if you are intentionally testing the disabled path.",
   "name": "mailgun",
   "displayName": "Mailgun (Email)",
   "transport": "stdio",

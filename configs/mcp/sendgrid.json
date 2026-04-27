@@ -1,5 +1,6 @@
 {
-  "_comment": "SendGrid email send via MCP. No widely-shipped MCP server is published at @modelcontextprotocol/server-sendgrid yet — this template makes the contract explicit so a user with a SendGrid MCP server (their own, or one published later) can drop it in by editing the command. To use a local stdio server, replace command/args with the path to your build (e.g. command: node, args: [/path/to/sendgrid-mcp.js]).",
+  "disabled": true,
+  "_comment": "SendGrid email send via MCP. The package @modelcontextprotocol/server-sendgrid does not exist on npm — provider:add refuses to register this template by default. To enable: (a) point command/args at your own SendGrid MCP server (e.g. command: node, args: [/path/to/sendgrid-mcp.js]) AND remove this disabled flag, or (b) re-run with --accept-disabled if you are intentionally testing the disabled path.",
   "name": "sendgrid",
   "displayName": "SendGrid (Email)",
   "transport": "stdio",
