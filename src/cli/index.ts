@@ -2038,6 +2038,79 @@ program
     )
   }))
 
+// ─── framework:* — proposition system ──────────────────────────────────────
+
+program
+  .command('framework:list')
+  .description('List all bundled and installed frameworks')
+  .action(withDiagnostics(async () => {
+    const { runFrameworkList } = await import('./commands/framework.js')
+    await runFrameworkList()
+  }))
+
+program
+  .command('framework:recommend')
+  .description('Recommend frameworks based on configured providers and captured context')
+  .action(withDiagnostics(async () => {
+    const { runFrameworkRecommend } = await import('./commands/framework.js')
+    await runFrameworkRecommend()
+  }))
+
+program
+  .command('framework:install <name>')
+  .description('Install a framework: pick output destination, schedule, and seed-run')
+  .option('--auto-confirm', 'Accept defaults for every input')
+  .option('--destination <dest>', 'Output destination (notion or dashboard)')
+  .option('--notion-parent <id>', 'Notion parent page ID (required if --destination notion)')
+  .action(withDiagnostics(async (name: string, opts) => {
+    const { runFrameworkInstall } = await import('./commands/framework.js')
+    await runFrameworkInstall(name, {
+      autoConfirm: !!opts.autoConfirm,
+      destination: opts.destination,
+      notionParent: opts.notionParent,
+    })
+  }))
+
+program
+  .command('framework:run <name>')
+  .description('Run an installed framework now (off-schedule)')
+  .action(withDiagnostics(async (name: string) => {
+    const { runFrameworkRun } = await import('./commands/framework.js')
+    await runFrameworkRun(name)
+  }))
+
+program
+  .command('framework:status <name>')
+  .description('Show status (last run, next run, output destination) for an installed framework')
+  .action(withDiagnostics(async (name: string) => {
+    const { runFrameworkStatus } = await import('./commands/framework.js')
+    await runFrameworkStatus(name)
+  }))
+
+program
+  .command('framework:logs <name>')
+  .description('Show the most recent run for an installed framework')
+  .action(withDiagnostics(async (name: string) => {
+    const { runFrameworkLogs } = await import('./commands/framework.js')
+    await runFrameworkLogs(name)
+  }))
+
+program
+  .command('framework:disable <name>')
+  .description('Pause scheduled runs for an installed framework (config preserved)')
+  .action(withDiagnostics(async (name: string) => {
+    const { runFrameworkDisable } = await import('./commands/framework.js')
+    await runFrameworkDisable(name)
+  }))
+
+program
+  .command('framework:remove <name>')
+  .description('Remove an installed framework: delete config, agent yaml, and run history')
+  .action(withDiagnostics(async (name: string) => {
+    const { runFrameworkRemove } = await import('./commands/framework.js')
+    await runFrameworkRemove(name)
+  }))
+
 // ─── provider:list ─────────────────────────────────────────────────────────
 // Map the underlying status enum (`active` / `disconnected` / `error`) to a
 // short user-facing label. Most "disconnected" cases in the wild are simply a
