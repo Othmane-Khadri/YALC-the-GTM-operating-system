@@ -16,6 +16,11 @@ import { randomBytes } from 'node:crypto'
 import yaml from 'js-yaml'
 import { SIGNUP_URLS } from '../constants.js'
 import { isClaudeCode } from '../env/claude-code.js'
+import {
+  envTemplateInstructions,
+  writeEnvTemplate,
+  type WriteEnvTemplateOutcome,
+} from './env-template.js'
 
 const GTM_OS_DIR = join(homedir(), '.gtm-os')
 const CONFIG_PATH = join(GTM_OS_DIR, 'config.yaml')
@@ -207,6 +212,13 @@ export async function runStart(opts: StartOptions): Promise<void> {
       writeFileSync(CONFIG_PATH, yaml.dump(DEFAULT_CONFIG))
       console.log('  Created default config')
     }
+
+    // Lay down the template `.env` with placeholders for every supported
+    // provider. First boot writes the full template; re-runs delta-merge
+    // any new placeholders that didn't exist in the previous version.
+    const envOutcome = ensureEnvTemplate()
+    printEnvOutcome(envOutcome)
+
     await applyMigrations()
     console.log(
       '\nScaffold complete. Run `yalc-gtm start --non-interactive --website <url>` to capture context.',
@@ -366,12 +378,18 @@ export async function runStart(opts: StartOptions): Promise<void> {
     console.log('    .env.local and re-run `yalc-gtm setup` to validate.')
   }
 
-  // Write canonical env file at ~/.gtm-os/.env
-  const envContent = Object.entries(collectedKeys)
-    .map(([k, v]) => `${k}=${v}`)
-    .join('\n') + '\n'
-  writeFileSync(ENV_PATH, envContent)
-  console.log(`\n  ✓ ${Object.keys(collectedKeys).length} keys saved to ${ENV_PATH}`)
+  // Write canonical env file at ~/.gtm-os/.env. First boot lays down the
+  // full template with commented placeholders for every supported provider;
+  // re-runs preserve user lines and append placeholders for any new keys.
+  const envOutcome = ensureEnvTemplate()
+  printEnvOutcome(envOutcome)
+
+  // Apply any keys collected through interactive prompts on top of the
+  // template. We rewrite the file in-place: existing lines keep their order
+  // and comments, but matching `# KEY=` / `KEY=` / `KEY=oldvalue` lines are
+  // replaced by the live value, and unknown keys are appended at the bottom.
+  applyCollectedKeysToEnv(ENV_PATH, collectedKeys)
+  console.log(`  ✓ ${Object.keys(collectedKeys).length} key(s) saved to ${ENV_PATH}`)
 
   // ── Step 1b: Outbound Channel Selection ─────────────────────────────────
   // Pick the email provider so future `email:send` calls resolve through the
@@ -535,6 +553,84 @@ export async function runStart(opts: StartOptions): Promise<void> {
 
   // ── Readiness Report ────────────────────────────────────────────────────
   printReadinessReport(collectedKeys, { frameworkDerived, inClaudeCode })
+}
+
+/**
+ * Render or delta-merge the template `.env`. Returns the outcome so the
+ * caller can decide what to print. The template is the source of truth for
+ * the structured "for-humans" portion; runtime-collected key values are
+ * splattered on top by `applyCollectedKeysToEnv()`.
+ */
+function ensureEnvTemplate(): WriteEnvTemplateOutcome {
+  return writeEnvTemplate({
+    envPath: ENV_PATH,
+    autoKeys: {
+      ENCRYPTION_KEY: randomBytes(32).toString('hex'),
+      DATABASE_URL: `file:${join(GTM_OS_DIR, 'gtm-os.db')}`,
+    },
+  })
+}
+
+function printEnvOutcome(outcome: WriteEnvTemplateOutcome): void {
+  if (outcome.mode === 'created') {
+    console.log('')
+    console.log(envTemplateInstructions(outcome.envPath))
+  } else if (outcome.mode === 'merged') {
+    console.log(
+      `  ✓ Added ${outcome.added.length} new placeholder(s) to ${outcome.envPath}`,
+    )
+  }
+  // 'unchanged' is silent — the file is already up-to-date.
+}
+
+/**
+ * Update the template `.env` in-place with concrete `KEY=value` pairs the
+ * user supplied during interactive prompts. Algorithm:
+ *
+ *   1. Read existing file.
+ *   2. For each line matching `^\s*#?\s*KEY\s*=`, if `KEY` is in the
+ *      collectedKeys map AND the value is non-empty, replace the line with
+ *      `KEY=<value>` (drops any leading `# `).
+ *   3. Any keys in the map that did not match an existing line get appended
+ *      at the bottom (so freshly-set keys never go missing).
+ *
+ * Existing comments and blank lines are preserved verbatim.
+ */
+function applyCollectedKeysToEnv(
+  envPath: string,
+  collected: Record<string, string>,
+): void {
+  let lines: string[] = []
+  if (existsSync(envPath)) {
+    lines = readFileSync(envPath, 'utf-8').split('\n')
+  }
+
+  const seen = new Set<string>()
+  const keyLineRe = /^(\s*)(#\s*)?([A-Z][A-Z0-9_]*)\s*=/
+
+  const out: string[] = lines.map((rawLine) => {
+    const match = rawLine.match(keyLineRe)
+    if (!match) return rawLine
+    const key = match[3]
+    const live = collected[key]
+    if (typeof live !== 'string' || live === '') return rawLine
+    seen.add(key)
+    return `${key}=${live}`
+  })
+
+  const missing = Object.entries(collected).filter(
+    ([k, v]) => !seen.has(k) && typeof v === 'string' && v !== '',
+  )
+  if (missing.length > 0) {
+    if (out.length > 0 && out[out.length - 1] !== '') out.push('')
+    for (const [k, v] of missing) {
+      out.push(`${k}=${v}`)
+    }
+  }
+
+  let next = out.join('\n')
+  if (!next.endsWith('\n')) next += '\n'
+  writeFileSync(envPath, next)
 }
 
 /**
