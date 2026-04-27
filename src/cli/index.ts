@@ -2058,6 +2058,8 @@ program
   .description('Add an MCP provider from a shipped template or a JSON config file')
   .requiredOption('--mcp <name-or-path>', 'Template name (hubspot, apollo, ...) OR path to a JSON config file')
   .option('--force', 'Overwrite an existing provider config of the same name')
+  .option('--accept-disabled', 'Register a config that ships with "disabled": true (debug use only)')
+  .option('--tool <name>', 'Override the configured tool name to validate against the live MCP server')
   .action(withDiagnostics(async (opts) => {
     const { existsSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } = await import('fs')
     const { join, resolve, isAbsolute } = await import('path')
@@ -2150,6 +2152,14 @@ program
         }
       }
 
+      // Refuse disabled templates unless the user explicitly accepts them.
+      if (cfg.disabled === true && !opts.acceptDisabled) {
+        const comment = typeof cfg._comment === 'string' ? `\n  Comment: ${cfg._comment}` : ''
+        console.error(`Error: provider config has "disabled": true.${comment}`)
+        console.error('  To register anyway pass --accept-disabled (debug use).')
+        process.exit(1)
+      }
+
       const { validateMcpConfig } = await import('../lib/providers/mcp-loader')
       const v = validateMcpConfig(cfg, resolved)
       if (!v.valid) {
@@ -2191,6 +2201,8 @@ program
         }
         console.log('\nAdd them to your .env.local or export them before running GTM-OS.')
       }
+      // Connect + verify configured tool name (best-effort — never blocks).
+      await verifyMcpToolName(targetName, cfg, opts.tool as string | undefined)
       console.log(`\nVerify with: yalc-gtm provider:test ${targetName}`)
       return
     }
@@ -2216,6 +2228,19 @@ program
       process.exit(1)
     }
 
+    // Refuse disabled templates here too — apply before copying.
+    try {
+      const tplRaw = JSON.parse(readFileSync(templatePath, 'utf-8'))
+      if (tplRaw && tplRaw.disabled === true && !opts.acceptDisabled) {
+        const comment = typeof tplRaw._comment === 'string' ? `\n  Comment: ${tplRaw._comment}` : ''
+        console.error(`Error: template "${input}" is marked "disabled": true.${comment}`)
+        console.error('  Pass --accept-disabled to register anyway (debug use).')
+        process.exit(1)
+      }
+    } catch {
+      // Fall through — the existing copy + validate flow surfaces JSON errors.
+    }
+
     mkdirSync(targetDir, { recursive: true })
     copyFileSync(templatePath, targetPath)
 
@@ -2239,8 +2264,71 @@ program
       console.log('\nAdd them to your .env.local or export them before running GTM-OS.')
     }
 
+    await verifyMcpToolName(input, config, opts.tool as string | undefined)
     console.log('\nVerify with: yalc-gtm provider:test ' + input)
   }))
+
+/**
+ * Best-effort tool-name validation against a registered MCP server. Pulls
+ * the tools list from a fresh adapter, then checks that the configured
+ * `tool` (or `healthCheck.tool`, or override --tool) exists. If not, prints
+ * a WARN with the closest matches by Levenshtein distance. Never throws.
+ */
+async function verifyMcpToolName(
+  providerName: string,
+  cfg: Record<string, unknown>,
+  override?: string,
+): Promise<void> {
+  // What tool does this config name?
+  const explicit =
+    override ??
+    (typeof cfg.tool === 'string' ? cfg.tool : undefined) ??
+    ((cfg.healthCheck as Record<string, unknown> | undefined)?.tool as string | undefined)
+  if (!explicit) return
+
+  try {
+    const { McpProviderAdapter } = await import('../lib/providers/mcp-adapter')
+    const adapter = new (McpProviderAdapter as unknown as new (cfg: Record<string, unknown>) => { connect: () => Promise<void>; getDiscoveredTools: () => Array<{ name: string }>; isAvailable?: () => boolean })(cfg as never)
+    await adapter.connect()
+    const tools = adapter.getDiscoveredTools().map((t) => t.name)
+    if (tools.length === 0) return // server didn't expose anything to compare
+    if (tools.includes(explicit)) {
+      console.log(`\n  ✓ Configured tool "${explicit}" found on server.`)
+      return
+    }
+    // Levenshtein-based closest matches.
+    const ranked = tools
+      .map((t) => ({ name: t, dist: levenshtein(t, explicit) }))
+      .sort((a, b) => a.dist - b.dist)
+      .slice(0, 3)
+      .map((r) => r.name)
+    console.log(
+      `\n  ! Configured tool "${explicit}" not found on the MCP server "${providerName}".`,
+    )
+    console.log(`    Closest matches: [${ranked.join(', ')}]`)
+    console.log(`    Edit the config OR re-run with --tool <name>.`)
+  } catch {
+    // Connection failures here are not fatal — provider:test will surface
+    // them properly later.
+  }
+}
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length
+  const n = b.length
+  if (m === 0) return n
+  if (n === 0) return m
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
+  for (let i = 0; i <= m; i++) dp[i][0] = i
+  for (let j = 0; j <= n; j++) dp[0][j] = j
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
+    }
+  }
+  return dp[m][n]
+}
 
 // ─── provider:test ─────────────────────────────────────────────────────────
 program
