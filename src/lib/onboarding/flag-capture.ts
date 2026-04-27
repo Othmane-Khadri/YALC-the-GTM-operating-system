@@ -35,6 +35,7 @@ import {
   pruneScrapeCache,
   writeScrapeCache,
 } from '../web/scrape-cache.js'
+import { extractCompanyMeta } from './auto-extract.js'
 
 export interface FlagCaptureOptions {
   tenantId: string
@@ -255,6 +256,26 @@ export async function runFlagCapture(opts: FlagCaptureOptions): Promise<FlagCapt
     ctx.sources.website = opts.website
     ctx.sources.website_fetched_at = new Date().toISOString()
     sourcesUsed.website = opts.website
+
+    // Auto-extract company.name + description from the scrape so synthesis
+    // never starts from `<UNKNOWN>`. The user-supplied `--company-name` (if
+    // present) and any non-empty existing field always wins.
+    if (websiteContent) {
+      const extracted = extractCompanyMeta({
+        content: websiteContent,
+        url: opts.website,
+      })
+      if (!ctx.company.name && extracted.name) ctx.company.name = extracted.name
+      if (!ctx.company.description && extracted.description) {
+        ctx.company.description = extracted.description
+      }
+    } else if (!ctx.company.name) {
+      // No content but a URL — derive a placeholder name from the host so
+      // downstream prompts still have something to anchor on.
+      const { deriveNameFromUrl } = await import('./auto-extract.js')
+      const fallback = deriveNameFromUrl(opts.website)
+      if (fallback) ctx.company.name = fallback
+    }
   }
 
   let linkedinContent: string | null = null
