@@ -196,6 +196,19 @@ program
     await runReport({ config, week: opts.week })
   }))
 
+/**
+ * Refuse cleanly when the user has opted the channel out via config.
+ * Wired into every send-path command (#15). Returns false when blocked
+ * AND has already exited the process.
+ */
+function assertChannelEnabled(channel: 'email' | 'linkedin', commandTag: string): void {
+  const { isChannelOptedOut, channelOptedOutMessage } = require('../lib/config/loader') as typeof import('../lib/config/loader')
+  if (isChannelOptedOut(channel)) {
+    console.error(`[${commandTag}] ${channelOptedOutMessage(channel)}`)
+    process.exit(1)
+  }
+}
+
 // ─── leads:scrape-post ──────────────────────────────────────────────────────
 program
   .command('leads:scrape-post')
@@ -206,6 +219,7 @@ program
   .option('--output <path>', 'Custom output JSON path')
   .option('--account <name>', 'Unipile account name or ID to use for scraping')
   .action(withDiagnostics(async (opts) => {
+    assertChannelEnabled('linkedin', 'leads:scrape-post')
     const config = loadConfig(program.opts().config.replace('~', homedir()))
     const { scrapePostEngagers } = await import('../lib/scraping/post-engagers')
     const result = await scrapePostEngagers({
@@ -235,6 +249,7 @@ program
   .option('--exclude <names...>', 'Author names to skip (partial match)')
   .option('--provider <name>', 'Override the configured LinkedIn provider')
   .action(async (opts) => {
+    assertChannelEnabled('linkedin', 'linkedin:answer-comments')
     const { answerCommentsSkill } = await import('../lib/skills/builtin/answer-comments')
     const { getSkillRegistryReady } = await import('../lib/skills/registry')
     const { getRegistryReady } = await import('../lib/providers/registry')
@@ -289,6 +304,7 @@ program
   .option('--exclude <names...>', 'Author names to skip (partial match)')
   .option('--provider <name>', 'Override the configured LinkedIn provider')
   .action(async (opts) => {
+    assertChannelEnabled('linkedin', 'linkedin:reply-to-comments')
     const { replyToCommentsSkill } = await import('../lib/skills/builtin/reply-to-comments')
     const { getRegistryReady } = await import('../lib/providers/registry')
     const providerRegistry = await getRegistryReady()
@@ -336,6 +352,7 @@ program
   .requiredOption('--audience <text>', 'Target audience description')
   .option('--segment-id <id>', 'ICP segment ID for voice targeting')
   .action(async (opts) => {
+    assertChannelEnabled('email', 'email:create-sequence')
     const { emailSequenceSkill } = await import('../lib/skills/builtin/email-sequence')
     const context = {
       framework: null as any,
@@ -370,6 +387,7 @@ program
   .option('--provider <name>', 'Override the configured email provider for this send')
   .option('--dry-run', 'Preview without sending', false)
   .action(async (opts) => {
+    assertChannelEnabled('email', 'email:send')
     const { readFileSync, writeFileSync } = await import('fs')
     const yaml = (await import('js-yaml')).default
 
