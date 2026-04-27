@@ -1245,13 +1245,35 @@ program
 // ─── start ──────────────────────────────────────────────────────────────────
 program
   .command('start')
-  .description('Guided onboarding — API keys, company context, framework, and goals in one flow')
+  .description(
+    'Guided onboarding — minimum-friction capture from a website (default) or interactive interview (fallback)',
+  )
+  .addHelpText(
+    'after',
+    `
+Examples (recommended — flag-driven, zero prompts):
+  $ yalc-gtm start --non-interactive --website https://your-company.com
+
+  Optional refinements:
+  $ yalc-gtm start --non-interactive \\
+      --website https://your-company.com \\
+      --linkedin https://linkedin.com/in/you \\
+      --docs ./brand-deck.md \\
+      --icp-summary "engineering leaders at Series A SaaS"
+
+  Re-runs after editing a placeholder \`.env\`:
+  $ yalc-gtm start --non-interactive   # writes ~/.gtm-os/.env template
+
+  Interactive interview (no website, no flags):
+  $ yalc-gtm start
+`,
+  )
   .option('--non-interactive', 'Skip prompts (use env vars and defaults)')
   // Flag-driven capture inputs (0.6.0). When any of these are present in
   // --non-interactive mode, runs the full capture + synthesis pipeline and
   // writes the result into _preview/.
   .option('--company-name <name>', 'Company name (flag-driven capture)')
-  .option('--website <url>', 'Company website URL — scraped for context')
+  .option('--website <url>', 'Company website URL — scraped for context (recommended minimum)')
   .option('--linkedin <url>', 'LinkedIn profile URL — fetched for context')
   .option(
     '--docs <path-or-url>',

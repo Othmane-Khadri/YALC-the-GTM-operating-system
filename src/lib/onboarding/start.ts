@@ -420,6 +420,9 @@ export async function runStart(opts: StartOptions): Promise<void> {
   const useFlagCapture = !!opts.nonInteractive && hasCaptureFlags(captureOpts)
 
   let flagCaptureSummary: string | null = null
+  // Capture phase wall-clock — printed at the end of the flow so users can
+  // see whether they're hitting the <60s target promised by the docs.
+  const captureStartedAt = Date.now()
   if (useFlagCapture) {
     console.log('  Running flag-driven capture into _preview/')
     const result = await runFlagCapture(captureOpts)
@@ -438,16 +441,36 @@ export async function runStart(opts: StartOptions): Promise<void> {
       docsFiles: result.sourcesUsed.docs,
     })
     if (!validation.ok && !opts.forceSynthesis) {
-      console.error(
-        `\nInsufficient source content. Got: website=${validation.websiteChars} chars, ` +
-          `linkedin=${validation.linkedinChars} chars, docs=${validation.docsFiles} files.`,
-      )
-      console.error(
-        'Need at least one of: website≥500ch, linkedin≥200ch, docs with ≥1 file ≥200ch.',
-      )
-      console.error(
-        'Re-run with better inputs or pass --force-synthesis to proceed anyway.',
-      )
+      // Tailor the error message based on whether the website was the only
+      // input the user gave us. With just `--website` and a thin scrape, the
+      // most actionable suggestions are: add an ICP one-liner, point at
+      // local docs, or force.
+      const websiteOnly =
+        !!opts.website &&
+        !opts.linkedin &&
+        !opts.docs &&
+        !opts.icpSummary &&
+        !opts.voice
+      if (websiteOnly) {
+        console.error(
+          `\nWebsite fetch returned ${validation.websiteChars} chars (minimum 500).`,
+        )
+        console.error('Pass one of these to seed synthesis:')
+        console.error('  --icp-summary "<one-liner describing your buyers>"')
+        console.error('  --docs <path-or-url>   # additional context')
+        console.error('  --force-synthesis      # proceed anyway with what we have')
+      } else {
+        console.error(
+          `\nInsufficient source content. Got: website=${validation.websiteChars} chars, ` +
+            `linkedin=${validation.linkedinChars} chars, docs=${validation.docsFiles} files.`,
+        )
+        console.error(
+          'Need at least one of: website≥500ch, linkedin≥200ch, docs with ≥1 file ≥200ch.',
+        )
+        console.error(
+          'Re-run with better inputs or pass --force-synthesis to proceed anyway.',
+        )
+      }
       process.exitCode = 1
       return
     }
@@ -469,8 +492,21 @@ export async function runStart(opts: StartOptions): Promise<void> {
       `  ✓ Wrote ${synth.written.length} preview files (${synth.llmDriven ? 'LLM-derived' : 'stub'})`,
     )
 
+    const elapsedMs = Date.now() - captureStartedAt
+    const elapsedSec = Math.round(elapsedMs / 1000)
     console.log(
-      `\n  ✓ Preview ready. Review then run: yalc-gtm start --commit-preview`,
+      `\n  Captured + synthesized in ${elapsedSec}s. Preview ready at ~/.gtm-os/_preview/`,
+    )
+    if (elapsedMs > 120_000) {
+      console.warn(
+        '  ⚠ Capture took longer than expected. Synthesis may be slow due to model load —',
+      )
+      console.warn(
+        '    re-run with `yalc-gtm start --regenerate <section>` if any section is missing.',
+      )
+    }
+    console.log(
+      `  Review then run: yalc-gtm start --commit-preview`,
     )
   }
 
