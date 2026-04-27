@@ -16,6 +16,7 @@ import { randomBytes } from 'node:crypto'
 import yaml from 'js-yaml'
 import { SIGNUP_URLS } from '../constants.js'
 import { isClaudeCode } from '../env/claude-code.js'
+import { isChannelOptedOut } from '../config/loader.js'
 import {
   envTemplateInstructions,
   writeEnvTemplate,
@@ -941,7 +942,6 @@ function printReadinessReport(
   // research → scrape-post → browse-skills. We re-read the persisted
   // email/linkedin opt-out state so we never suggest a LinkedIn command
   // when `linkedin.provider: none` was just selected.
-  const { isChannelOptedOut } = require('../config/loader') as typeof import('../config/loader')
   const linkedinOptedOut = isChannelOptedOut('linkedin')
 
   let firstCommand: string
