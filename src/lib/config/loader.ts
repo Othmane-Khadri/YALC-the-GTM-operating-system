@@ -1,5 +1,6 @@
-import { readFileSync } from 'fs'
-import { resolve } from 'path'
+import { existsSync, readFileSync } from 'fs'
+import { resolve, join } from 'path'
+import { homedir } from 'os'
 import yaml from 'js-yaml'
 import type { GTMOSConfig } from './types'
 import { setCrustdataDefaults } from '../services/crustdata'
@@ -96,14 +97,10 @@ export function isProviderDisabled(value: unknown): boolean {
  */
 export function isChannelOptedOut(channel: 'email' | 'linkedin'): boolean {
   try {
-    const fs = require('node:fs') as typeof import('node:fs')
-    const os = require('node:os') as typeof import('node:os')
-    const path = require('node:path') as typeof import('node:path')
-    const yamlMod = require('js-yaml') as typeof import('js-yaml')
-    const cfgPath = path.join(os.homedir(), '.gtm-os', 'config.yaml')
-    if (!fs.existsSync(cfgPath)) return false
-    const raw = fs.readFileSync(cfgPath, 'utf-8')
-    const parsed = (yamlMod.load(raw) as Record<string, unknown> | null) ?? {}
+    const cfgPath = join(homedir(), '.gtm-os', 'config.yaml')
+    if (!existsSync(cfgPath)) return false
+    const raw = readFileSync(cfgPath, 'utf-8')
+    const parsed = (yaml.load(raw) as Record<string, unknown> | null) ?? {}
     const slot = parsed[channel] as Record<string, unknown> | undefined
     return isProviderDisabled(slot?.provider)
   } catch {
