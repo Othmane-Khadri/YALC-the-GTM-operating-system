@@ -479,7 +479,7 @@ export async function runStart(opts: StartOptions): Promise<void> {
     const { setGoals } = await import('./goal-setter.js')
     const { configureSkills } = await import('./skill-configurator.js')
     const goals = await setGoals(fw)
-    await configureSkills(fw, goals)
+    await configureSkills(fw, goals, { tenant: tenantCtx })
   }
 
   // ── File Structure Map ─────────────────────────────────────────────────

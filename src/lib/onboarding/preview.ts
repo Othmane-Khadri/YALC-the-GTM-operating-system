@@ -33,6 +33,7 @@ import {
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
+import yaml from 'js-yaml'
 import { DEFAULT_TENANT, tenantConfigDir } from '../tenant/index.js'
 
 /** Logical context describing which tenant the preview belongs to. */
@@ -141,6 +142,7 @@ export const SECTION_NAMES = [
   'qualification_rules',
   'campaign_templates',
   'search_queries',
+  'config',
 ] as const
 
 export type SectionName = typeof SECTION_NAMES[number]
@@ -158,6 +160,7 @@ export const SECTION_PATHS: Record<SectionName, string[]> = {
   qualification_rules: ['qualification_rules.md'],
   campaign_templates: ['campaign_templates.yaml'],
   search_queries: ['search_queries.txt'],
+  config: ['config.yaml'],
 }
 
 export interface CommitPreviewOptions {
@@ -207,6 +210,25 @@ export function commitPreview(opts: CommitPreviewOptions = {}): CommitPreviewRes
       // voice/, icp/, positioning/).
       const parent = dirname(live)
       if (!existsSync(parent)) mkdirSync(parent, { recursive: true })
+
+      // config.yaml is special — Step 1 already wrote provider keys + email
+      // / linkedin choices to live root before synthesis ran. Commit MERGES
+      // the preview's synthesis-time additions (provider_preferences, goals
+      // block) over the live config so the user's Step 1 picks survive.
+      if (canonical === 'config.yaml' && existsSync(live)) {
+        try {
+          const liveYaml = (yaml.load(readFileSync(live, 'utf-8')) as Record<string, unknown>) ?? {}
+          const previewYaml = (yaml.load(readFileSync(preview, 'utf-8')) as Record<string, unknown>) ?? {}
+          // Preview wins for any key it sets, but live keeps everything else.
+          const merged = { ...liveYaml, ...previewYaml }
+          writeFileSync(live, yaml.dump(merged))
+          rmSync(preview, { recursive: true, force: true })
+          committed.push(canonical)
+          continue
+        } catch {
+          // Fall through to wholesale replace if either side is unparsable.
+        }
+      }
 
       // Replace any existing live counterpart wholesale — preview is the
       // source of truth at commit time.
