@@ -106,6 +106,7 @@ export async function runStart(opts: StartOptions): Promise<void> {
     discardPreview,
     previewCapturedAt,
     previewRoot,
+    refreshLiveIndex,
     SECTION_NAMES,
   } = await import('./preview.js')
   type Section = typeof SECTION_NAMES[number]
@@ -139,6 +140,7 @@ export async function runStart(opts: StartOptions): Promise<void> {
       return
     }
     const result = commitPreview({ tenant: tenantCtx, discardSections })
+    await refreshLiveIndex(tenantCtx)
     console.log(`  ✓ Committed ${result.committed.length} path(s) to live`)
     if (result.discarded.length > 0) {
       console.log(`  ⊘ Left in preview (discarded): ${result.discarded.join(', ')}`)

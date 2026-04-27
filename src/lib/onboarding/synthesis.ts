@@ -256,6 +256,17 @@ export async function writeSynthesizedPreview(opts: SynthesisOptions): Promise<S
     const writer = SECTION_WRITERS[section]
     written.push(...writer(body, opts.tenant))
   }
+
+  // Refresh the preview index whenever any section is regenerated so the
+  // user sees up-to-date timestamps + descriptions.
+  try {
+    const { buildIndex } = await import('./index-builder.js')
+    const { previewRoot } = await import('./preview.js')
+    buildIndex(previewRoot(opts.tenant), true)
+  } catch {
+    // Index regeneration is best-effort; never block synthesis on it.
+  }
+
   return { written, sections, llmDriven: hasAnthropic() }
 }
 

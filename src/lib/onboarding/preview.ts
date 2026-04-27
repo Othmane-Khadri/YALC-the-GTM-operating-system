@@ -239,6 +239,19 @@ export function commitPreview(opts: CommitPreviewOptions = {}): CommitPreviewRes
   return { committed, discarded }
 }
 
+/**
+ * Refresh the live `_index.md` for a tenant. Called after `commitPreview()`
+ * resolves so we keep the helper synchronous and side-effect-only.
+ */
+export async function refreshLiveIndex(tenant?: TenantContext): Promise<void> {
+  try {
+    const { buildIndex } = await import('./index-builder.js')
+    buildIndex(liveRoot(tenant), false)
+  } catch {
+    // Best-effort — never fail callers on index regeneration.
+  }
+}
+
 /** Delete the preview folder entirely. No-op if it does not exist. */
 export function discardPreview(tenant?: TenantContext): void {
   const root = previewRoot(tenant)
