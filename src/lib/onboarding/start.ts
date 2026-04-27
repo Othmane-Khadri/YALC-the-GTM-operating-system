@@ -191,6 +191,27 @@ export async function runStart(opts: StartOptions): Promise<void> {
     return
   }
 
+  // Bare scaffold-only mode (0.7.0) — `start --non-interactive` with no
+  // capture flag set never invokes synthesis, regardless of Anthropic key
+  // presence. We just lay down ~/.gtm-os/ + DB + default config and exit.
+  // The user is told exactly which command to run next.
+  const bareScaffoldOnly = !!opts.nonInteractive && !captureFlagsSet
+  if (bareScaffoldOnly) {
+    if (!existsSync(GTM_OS_DIR)) {
+      mkdirSync(GTM_OS_DIR, { recursive: true })
+      console.log(`  Created ${GTM_OS_DIR}`)
+    }
+    if (!existsSync(CONFIG_PATH)) {
+      writeFileSync(CONFIG_PATH, yaml.dump(DEFAULT_CONFIG))
+      console.log('  Created default config')
+    }
+    await applyMigrations()
+    console.log(
+      '\nScaffold complete. Run `yalc-gtm start --non-interactive --website <url>` to capture context.',
+    )
+    return
+  }
+
   // Apply DB migrations before anything else — fresh installs have no tables
   // yet, so the first query otherwise crashes with `SQLITE_ERROR: no such table`.
   // Idempotent: drizzle's migrator is a no-op when everything is current.
