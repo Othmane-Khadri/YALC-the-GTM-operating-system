@@ -360,8 +360,27 @@ function checkConfiguration(): LayerResult {
     })
   } else {
     try {
-      yaml.load(readFileSync(configPath, 'utf-8'))
+      const cfg = (yaml.load(readFileSync(configPath, 'utf-8')) as Record<string, unknown>) ?? {}
       checks.push({ name: 'User config (~/.gtm-os/config.yaml)', status: 'pass', detail: '' })
+
+      // Goals block — TODO until the user fills it. Onboarding writes
+      // explicit nulls so the unset state is loud; we surface a WARN here.
+      const goals = cfg.goals as Record<string, unknown> | undefined
+      const goalsUnset =
+        !goals ||
+        Object.values(goals).every(
+          (v) => v === null || v === undefined || (Array.isArray(v) && v.length === 0) || v === '',
+        )
+      if (goalsUnset) {
+        checks.push({
+          name: 'Goals block',
+          status: 'warn',
+          detail:
+            'Goals not yet defined. Edit `~/.gtm-os/config.yaml` `goals` section after your first month of outbound data.',
+        })
+      } else {
+        checks.push({ name: 'Goals block', status: 'pass', detail: '' })
+      }
     } catch (e) {
       checks.push({
         name: 'User config (~/.gtm-os/config.yaml)',
