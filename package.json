@@ -53,7 +53,8 @@
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "pnpm typecheck && pnpm test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
