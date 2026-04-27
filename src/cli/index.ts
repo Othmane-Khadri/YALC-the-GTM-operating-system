@@ -1248,6 +1248,7 @@ program
   .option('--hint <text>', 'Hint forwarded to the synthesis prompt during --regenerate')
   .option('--discard-preview', 'Delete the _preview/ folder entirely (no new capture)')
   .option('--force-overwrite-preview', 'Proceed past the uncommitted-preview block')
+  .option('--force-synthesis', 'Run synthesis even if captured inputs are below the minimum content bar')
   .action(withDiagnostics(async (opts) => {
     const { runStart } = await import('../lib/onboarding/start')
     await runStart({
@@ -1266,6 +1267,7 @@ program
       regenerateHint: opts.hint,
       discardPreview: opts.discardPreview ?? false,
       forceOverwritePreview: opts.forceOverwritePreview ?? false,
+      forceSynthesis: opts.forceSynthesis ?? false,
     })
   }))
 

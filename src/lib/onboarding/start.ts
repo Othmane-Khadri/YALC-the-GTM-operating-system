@@ -89,6 +89,8 @@ export interface StartOptions {
   regenerateHint?: string
   discardPreview?: boolean
   forceOverwritePreview?: boolean
+  /** Bypass the captured-input content validation before synthesis (#3). */
+  forceSynthesis?: boolean
 }
 
 export async function runStart(opts: StartOptions): Promise<void> {
@@ -406,6 +408,31 @@ export async function runStart(opts: StartOptions): Promise<void> {
     writeCapturedPreview(result, { tenantId })
     flagCaptureSummary = summarizeCapture(result)
     if (flagCaptureSummary) console.log(flagCaptureSummary)
+
+    // Validate captured raw content before invoking synthesis. Without enough
+    // signal (≥500ch website OR ≥200ch LinkedIn OR a docs file ≥200ch) the
+    // model is just hallucinating. Bypass with --force-synthesis.
+    const { validateCaptureForSynthesis } = await import('./flag-capture.js')
+    const validation = validateCaptureForSynthesis({
+      websiteContent: result.websiteContent,
+      linkedinContent: result.linkedinContent,
+      docsContent: result.docsContent,
+      docsFiles: result.sourcesUsed.docs,
+    })
+    if (!validation.ok && !opts.forceSynthesis) {
+      console.error(
+        `\nInsufficient source content. Got: website=${validation.websiteChars} chars, ` +
+          `linkedin=${validation.linkedinChars} chars, docs=${validation.docsFiles} files.`,
+      )
+      console.error(
+        'Need at least one of: website≥500ch, linkedin≥200ch, docs with ≥1 file ≥200ch.',
+      )
+      console.error(
+        'Re-run with better inputs or pass --force-synthesis to proceed anyway.',
+      )
+      process.exitCode = 1
+      return
+    }
 
     // Synthesize all sections into the preview tree. Stubs are emitted when
     // no Anthropic key is available so the folder layout is still correct.

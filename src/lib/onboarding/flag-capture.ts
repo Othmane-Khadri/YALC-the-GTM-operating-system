@@ -316,5 +316,52 @@ export function shouldRunFlagDrivenCapture(opts: {
   return !!opts.nonInteractive && hasCaptureFlags(opts.capture)
 }
 
+export interface CaptureValidationInput {
+  websiteContent?: string | null
+  linkedinContent?: string | null
+  docsContent?: string | null
+  docsFiles?: string[]
+}
+
+export interface CaptureValidationResult {
+  ok: boolean
+  /** Diagnostic numbers for the error message. */
+  websiteChars: number
+  linkedinChars: number
+  docsFiles: number
+  /** Number of docs files that meet the per-file 200ch bar. */
+  docsFilesOver200: number
+}
+
+/**
+ * Validate that captured raw inputs have enough content to drive
+ * Claude-based synthesis. The bar (any one of):
+ *   - website fetch  ≥ 500 chars
+ *   - linkedin fetch ≥ 200 chars
+ *   - docs folder has ≥ 1 file with ≥ 200 chars of text
+ *
+ * If none of those are met we refuse synthesis. The CLI surfaces the result
+ * (with --force-synthesis to bypass).
+ */
+export function validateCaptureForSynthesis(
+  input: CaptureValidationInput,
+): CaptureValidationResult {
+  const websiteChars = input.websiteContent?.length ?? 0
+  const linkedinChars = input.linkedinContent?.length ?? 0
+  const docsFiles = input.docsFiles?.length ?? 0
+
+  // We don't have per-file char counts at the call site, so approximate by
+  // assuming concatenated docs content is ≥ 200ch * fileCount on average.
+  // This stays correct in the only failure mode that matters — empty / near
+  // empty docs — because docsContent would be ~0 chars.
+  const totalDocsChars = input.docsContent?.length ?? 0
+  const docsFilesOver200 = totalDocsChars >= 200 ? Math.max(1, docsFiles) : 0
+
+  const ok =
+    websiteChars >= 500 || linkedinChars >= 200 || docsFilesOver200 >= 1
+
+  return { ok, websiteChars, linkedinChars, docsFiles, docsFilesOver200 }
+}
+
 /** Re-export for ergonomic imports. */
 export { isClaudeCode }
