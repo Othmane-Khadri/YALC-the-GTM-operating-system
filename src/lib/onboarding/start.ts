@@ -283,7 +283,27 @@ export async function runStart(opts: StartOptions): Promise<void> {
     writeCapturedPreview(result, { tenantId })
     flagCaptureSummary = summarizeCapture(result)
     if (flagCaptureSummary) console.log(flagCaptureSummary)
-    console.log(`\n  ✓ Captured context written to ${join(GTM_OS_DIR, '_preview')} (or tenant-scoped equivalent)`)
+
+    // Synthesize all sections into the preview tree. Stubs are emitted when
+    // no Anthropic key is available so the folder layout is still correct.
+    const { writeSynthesizedPreview } = await import('./synthesis.js')
+    const synth = await writeSynthesizedPreview({
+      context: result.context,
+      rawSources: {
+        website: result.websiteContent,
+        linkedin: result.linkedinContent,
+        docs: result.docsContent,
+        voice: result.voiceContent,
+      },
+      tenant: { tenantId },
+    })
+    console.log(
+      `  ✓ Wrote ${synth.written.length} preview files (${synth.llmDriven ? 'LLM-derived' : 'stub'})`,
+    )
+
+    console.log(
+      `\n  ✓ Preview ready. Review then run: yalc-gtm start --commit-preview`,
+    )
   }
 
   const { runOnboarding } = await import('../context/onboarding.js')
