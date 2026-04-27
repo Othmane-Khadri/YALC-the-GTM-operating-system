@@ -475,7 +475,7 @@ export class McpProviderAdapter implements StepExecutor {
       ])
       return { ok: true, message: `Tool "${tool}" responded` }
     } catch (err) {
-      const classified = classifyMcpError(err)
+      const classified = classifyMcpError(err, this.getChildStderrSnapshot())
       return { ok: false, message: classified.message, classified }
     }
   }
