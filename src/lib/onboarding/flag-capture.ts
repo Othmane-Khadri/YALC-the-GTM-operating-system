@@ -18,6 +18,8 @@
 
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { homedir } from 'node:os'
+import { createHash } from 'node:crypto'
 import yaml from 'js-yaml'
 import { emptyCompanyContext, type CompanyContext } from '../framework/context-types.js'
 import {
@@ -39,7 +41,12 @@ export interface FlagCaptureOptions {
   companyName?: string
   website?: string
   linkedin?: string
-  docs?: string
+  /**
+   * Path(s) and/or URL(s) to ingest. URLs are auto-fetched and cached under
+   * `~/.gtm-os/_cache/docs/<sha256>.md`; mixing local paths and URLs is
+   * supported.
+   */
+  docs?: string | string[]
   icpSummary?: string
   voice?: string
   /** When true bypass the scrape cache for this run (no read, no write). */
@@ -127,6 +134,47 @@ function readDocsFolder(folder: string): { content: string; files: string[] } {
   }
   visit(folder)
   return { content: parts.join('\n\n').slice(0, 60000), files }
+}
+
+const DOCS_CACHE_DIR = join(homedir(), '.gtm-os', '_cache', 'docs')
+
+/**
+ * Fetch a docs URL via the same backend used for website/linkedin scraping,
+ * cache the result under `~/.gtm-os/_cache/docs/<sha256>.md`, and return the
+ * cache path + content. Cached entries embed the origin URL in a YAML
+ * front-matter header so we can attribute them later.
+ */
+export async function fetchDocsUrl(
+  url: string,
+  opts: { noCache?: boolean } = {},
+): Promise<{ path: string; content: string } | null> {
+  const hash = createHash('sha256').update(url).digest('hex').slice(0, 32)
+  const cachePath = join(DOCS_CACHE_DIR, `${hash}.md`)
+
+  if (!opts.noCache && existsSync(cachePath)) {
+    try {
+      const raw = readFileSync(cachePath, 'utf-8')
+      // Strip the front-matter header on read.
+      const stripped = raw.replace(/^---\n[\s\S]*?\n---\n/, '')
+      return { path: cachePath, content: stripped }
+    } catch {
+      // Fall through to refetch.
+    }
+  }
+
+  const content = await fetchForCapture(url, { noCache: opts.noCache })
+  if (!content) return null
+
+  if (!opts.noCache) {
+    if (!existsSync(DOCS_CACHE_DIR)) mkdirSync(DOCS_CACHE_DIR, { recursive: true })
+    const header = ['---', `origin_url: ${url}`, `fetched_at: ${new Date().toISOString()}`, '---', ''].join('\n')
+    try {
+      writeFileSync(cachePath, header + content)
+    } catch {
+      // Cache write is best-effort.
+    }
+  }
+  return { path: cachePath, content }
 }
 
 /**
@@ -218,11 +266,28 @@ export async function runFlagCapture(opts: FlagCaptureOptions): Promise<FlagCapt
 
   let docsContent: string | null = null
   if (opts.docs) {
-    const { content, files } = readDocsFolder(opts.docs)
-    docsContent = content || null
-    if (files.length > 0) {
-      ctx.sources.docs = files
-      sourcesUsed.docs = files
+    const docsList = Array.isArray(opts.docs) ? opts.docs : [opts.docs]
+    const allFiles: string[] = []
+    const allParts: string[] = []
+    for (const entry of docsList) {
+      if (/^https?:\/\//i.test(entry)) {
+        // URL — fetch via the configured backend and cache under
+        // ~/.gtm-os/_cache/docs/<sha256>.md so re-runs are free.
+        const cached = await fetchDocsUrl(entry, { noCache: opts.noCache })
+        if (cached) {
+          allFiles.push(cached.path)
+          allParts.push(`--- ${entry} (cached at ${cached.path}) ---\n${cached.content.slice(0, 8000)}`)
+        }
+      } else {
+        const { content, files } = readDocsFolder(entry)
+        if (files.length > 0) allFiles.push(...files)
+        if (content) allParts.push(content)
+      }
+    }
+    docsContent = allParts.join('\n\n').slice(0, 60000) || null
+    if (allFiles.length > 0) {
+      ctx.sources.docs = allFiles
+      sourcesUsed.docs = allFiles
     }
   }
 

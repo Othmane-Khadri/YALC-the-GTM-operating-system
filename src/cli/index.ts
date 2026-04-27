@@ -1235,7 +1235,11 @@ program
   .option('--company-name <name>', 'Company name (flag-driven capture)')
   .option('--website <url>', 'Company website URL — scraped for context')
   .option('--linkedin <url>', 'LinkedIn profile URL — fetched for context')
-  .option('--docs <path>', 'Path to a folder of markdown/text files to ingest')
+  .option(
+    '--docs <path-or-url>',
+    'Path or URL to ingest (repeatable). URLs auto-fetch and cache to ~/.gtm-os/_cache/docs/.',
+    (val: string, prev: string[] = []) => prev.concat(val),
+  )
   .option('--icp-summary <text>', 'One-line ICP description seed for synthesis')
   .option('--voice <path>', 'Path to a file with voice samples for tone extraction')
   .option('--no-cache', 'Bypass the local scrape cache for this run')

@@ -77,7 +77,7 @@ export interface StartOptions {
   companyName?: string
   website?: string
   linkedin?: string
-  docs?: string
+  docs?: string | string[]
   icpSummary?: string
   voice?: string
   /** Bypass the local scrape cache for this run. */
