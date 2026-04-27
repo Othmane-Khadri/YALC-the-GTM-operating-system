@@ -68,14 +68,30 @@ export function buildContextFromLegacy(legacy: Record<string, unknown>): Company
       .filter(Boolean)
   }
 
+  // Recover `icp.segments_freeform`. Pre-0.6.0 stored this in any of three
+  // shapes depending on the build:
+  //   1. Top-level: `icp.segments_freeform: <string>` (newest pre-0.6.0)
+  //   2. Top-level: `segments_freeform: <string>` (intermediate)
+  //   3. Per-segment: `segments[i].description` / `segments[i].name`
+  // We now check all three so the field survives the migration regardless of
+  // which build wrote the source file.
+  const legacyIcp = (legacy.icp as Record<string, unknown> | undefined) ?? {}
+  if (typeof legacyIcp.segments_freeform === 'string' && legacyIcp.segments_freeform.trim()) {
+    ctx.icp.segments_freeform = legacyIcp.segments_freeform.trim()
+  } else if (typeof legacy.segments_freeform === 'string' && (legacy.segments_freeform as string).trim()) {
+    ctx.icp.segments_freeform = (legacy.segments_freeform as string).trim()
+  }
+
   const segments = (legacy.segments as Array<Record<string, unknown>> | undefined) ?? []
   const primary =
     segments.find((s) => s.priority === 'primary') ?? segments[0]
   if (primary) {
-    if (typeof primary.description === 'string') {
-      ctx.icp.segments_freeform = primary.description
-    } else if (typeof primary.name === 'string') {
-      ctx.icp.segments_freeform = primary.name
+    if (!ctx.icp.segments_freeform) {
+      if (typeof primary.description === 'string') {
+        ctx.icp.segments_freeform = primary.description
+      } else if (typeof primary.name === 'string') {
+        ctx.icp.segments_freeform = primary.name
+      }
     }
     const pains = primary.painPoints as string[] | undefined
     if (Array.isArray(pains)) ctx.icp.pain_points = pains.filter(Boolean)
@@ -85,6 +101,19 @@ export function buildContextFromLegacy(legacy: Record<string, unknown>): Company
       const style = typeof voice.style === 'string' ? voice.style : ''
       ctx.voice.description = [tone, style].filter(Boolean).join(' — ')
     }
+  }
+
+  // Top-level icp.pain_points / icp.competitors fall through to the existing
+  // positioning.competitors block. Pull pain_points from icp.* if not yet set.
+  if (ctx.icp.pain_points.length === 0 && Array.isArray(legacyIcp.pain_points)) {
+    ctx.icp.pain_points = (legacyIcp.pain_points as unknown[])
+      .map((v) => String(v))
+      .filter(Boolean)
+  }
+  if (ctx.icp.competitors.length === 0 && Array.isArray(legacyIcp.competitors)) {
+    ctx.icp.competitors = (legacyIcp.competitors as unknown[])
+      .map((v) => (typeof v === 'string' ? v : String((v as Record<string, unknown>)?.name ?? '')))
+      .filter(Boolean)
   }
 
   ctx.meta.captured_at = new Date().toISOString()
