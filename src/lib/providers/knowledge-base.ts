@@ -297,6 +297,21 @@ export function loadProviderKnowledge(
     out.set(value.id, { ...value, source: 'bundled' })
   }
 
+  // `_user/` lives alongside the bundled yamls so the npm tarball can ship
+  // it pre-empty and the custom-provider flow has a guaranteed write target.
+  // Entries here override bundled entries with the same id.
+  const bundledUserDir = join(bundledDir, '_user')
+  for (const { file, raw } of readYamlsFromDir(bundledUserDir)) {
+    const { value, issues } = parseProviderKnowledge(raw, file)
+    if (issues.length > 0) {
+      if (opts.strict) throw new ProviderKnowledgeError(file, issues)
+      opts.onIssue?.(file, issues)
+      if (!value) continue
+    }
+    if (!value) continue
+    out.set(value.id, { ...value, source: 'user' })
+  }
+
   for (const { file, raw } of readYamlsFromDir(userDir)) {
     const { value, issues } = parseProviderKnowledge(raw, file)
     if (issues.length > 0) {
