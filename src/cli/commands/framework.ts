@@ -41,6 +41,7 @@ import {
   validateNotionTarget,
   NotionAdapterUnavailableError,
 } from '../../lib/frameworks/output/notion-adapter.js'
+import { cronToAgentSchedule } from '../../lib/frameworks/cron-conversion.js'
 import { getRegistryReady } from '../../lib/providers/registry.js'
 import type {
   FrameworkDefinition,
@@ -231,6 +232,10 @@ async function collectInputs(
 /** Write the agent yaml that the existing runner picks up via launchd. */
 function writeAgentYaml(framework: FrameworkDefinition, cfg: InstalledFrameworkConfig): string {
   ensureAgentsDir()
+  if (!framework.schedule.cron) {
+    throw new Error(`Framework "${framework.name}" has no schedule.cron — cannot install`)
+  }
+  const schedule = cronToAgentSchedule(framework.schedule.cron)
   const agent = {
     id: framework.name,
     name: framework.display_name,
@@ -240,11 +245,7 @@ function writeAgentYaml(framework: FrameworkDefinition, cfg: InstalledFrameworkC
       input: { ...(s.input ?? {}), ...cfg.inputs },
       continueOnError: true,
     })),
-    schedule: {
-      type: 'daily' as const,
-      hour: 8,
-      minute: 0,
-    },
+    schedule,
     maxRetries: 2,
     timeoutMs: 600000,
   }
