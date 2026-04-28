@@ -194,6 +194,23 @@ function buildSkillFromDefinition(def: MarkdownSkillDefinition, promptTemplate: 
         return
       }
 
+      // Capability path takes precedence when declared.
+      if (def.capability) {
+        yield { type: 'progress', message: `Resolving capability: ${def.capability}`, percent: 10 }
+        try {
+          const { getCapabilityRegistryReady } = await import('../providers/capabilities.js')
+          const capRegistry = await getCapabilityRegistryReady()
+          const { adapter, ctx: adapterCtx } = await capRegistry.resolveWithContext(def.capability)
+          yield { type: 'progress', message: `Using capability adapter: ${adapter.providerId}`, percent: 30 }
+          const result = await adapter.execute({ ...inputObj, prompt: resolvedPrompt }, adapterCtx)
+          yield { type: 'result', data: result }
+          yield { type: 'progress', message: 'Complete.', percent: 100 }
+        } catch (err) {
+          yield { type: 'error', message: err instanceof Error ? err.message : String(err) }
+        }
+        return
+      }
+
       yield { type: 'progress', message: `Resolving provider: ${def.provider}`, percent: 10 }
 
       // Resolve the provider
@@ -201,7 +218,7 @@ function buildSkillFromDefinition(def: MarkdownSkillDefinition, promptTemplate: 
       try {
         provider = context.providers.resolve({
           stepType: def.capabilities?.[0] ?? 'custom',
-          provider: def.provider,
+          provider: def.provider ?? '',
         })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -285,7 +302,9 @@ export async function loadMarkdownSkill(filePath: string): Promise<MarkdownSkill
     name: frontmatter.name as string,
     description: frontmatter.description as string,
     inputs: (frontmatter.inputs as MarkdownSkillDefinition['inputs']) ?? [],
-    provider: frontmatter.provider as string,
+    provider: frontmatter.provider as string | undefined,
+    capability: frontmatter.capability as string | undefined,
+    requires_capabilities: frontmatter.requires_capabilities as string[] | undefined,
     capabilities: frontmatter.capabilities as string[] | undefined,
     output: frontmatter.output as string | undefined,
     category: frontmatter.category as string | undefined,
@@ -295,6 +314,14 @@ export async function loadMarkdownSkill(filePath: string): Promise<MarkdownSkill
   const errors = validateMarkdownSkill(definition, body)
   if (errors.length > 0) {
     return { skill: null, filePath, errors }
+  }
+
+  if (definition.capability && definition.provider) {
+    // Capability wins; provider is treated as a hint for future migration.
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[markdown-loader] Skill ${definition.name} declares both 'capability' and 'provider'; capability will be used.`,
+    )
   }
 
   const skill = buildSkillFromDefinition(definition, body)

@@ -13,14 +13,32 @@ export interface MarkdownSkillDefinition {
   name: string
   description: string
   inputs: MarkdownInputDefinition[]
-  provider: string
+  /**
+   * Legacy — pin the skill to a specific provider id. Mutually
+   * exclusive in practice with `capability:` (when both are set the
+   * loader logs a WARN and prefers `capability:`).
+   */
+  provider?: string
+  /**
+   * Capability-routed skills declare WHAT they need. The runtime
+   * resolves the provider via the capability registry's priority list.
+   * Validation of the capability id happens at runtime (not load time)
+   * so registration order doesn't matter.
+   */
+  capability?: string
+  /** Additional capabilities the skill body needs. */
+  requires_capabilities?: string[]
   capabilities?: string[]
   output?: string
   category?: string
   version?: string
 }
 
-const REQUIRED_FIELDS: (keyof MarkdownSkillDefinition)[] = ['name', 'description', 'inputs', 'provider']
+/**
+ * A skill must declare EITHER `provider:` (legacy) OR `capability:`
+ * (new). Both is permitted but emits a WARN at load time.
+ */
+const REQUIRED_FIELDS: (keyof MarkdownSkillDefinition)[] = ['name', 'description', 'inputs']
 
 /**
  * Validates a markdown skill definition and its prompt template.
@@ -37,6 +55,27 @@ export function validateMarkdownSkill(
     const val = definition[field]
     if (val === undefined || val === null || val === '') {
       errors.push(`Missing required frontmatter field: ${field}`)
+    }
+  }
+
+  // 1b. At least one of `provider:` or `capability:` must be present.
+  const hasProvider = !!definition.provider && definition.provider !== ''
+  const hasCapability = !!definition.capability && definition.capability !== ''
+  if (!hasProvider && !hasCapability) {
+    errors.push('Missing required frontmatter field: one of `provider` or `capability` must be set')
+  }
+
+  // 1c. requires_capabilities must be an array of non-empty strings if present.
+  if (definition.requires_capabilities !== undefined) {
+    if (!Array.isArray(definition.requires_capabilities)) {
+      errors.push('Frontmatter "requires_capabilities" must be an array of capability ids')
+    } else {
+      for (const c of definition.requires_capabilities) {
+        if (typeof c !== 'string' || c.trim() === '') {
+          errors.push('Frontmatter "requires_capabilities" entries must be non-empty strings')
+          break
+        }
+      }
     }
   }
 
