@@ -23,12 +23,14 @@ output_schema:
         type: object
 ---
 
-Translate the segment description into Crustdata company filters (industry, headcount, location, growth signals). Run the search and return up to 100 candidate companies:
+Translate the segment description into a structured ICP intent the search adapter understands. The intent shape is `{ industry?, employeeRange?, location?, keywords?, limit? }` — the same shape this capability declares. Do NOT invent provider-specific column or field names (e.g. `headcount_range_min`); only emit the four optional fields above and let the adapter validate them against the provider's autocomplete catalog.
+
+Bias the search by these pain points if provided: {{pain_points}}.
+
+Run the search and return up to 100 candidate companies in this shape:
 
 ```json
 [
   { "domain": "", "name": "", "industry": "", "headcount": 0, "country": "", "signal": "" }
 ]
 ```
-
-Bias the search by these pain points if provided: {{pain_points}}.

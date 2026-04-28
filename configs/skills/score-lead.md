@@ -91,6 +91,8 @@ Score this lead against the provided ICP criteria.
 **ICP Criteria:**
 {{icp_criteria}}
 
+If `additional_context` is empty, score using only the lead/title/company/icp_criteria fields above. Do NOT ask follow-up questions and do NOT fabricate context — return a result with `intent_signals.score = 0` and `intent_signals.reason = "no additional context provided"` instead.
+
 Evaluate each ICP dimension on a 0-100 scale:
 1. **Title Fit** — Does their role match the target buyer persona?
 2. **Company Fit** — Does the company match industry, size, and stage criteria?
