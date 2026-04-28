@@ -24,6 +24,18 @@ export interface CompanyContextIcp {
   segments_freeform: string
   pain_points: string[]
   competitors: string[]
+  /**
+   * Subreddits where this audience hangs out (lowercase, no `r/` prefix).
+   * Synthesized at onboarding from the ICP prompt; defaults to [] until
+   * captured. Resolved via `$context.icp.subreddits`.
+   */
+  subreddits: string[]
+  /**
+   * Slack / LinkedIn / community names where this audience hangs out.
+   * Synthesized at onboarding alongside `subreddits`. Resolved via
+   * `$context.icp.target_communities`.
+   */
+  target_communities: string[]
 }
 
 export interface CompanyContextVoice {
@@ -68,7 +80,7 @@ export function emptyCompanyContext(): CompanyContext {
   return {
     company: { name: '', website: '', description: '' },
     founder: { name: '', linkedin: '' },
-    icp: { segments_freeform: '', pain_points: [], competitors: [] },
+    icp: { segments_freeform: '', pain_points: [], competitors: [], subreddits: [], target_communities: [] },
     voice: { description: '', examples_path: '' },
     sources: {},
     meta: { captured_at: now, last_updated_at: now, version: '0.6.0' },

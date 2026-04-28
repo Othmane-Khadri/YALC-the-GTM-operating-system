@@ -76,7 +76,12 @@ export function buildVoicePrompt(input: SectionPromptInput): string {
 
 export function buildIcpPrompt(input: SectionPromptInput): string {
   return [
-    'Derive ICP segments from the captured context. Output a YAML list under a `segments:` key. Each segment has: id, name, description, priority (primary|secondary|exploratory), target_roles, target_industries, pain_points, disqualifiers. No fences, no commentary.',
+    'Derive ICP segments from the captured context. Output a YAML document with TWO top-level keys:',
+    '1. `segments:` — a YAML list. Each segment has: id, name, description, priority (primary|secondary|exploratory), target_roles, target_industries, pain_points, disqualifiers.',
+    '2. `audience_hangouts:` — an object with two arrays:',
+    '   - `subreddits`: List 5-15 subreddits where this audience hangs out (lowercase, no `r/` prefix).',
+    '   - `target_communities`: List 5-15 LinkedIn or Slack communities where this audience hangs out.',
+    'No fences, no commentary.',
     contextBlock(input),
     rawBlock(input),
     hintBlock(input),

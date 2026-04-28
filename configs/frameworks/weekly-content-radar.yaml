@@ -21,7 +21,7 @@ recommended_when:
 inputs:
   - name: communities
     description: "Communities to scan (subreddits, Slack workspaces, LinkedIn groups). Comma-separated."
-    default: "SaaS,startups"
+    default: "$context.icp.target_communities"
   - name: keywords
     description: "Keywords / pain points to weight relevance on."
     default: "$context.icp.pain_points"

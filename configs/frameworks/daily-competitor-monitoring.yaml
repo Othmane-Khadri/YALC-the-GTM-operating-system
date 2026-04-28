@@ -25,7 +25,7 @@ inputs:
     default: "$context.icp.competitors"
   - name: subreddits
     description: "Subreddits to search (comma-separated). Edit before running for tighter targeting."
-    default: "SaaS,startups,Entrepreneur"
+    default: "$context.icp.subreddits"
   - name: max_per_run
     description: "Maximum mentions to surface per run."
     default: 10

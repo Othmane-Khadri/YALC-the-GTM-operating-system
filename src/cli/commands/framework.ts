@@ -51,6 +51,18 @@ import type {
 
 const AGENTS_DIR = join(homedir(), '.gtm-os', 'agents')
 
+/**
+ * Hardcoded fallback values for `$context.icp.*` paths that may legitimately
+ * resolve to an empty array on a freshly captured context (e.g. when the
+ * synthesizer ran without an LLM key). The runtime falls back to these so
+ * frameworks always have SOMETHING to run on, while emitting a WARN that
+ * tells the user to fill the field manually.
+ */
+const CONTEXT_PATH_FALLBACKS: Record<string, string> = {
+  'icp.subreddits': 'SaaS,startups,Entrepreneur',
+  'icp.target_communities': 'SaaS,startups',
+}
+
 /** Resolve a `$context.path.like.this` reference against the loaded context. */
 function resolveDefault(value: unknown): unknown {
   if (typeof value !== 'string' || !value.startsWith('$context.')) return value
@@ -62,6 +74,16 @@ function resolveDefault(value: unknown): unknown {
   for (const p of parts) {
     if (cur == null || typeof cur !== 'object') return value
     cur = (cur as Record<string, unknown>)[p]
+  }
+  // If the resolved value is an empty array AND we have a hardcoded fallback,
+  // warn the user and substitute the legacy default so install + run never break.
+  if (Array.isArray(cur) && cur.length === 0 && CONTEXT_PATH_FALLBACKS[path]) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[framework] ICP ${path} not captured; falling back to generic defaults. ` +
+      `Edit ~/.gtm-os/company_context.yaml or re-run \`yalc-gtm start --regenerate icp\` to populate.`,
+    )
+    return CONTEXT_PATH_FALLBACKS[path]
   }
   return cur ?? value
 }

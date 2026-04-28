@@ -175,6 +175,33 @@ function writeIcpSection(body: string, tenant?: TenantContext): string[] {
   return ['icp/segments.yaml']
 }
 
+/**
+ * Parse `subreddits` and `target_communities` from the LLM-emitted ICP
+ * YAML body. Tolerates the field being absent (returns empty arrays so
+ * the caller can fall back to hardcoded defaults at framework runtime).
+ */
+export function extractAudienceHangouts(body: string): {
+  subreddits: string[]
+  target_communities: string[]
+} {
+  let parsed: unknown
+  try {
+    parsed = yaml.load(body)
+  } catch {
+    return { subreddits: [], target_communities: [] }
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    return { subreddits: [], target_communities: [] }
+  }
+  const root = parsed as Record<string, unknown>
+  const ah = (root.audience_hangouts ?? root.audienceHangouts) as Record<string, unknown> | undefined
+  const subRaw = ah?.subreddits
+  const commRaw = ah?.target_communities
+  const norm = (xs: unknown): string[] =>
+    Array.isArray(xs) ? xs.map((x) => String(x).replace(/^r\//, '').trim()).filter(Boolean) : []
+  return { subreddits: norm(subRaw), target_communities: norm(commRaw) }
+}
+
 function writePositioningSection(body: string, tenant?: TenantContext): string[] {
   ensurePreviewDir('positioning/one-pager.md', tenant)
   const written: string[] = []
@@ -255,6 +282,11 @@ export async function writeSynthesizedPreview(opts: SynthesisOptions): Promise<S
     const body = await bodyForSection(section, promptInput)
     const writer = SECTION_WRITERS[section]
     written.push(...writer(body, opts.tenant))
+    if (section === 'icp') {
+      const hangouts = extractAudienceHangouts(body)
+      opts.context.icp.subreddits = hangouts.subreddits
+      opts.context.icp.target_communities = hangouts.target_communities
+    }
   }
 
   // Refresh the preview index whenever any section is regenerated so the
