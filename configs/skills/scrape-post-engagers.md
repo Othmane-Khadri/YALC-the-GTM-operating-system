@@ -12,6 +12,15 @@ inputs:
 capability: linkedin-engager-fetch
 capabilities: [search, enrich]
 output: structured_json
+output_schema:
+  type: object
+  required:
+    - engagers
+  properties:
+    engagers:
+      type: array
+      items:
+        type: object
 ---
 
 For each post in `posts`, fetch likers and commenters via Unipile.

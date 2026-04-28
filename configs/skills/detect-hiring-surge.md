@@ -5,6 +5,20 @@ category: research
 version: 1.0.0
 capability: hiring-signal
 capabilities: [search]
+output_schema:
+  type: object
+  required:
+    - changed
+    - data
+  properties:
+    changed:
+      type: boolean
+    summary:
+      type: string
+    data:
+      type: object
+    newBaseline:
+      type: object
 inputs:
   - name: company_domain
     description: Company website domain to monitor for hiring surges

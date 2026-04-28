@@ -12,6 +12,28 @@ inputs:
 capability: reasoning
 capabilities: [filter, qualify]
 output: structured_json
+output_schema:
+  type: array
+  items:
+    type: object
+    required:
+      - relevance_score
+      - sentiment
+      - rationale
+    properties:
+      relevance_score:
+        type: integer
+        minimum: 0
+        maximum: 100
+      sentiment:
+        type: string
+        enum:
+          - positive
+          - neutral
+          - negative
+          - mixed
+      rationale:
+        type: string
 ---
 
 For each mention in `mentions`, decide:

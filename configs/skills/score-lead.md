@@ -21,6 +21,63 @@ inputs:
 capability: reasoning
 capabilities: [qualify]
 output: structured_json
+output_schema:
+  type: object
+  required:
+    - overall_score
+    - verdict
+    - dimensions
+    - recommended_action
+    - personalization_hooks
+  properties:
+    overall_score:
+      type: integer
+      minimum: 0
+      maximum: 100
+    verdict:
+      type: string
+      enum:
+        - hot
+        - warm
+        - monitor
+        - disqualified
+    dimensions:
+      type: object
+      properties:
+        title_fit:
+          type: object
+          properties:
+            score:
+              type: integer
+            reason:
+              type: string
+        company_fit:
+          type: object
+          properties:
+            score:
+              type: integer
+            reason:
+              type: string
+        seniority_fit:
+          type: object
+          properties:
+            score:
+              type: integer
+            reason:
+              type: string
+        intent_signals:
+          type: object
+          properties:
+            score:
+              type: integer
+            reason:
+              type: string
+    recommended_action:
+      type: string
+    personalization_hooks:
+      type: array
+      items:
+        type: string
 ---
 
 Score this lead against the provided ICP criteria.

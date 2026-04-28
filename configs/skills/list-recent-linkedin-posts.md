@@ -12,6 +12,21 @@ inputs:
 capability: linkedin-user-posts-fetch
 capabilities: [search]
 output: structured_json
+output_schema:
+  type: object
+  required:
+    - posts
+  properties:
+    posts:
+      type: array
+      items:
+        type: object
+    accountId:
+      type: string
+    userId:
+      type: string
+    limit:
+      type: integer
 ---
 
 Use the Unipile API to fetch the user's {{lookback}} most recent posts.

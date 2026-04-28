@@ -15,6 +15,17 @@ inputs:
 capability: web-fetch
 capabilities: [search]
 output: structured_json
+output_schema:
+  type: object
+  properties:
+    url:
+      type: string
+    markdown:
+      type: string
+    query:
+      type: string
+    results:
+      type: array
 ---
 
 For each community in {{communities}}, fetch posts in the past 7 days that mention any of the keywords {{keywords}} and have at least {{min_upvotes}} upvotes.

@@ -12,6 +12,23 @@ inputs:
 capability: reasoning
 capabilities: [qualify]
 output: structured_json
+output_schema:
+  type: array
+  items:
+    type: object
+    required:
+      - category
+      - confidence
+      - rationale
+    properties:
+      category:
+        type: string
+      confidence:
+        type: number
+        minimum: 0
+        maximum: 1
+      rationale:
+        type: string
 ---
 
 For each reply, pick exactly one category from the allowed set: {{categories}}.

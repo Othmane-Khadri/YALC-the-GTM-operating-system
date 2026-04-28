@@ -9,6 +9,15 @@ inputs:
 capability: inbox-replies-fetch
 capabilities: [search]
 output: structured_json
+output_schema:
+  type: object
+  required:
+    - replies
+  properties:
+    replies:
+      type: array
+      items:
+        type: object
 ---
 
 Fetch replies received within the last {{lookback_hours}} hours from the configured email provider.

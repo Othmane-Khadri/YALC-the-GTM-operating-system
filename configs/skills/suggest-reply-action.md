@@ -9,6 +9,25 @@ inputs:
 capability: reasoning
 capabilities: [custom]
 output: structured_json
+output_schema:
+  type: array
+  items:
+    type: object
+    required:
+      - next_action
+      - draft_reply
+    properties:
+      next_action:
+        type: string
+        enum:
+          - book-call
+          - answer-objection
+          - nurture
+          - mark-unsubscribed
+          - no-action
+      draft_reply:
+        type: string
+        maxLength: 600
 ---
 
 For each reply, suggest:

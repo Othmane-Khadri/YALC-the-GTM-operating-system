@@ -12,6 +12,10 @@ inputs:
 provider: deterministic
 capabilities: [filter]
 output: structured_json
+# Pass-through skill: returns the top-N input rows unchanged. The output
+# shape mirrors the caller's input, so it cannot be described statically.
+# Set to null to opt out of runtime schema validation.
+output_schema: null
 ---
 
 Sort `mentions` by `relevance_score` descending (ties broken by `score` or `num_comments` if present, then by recency). Return the top {{n}} rows unchanged. No new fields.

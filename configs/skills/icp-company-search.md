@@ -12,6 +12,15 @@ inputs:
 capability: icp-company-search
 capabilities: [search]
 output: structured_json
+output_schema:
+  type: object
+  required:
+    - companies
+  properties:
+    companies:
+      type: array
+      items:
+        type: object
 ---
 
 Translate the segment description into Crustdata company filters (industry, headcount, location, growth signals). Run the search and return up to 100 candidate companies:

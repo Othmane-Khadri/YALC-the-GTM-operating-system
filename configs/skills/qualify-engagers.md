@@ -12,6 +12,35 @@ inputs:
 capability: reasoning
 capabilities: [qualify]
 output: structured_json
+output_schema:
+  type: array
+  items:
+    type: object
+    required:
+      - icp_score
+      - role_fit
+      - company_fit
+      - signal_strength
+      - rationale
+    properties:
+      icp_score:
+        type: integer
+        minimum: 0
+        maximum: 100
+      role_fit:
+        type: integer
+        minimum: 0
+        maximum: 40
+      company_fit:
+        type: integer
+        minimum: 0
+        maximum: 40
+      signal_strength:
+        type: integer
+        minimum: 0
+        maximum: 20
+      rationale:
+        type: string
 ---
 
 For each engager, score against the user's captured ICP (read `~/.gtm-os/icp.yaml`). Use:

@@ -13,6 +13,17 @@ capability: web-fetch
 requires_capabilities: [reasoning]
 capabilities: [search, enrich]
 output: structured_json
+output_schema:
+  type: object
+  properties:
+    url:
+      type: string
+    markdown:
+      type: string
+    query:
+      type: string
+    results:
+      type: array
 ---
 
 You are researching {{company_url}} to answer: {{question}}

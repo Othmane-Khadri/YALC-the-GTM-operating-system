@@ -15,6 +15,17 @@ inputs:
 capability: web-fetch
 capabilities: [search]
 output: structured_json
+output_schema:
+  type: object
+  properties:
+    url:
+      type: string
+    markdown:
+      type: string
+    query:
+      type: string
+    results:
+      type: array
 ---
 
 You are scraping Reddit for posts that mention any of these keywords: {{keywords}}.
