@@ -41,6 +41,7 @@ steps:
     input:
       engagers: "{{steps[1].output}}"
       min_score: "{{min_quality_score}}"
+      icp_yaml_content: "$file:~/.gtm-os/icp/segments.yaml"
   - skill: rank-and-truncate
     input:
       mentions: "{{steps[2].output}}"
