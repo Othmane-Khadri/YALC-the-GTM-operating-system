@@ -2443,6 +2443,16 @@ function levenshtein(a: string, b: string): number {
   return dp[m][n]
 }
 
+// ─── connect-provider ──────────────────────────────────────────────────────
+program
+  .command('connect-provider <name>')
+  .description('Walk through adding a provider (key, capability registration, test)')
+  .action(withDiagnostics(async (name: string) => {
+    const { runConnectProvider } = await import('./commands/connect-provider')
+    const result = await runConnectProvider(name)
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
 // ─── provider:test ─────────────────────────────────────────────────────────
 program
   .command('provider:test <name>')
