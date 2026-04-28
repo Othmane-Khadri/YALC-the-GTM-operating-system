@@ -78,6 +78,22 @@ function previewMetaPath(tenant?: TenantContext): string {
   return join(previewRoot(tenant), '_meta.json')
 }
 
+/**
+ * Per-section confidence record stored under `_meta.json#sections.<id>`.
+ *
+ * `confidence` is recomputed from `confidence_signals` via the shared
+ * `computeConfidence()` helper so the file stays a self-contained record —
+ * downstream tools can re-derive the score without rerunning synthesis.
+ */
+export interface PreviewSectionMeta {
+  confidence: number
+  confidence_signals: {
+    input_chars: number
+    llm_self_rating: number
+    has_metadata_anchors: boolean
+  }
+}
+
 export interface PreviewMeta {
   captured_at: string
   sources?: {
@@ -87,6 +103,8 @@ export interface PreviewMeta {
     voice?: string | null
   }
   version?: string
+  /** Per-section synthesis metadata (0.8.F). Keyed by SectionId. */
+  sections?: Record<string, PreviewSectionMeta>
 }
 
 /** Read the preview's _meta.json. Returns null when missing or unparsable. */
