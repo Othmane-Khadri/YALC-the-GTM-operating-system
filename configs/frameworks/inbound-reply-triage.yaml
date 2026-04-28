@@ -41,6 +41,7 @@ steps:
   - skill: suggest-reply-action
     input:
       replies: "{{steps[1].output}}"
+      voice_md_content: "$file:~/.gtm-os/voice/tone-of-voice.md"
 
 output:
   destination_choice:

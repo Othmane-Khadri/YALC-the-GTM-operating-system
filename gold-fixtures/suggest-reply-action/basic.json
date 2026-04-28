@@ -13,7 +13,8 @@
         "category": "unsubscribe",
         "body": "Please remove me."
       }
-    ]
+    ],
+    "voice_md_content": "# Tone\n- Direct, never pushy.\n- Signature phrase: 'happy to send a quick loom'.\n"
   },
   "expected_output": [
     {
