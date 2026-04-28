@@ -67,6 +67,12 @@ export interface FlagCaptureResult {
     docs?: string[]
     voice?: string
   }
+  /**
+   * True when website auto-extract found rich metadata anchors
+   * (og:site_name, <title>, <meta description>). Drives the per-section
+   * `has_metadata_anchors` flag in 0.8.F confidence scoring.
+   */
+  websiteHasMetadataAnchors?: boolean
 }
 
 /** True when at least one of the capture flags was provided. */
@@ -246,6 +252,7 @@ export async function runFlagCapture(opts: FlagCaptureOptions): Promise<FlagCapt
   ctx.meta.version = '0.6.0'
 
   const sourcesUsed: FlagCaptureResult['sourcesUsed'] = {}
+  let websiteHasMetadataAnchors = false
 
   if (opts.companyName) ctx.company.name = opts.companyName
 
@@ -268,6 +275,9 @@ export async function runFlagCapture(opts: FlagCaptureOptions): Promise<FlagCapt
       if (!ctx.company.name && extracted.name) ctx.company.name = extracted.name
       if (!ctx.company.description && extracted.description) {
         ctx.company.description = extracted.description
+      }
+      if (extracted.hasMetadataAnchors) {
+        websiteHasMetadataAnchors = true
       }
     } else if (!ctx.company.name) {
       // No content but a URL — derive a placeholder name from the host so
@@ -331,7 +341,15 @@ export async function runFlagCapture(opts: FlagCaptureOptions): Promise<FlagCapt
     }
   }
 
-  return { context: ctx, websiteContent, linkedinContent, docsContent, voiceContent, sourcesUsed }
+  return {
+    context: ctx,
+    websiteContent,
+    linkedinContent,
+    docsContent,
+    voiceContent,
+    sourcesUsed,
+    websiteHasMetadataAnchors,
+  }
 }
 
 /**

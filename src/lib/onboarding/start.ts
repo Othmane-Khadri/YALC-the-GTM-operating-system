@@ -487,6 +487,7 @@ export async function runStart(opts: StartOptions): Promise<void> {
         docs: result.docsContent,
         voice: result.voiceContent,
       },
+      hasMetadataAnchors: result.websiteHasMetadataAnchors,
       tenant: { tenantId },
     })
     console.log(

@@ -13,6 +13,15 @@
 export interface ExtractedCompanyMeta {
   name?: string
   description?: string
+  /**
+   * True when at least one of `name` / `description` was sourced from a
+   * structured signal (og:site_name, <title>, <meta name="description">,
+   * og:description). Hostname-derived fallbacks and free-text first-paragraph
+   * extracts do NOT count — those are too noisy to anchor confidence on.
+   *
+   * Used by 0.8.F preview confidence scoring.
+   */
+  hasMetadataAnchors?: boolean
 }
 
 export interface ExtractInput {
@@ -158,6 +167,26 @@ function clamp(s: string, n: number): string {
 }
 
 /**
+ * True when the scraped content carries at least one rich metadata anchor —
+ * og:site_name, <title>, <meta name="description"> or og:description. Used
+ * by 0.8.F confidence scoring; deliberately stricter than `extractCompanyMeta`
+ * (which falls back to hostname / first paragraph).
+ */
+export function hasMetadataAnchors(content: string): boolean {
+  if (!content) return false
+  const patterns = [
+    /<meta[^>]*property=["']og:site_name["'][^>]*content=["'][^"']+["']/i,
+    /<meta[^>]*content=["'][^"']+["'][^>]*property=["']og:site_name["']/i,
+    /<meta[^>]*property=["']og:description["'][^>]*content=["'][^"']+["']/i,
+    /<meta[^>]*content=["'][^"']+["'][^>]*property=["']og:description["']/i,
+    /<meta[^>]*name=["']description["'][^>]*content=["'][^"']+["']/i,
+    /<meta[^>]*content=["'][^"']+["'][^>]*name=["']description["']/i,
+    /<title[^>]*>[^<]+<\/title>/i,
+  ]
+  return patterns.some((re) => re.test(content))
+}
+
+/**
  * Run all extractors over scraped content. Returns whatever fields could
  * be derived; missing fields stay undefined. The caller decides how to
  * merge into the captured `CompanyContext`.
@@ -167,5 +196,6 @@ export function extractCompanyMeta(input: ExtractInput): ExtractedCompanyMeta {
     extractCompanyName(input.content) ??
     (input.url ? deriveNameFromUrl(input.url) : undefined)
   const description = extractCompanyDescription(input.content)
-  return { name, description }
+  const anchored = hasMetadataAnchors(input.content)
+  return { name, description, hasMetadataAnchors: anchored }
 }

@@ -52,12 +52,26 @@ function contextBlock(input: SectionPromptInput): string {
   return `<company-context>\n${JSON.stringify(input.context, null, 2)}\n</company-context>`
 }
 
+/**
+ * Trailing instruction asking the model to self-rate its grounding (0.8.F).
+ * The field is parsed + stripped before the body is written to disk; the
+ * rating lives in `_preview/_meta.json` under `confidence_signals`.
+ */
+const CONFIDENCE_INSTRUCTION =
+  'After your section output, append a final line in the exact form ' +
+  '`__yalc_confidence: <0-10>` where the integer is YOUR own rating of ' +
+  'how grounded this output is in the provided context. 10 = directly ' +
+  'extracted from rich source material. 5 = reasonable inference. 0 = ' +
+  'mostly fabricated. Default to 5 if you are uncertain. Do not wrap the ' +
+  'line in fences. Emit the line exactly once.'
+
 export function buildFrameworkPrompt(input: SectionPromptInput): string {
   return [
     'Build a partial GTMFramework YAML from the captured company context and raw sources below. Only populate fields you have strong evidence for. Output strictly the YAML body — no fences, no commentary.',
     contextBlock(input),
     rawBlock(input),
     hintBlock(input),
+    CONFIDENCE_INSTRUCTION,
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -69,6 +83,7 @@ export function buildVoicePrompt(input: SectionPromptInput): string {
     contextBlock(input),
     rawBlock(input),
     hintBlock(input),
+    CONFIDENCE_INSTRUCTION,
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -85,6 +100,7 @@ export function buildIcpPrompt(input: SectionPromptInput): string {
     contextBlock(input),
     rawBlock(input),
     hintBlock(input),
+    CONFIDENCE_INSTRUCTION,
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -96,6 +112,7 @@ export function buildPositioningPrompt(input: SectionPromptInput): string {
     contextBlock(input),
     rawBlock(input),
     hintBlock(input),
+    CONFIDENCE_INSTRUCTION,
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -107,6 +124,7 @@ export function buildQualificationPrompt(input: SectionPromptInput): string {
     contextBlock(input),
     rawBlock(input),
     hintBlock(input),
+    CONFIDENCE_INSTRUCTION,
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -118,6 +136,7 @@ export function buildCampaignPrompt(input: SectionPromptInput): string {
     contextBlock(input),
     rawBlock(input),
     hintBlock(input),
+    CONFIDENCE_INSTRUCTION,
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -129,6 +148,7 @@ export function buildSearchQueriesPrompt(input: SectionPromptInput): string {
     contextBlock(input),
     rawBlock(input),
     hintBlock(input),
+    CONFIDENCE_INSTRUCTION,
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -164,4 +184,36 @@ export async function runSectionPrompt(
     .filter((b) => b.type === 'text')
     .map((b) => (b as { type: 'text'; text: string }).text)
     .join('')
+}
+
+/**
+ * Parse + strip the `__yalc_confidence: <n>` self-rating line emitted by
+ * each section prompt (0.8.F). Returns the cleaned body plus the rating.
+ *
+ * Tolerant by design: if the field is absent, malformed, or out of range
+ * we return `null` so the caller can fall back to the default rating
+ * rather than re-prompting the model.
+ */
+export function parseConfidenceField(raw: string): { body: string; rating: number | null } {
+  if (!raw) return { body: raw, rating: null }
+  // Match the LAST `__yalc_confidence: <n>` line in the body — the prompt
+  // asks for it at the very end, but a careless model may emit it earlier
+  // and we still want to honor it. Allow either an integer or a single
+  // decimal place; clamp to [0, 10] before returning.
+  const re = /^[ \t]*__yalc_confidence[ \t]*:[ \t]*(\d+(?:\.\d+)?)[ \t]*\r?$/gim
+  let lastMatch: RegExpExecArray | null = null
+  let m: RegExpExecArray | null
+  while ((m = re.exec(raw)) !== null) {
+    lastMatch = m
+  }
+  if (!lastMatch) return { body: raw, rating: null }
+  const num = Number(lastMatch[1])
+  const rating = Number.isFinite(num) ? Math.min(Math.max(num, 0), 10) : null
+  // Strip every confidence line (defensively — model may emit duplicates)
+  // plus any blank lines left behind so the cleaned body is tidy.
+  const stripped = raw
+    .replace(/^[ \t]*__yalc_confidence[ \t]*:[ \t]*\d+(?:\.\d+)?[ \t]*\r?$/gim, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trimEnd()
+  return { body: stripped, rating }
 }

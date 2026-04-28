@@ -20,15 +20,24 @@ import type { CompanyContext } from '../framework/context-types.js'
 import {
   ensurePreviewDir,
   previewPath,
+  readPreviewMeta,
+  writePreviewMeta,
+  type PreviewSectionMeta,
   type SectionName,
   type TenantContext,
 } from './preview.js'
 import {
   SECTION_PROMPT_BUILDERS,
+  parseConfidenceField,
   runSectionPrompt,
   type SectionId,
   type SectionPromptInput,
 } from '../framework/section-prompts/index.js'
+import {
+  computeConfidence,
+  DEFAULT_LLM_SELF_RATING,
+  type ConfidenceSignals,
+} from './confidence.js'
 
 export interface SynthesisOptions {
   context: CompanyContext
@@ -38,6 +47,12 @@ export interface SynthesisOptions {
   only?: SectionId[]
   /** User hint forwarded to every section prompt. */
   hint?: string
+  /**
+   * True when website auto-extract surfaced rich metadata anchors
+   * (og:site_name, <title>, <meta description>). Drives the per-section
+   * `has_metadata_anchors` flag in 0.8.F confidence scoring.
+   */
+  hasMetadataAnchors?: boolean
 }
 
 const ALL_SECTIONS: SectionId[] = [
@@ -135,22 +150,65 @@ function stubBody(section: SectionId, ctx: CompanyContext): string {
   }
 }
 
+/**
+ * Char-budget mapping from section → which raw sources contribute meaningful
+ * grounding for that section. Voice cares about voice samples + LinkedIn;
+ * ICP/positioning care about website + docs; etc. Used by 0.8.F confidence
+ * scoring to feed `input_chars` per section. The values are simple sums of
+ * the relevant `rawSources` strings — empty fields contribute zero.
+ */
+function inputCharsForSection(
+  section: SectionId,
+  raw: SectionPromptInput['rawSources'] | undefined,
+): number {
+  if (!raw) return 0
+  const w = raw.website?.length ?? 0
+  const l = raw.linkedin?.length ?? 0
+  const d = raw.docs?.length ?? 0
+  const v = raw.voice?.length ?? 0
+  switch (section) {
+    case 'voice':
+      return v + l
+    case 'framework':
+      return w + l + d
+    case 'icp':
+    case 'positioning':
+    case 'qualification_rules':
+    case 'campaign_templates':
+    case 'search_queries':
+      return w + d
+  }
+}
+
+interface SectionBodyResult {
+  body: string
+  /** LLM self-rating in 0..10, or null when no LLM call was made. */
+  llmRating: number | null
+  /** True when the body came from a real LLM completion (not the stub). */
+  llmDriven: boolean
+}
+
 async function bodyForSection(
   section: SectionId,
   input: SectionPromptInput,
-): Promise<string> {
+): Promise<SectionBodyResult> {
   if (!hasAnthropic()) {
-    return stubBody(section, input.context)
+    return { body: stubBody(section, input.context), llmRating: null, llmDriven: false }
   }
   const prompt = SECTION_PROMPT_BUILDERS[section](input)
   try {
-    const text = await runSectionPrompt(prompt)
-    return text.trim() || stubBody(section, input.context)
+    const raw = await runSectionPrompt(prompt)
+    const parsed = parseConfidenceField(raw)
+    const cleaned = parsed.body.trim()
+    if (!cleaned) {
+      return { body: stubBody(section, input.context), llmRating: null, llmDriven: false }
+    }
+    return { body: cleaned, llmRating: parsed.rating, llmDriven: true }
   } catch (err) {
     console.warn(
       `[synthesis] ${section} synthesis failed: ${err instanceof Error ? err.message : String(err)}. Using stub.`,
     )
-    return stubBody(section, input.context)
+    return { body: stubBody(section, input.context), llmRating: null, llmDriven: false }
   }
 }
 
@@ -278,15 +336,50 @@ export async function writeSynthesizedPreview(opts: SynthesisOptions): Promise<S
   }
 
   const written: string[] = []
+  // Per-section confidence accumulator — merged into `_meta.json#sections`
+  // after all writes complete so a partial regeneration (`only: [...]`)
+  // updates only the affected entries and leaves everything else intact.
+  const sectionMetaUpdates: Record<string, PreviewSectionMeta> = {}
+  let anyLlmDriven = false
+
   for (const section of sections) {
-    const body = await bodyForSection(section, promptInput)
+    const result = await bodyForSection(section, promptInput)
+    if (result.llmDriven) anyLlmDriven = true
+
     const writer = SECTION_WRITERS[section]
-    written.push(...writer(body, opts.tenant))
+    written.push(...writer(result.body, opts.tenant))
     if (section === 'icp') {
-      const hangouts = extractAudienceHangouts(body)
+      const hangouts = extractAudienceHangouts(result.body)
       opts.context.icp.subreddits = hangouts.subreddits
       opts.context.icp.target_communities = hangouts.target_communities
     }
+
+    const signals: ConfidenceSignals = {
+      input_chars: inputCharsForSection(section, opts.rawSources),
+      llm_self_rating: result.llmRating ?? DEFAULT_LLM_SELF_RATING,
+      // Metadata anchors are derived from the website auto-extract. Voice
+      // doesn't draw on website meta tags, so it never claims an anchor
+      // even when one was found for the company name/description.
+      has_metadata_anchors:
+        section === 'voice' ? false : !!opts.hasMetadataAnchors,
+    }
+    sectionMetaUpdates[section] = {
+      confidence: computeConfidence(signals),
+      confidence_signals: signals,
+    }
+  }
+
+  // Merge per-section confidence into `_meta.json`. Preserve any pre-existing
+  // entries (so a `--regenerate icp` run doesn't wipe the framework score).
+  if (Object.keys(sectionMetaUpdates).length > 0) {
+    const existing = readPreviewMeta(opts.tenant) ?? {
+      captured_at: new Date().toISOString(),
+    }
+    const mergedSections: Record<string, PreviewSectionMeta> = {
+      ...(existing.sections ?? {}),
+      ...sectionMetaUpdates,
+    }
+    writePreviewMeta({ ...existing, sections: mergedSections }, opts.tenant)
   }
 
   // Refresh the preview index whenever any section is regenerated so the
@@ -299,7 +392,7 @@ export async function writeSynthesizedPreview(opts: SynthesisOptions): Promise<S
     // Index regeneration is best-effort; never block synthesis on it.
   }
 
-  return { written, sections, llmDriven: hasAnthropic() }
+  return { written, sections, llmDriven: anyLlmDriven }
 }
 
 export const ALL_SECTION_IDS = ALL_SECTIONS
