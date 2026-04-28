@@ -75,21 +75,92 @@ export function validateNotionTarget(opts: NotionAdapterOptions): InstalledNotio
 }
 
 /**
- * Append a run as a new child page. **NOT YET IMPLEMENTED in 0.7.0.**
+ * Append a run as a new child page under the configured parent.
  *
- * The runtime path uses the dashboard destination today. We still ship
- * the validation entry point so install-time choice + UI flow can be
- * wired end-to-end. Calling `appendRun()` throws so we fail loudly
- * rather than silently dropping output.
+ * The page title appends the run's `ranAt` ISO timestamp so re-runs
+ * never collide on Notion's title-based natural-key matching. The
+ * body contains a markdown rendering of `payload.summary` followed by
+ * a markdown table built from `payload.rows`.
  */
 export async function appendRun(
-  _target: InstalledNotionTarget,
-  _payload: NotionRunPayload,
+  target: InstalledNotionTarget,
+  payload: NotionRunPayload,
 ): Promise<{ pageId: string }> {
-  ensureAvailable()
-  throw new NotionAdapterUnavailableError(
-    'Notion output not yet implemented in 0.7.0 — pick the dashboard destination at install time',
+  const svc = ensureAvailable()
+  const titleWithStamp = `${payload.title} — ${payload.ranAt}`
+  const blocks = renderRunBlocks(payload)
+  const res = await svc.createChildPage(target.parentPageId, titleWithStamp, blocks)
+  return { pageId: res.id }
+}
+
+/** Build the Notion block children that render summary + rows. */
+function renderRunBlocks(payload: NotionRunPayload): unknown[] {
+  const blocks: unknown[] = []
+  if (payload.summary && payload.summary.trim().length > 0) {
+    blocks.push(paragraphBlock(payload.summary))
+  }
+  if (payload.rows.length === 0) {
+    blocks.push(paragraphBlock('(no rows in this run)'))
+    return blocks
+  }
+  // Render as a markdown-style code block — Notion native tables require a
+  // heavier API surface (table block + table_row child blocks per row) and
+  // for the framework runner's "log this run" use case the markdown shape
+  // is plenty + readable in mobile + fallback clients.
+  const md = renderMarkdownTable(payload.rows)
+  blocks.push(codeBlock(md))
+  return blocks
+}
+
+function paragraphBlock(text: string): unknown {
+  return {
+    object: 'block',
+    type: 'paragraph',
+    paragraph: {
+      rich_text: [{ type: 'text', text: { content: text.slice(0, 2000) } }],
+    },
+  }
+}
+
+function codeBlock(text: string): unknown {
+  return {
+    object: 'block',
+    type: 'code',
+    code: {
+      language: 'markdown',
+      // Notion caps a block's text at 2000 chars; clip to be safe.
+      rich_text: [{ type: 'text', text: { content: text.slice(0, 2000) } }],
+    },
+  }
+}
+
+/** Plain markdown-table renderer that preserves the row order from input. */
+export function renderMarkdownTable(rows: Array<Record<string, unknown>>): string {
+  if (rows.length === 0) return '(no rows)'
+  // Column order: stable + matches the first row's key order.
+  const cols = Array.from(
+    rows.reduce<Set<string>>((acc, r) => {
+      for (const k of Object.keys(r)) acc.add(k)
+      return acc
+    }, new Set()),
   )
+  const header = `| ${cols.join(' | ')} |`
+  const sep = `| ${cols.map(() => '---').join(' | ')} |`
+  const body = rows
+    .map((row) => `| ${cols.map((c) => fmtCell(row[c])).join(' | ')} |`)
+    .join('\n')
+  return [header, sep, body].join('\n')
+}
+
+function fmtCell(v: unknown): string {
+  if (v == null) return ''
+  if (typeof v === 'string') return v.replace(/\|/g, '\\|').replace(/\n/g, ' ')
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v)
+  try {
+    return JSON.stringify(v).replace(/\|/g, '\\|')
+  } catch {
+    return String(v)
+  }
 }
 
 /** Quick check used by the wizard to decide whether the option is offered. */

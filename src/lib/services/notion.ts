@@ -52,6 +52,42 @@ export class NotionService {
     })
   }
 
+  /**
+   * Create a child page under an existing Notion page (NOT a database).
+   * Used by the framework runner's Notion adapter to record per-run output.
+   */
+  async createChildPage(
+    parentPageId: string,
+    title: string,
+    children?: unknown[],
+  ): Promise<{ id: string }> {
+    const c = getClient()
+    const properties = {
+      title: {
+        title: [{ text: { content: title } }],
+      },
+    } as Parameters<typeof c.pages.create>[0]['properties']
+    const args: Parameters<typeof c.pages.create>[0] = {
+      parent: { page_id: parentPageId },
+      properties,
+    }
+    if (children && children.length > 0) {
+      ;(args as { children?: unknown[] }).children = children
+    }
+    const res = await c.pages.create(args)
+    return { id: (res as { id: string }).id }
+  }
+
+  /** Append blocks to an existing page or block. */
+  async appendBlocks(blockId: string, children: unknown[]): Promise<void> {
+    if (children.length === 0) return
+    const c = getClient()
+    await c.blocks.children.append({
+      block_id: blockId,
+      children: children as Parameters<typeof c.blocks.children.append>[0]['children'],
+    })
+  }
+
   async updatePage(pageId: string, properties: Record<string, unknown>) {
     const c = getClient()
     return c.pages.update({

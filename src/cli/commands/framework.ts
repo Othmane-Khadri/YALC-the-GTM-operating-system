@@ -170,15 +170,15 @@ async function pickDestination(
     return { destination: 'dashboard' }
   }
 
-  // Auto-confirm flow: prefer dashboard. Notion stays opt-in to avoid
-  // surprising the user with an unfinished Notion writer (0.7.0 stub).
+  // Auto-confirm flow: prefer dashboard so the install completes without
+  // requiring a Notion parent page id at the prompt.
   if (opts.autoConfirm) {
     return { destination: 'dashboard' }
   }
 
   const choices: Array<{ name: string; value: 'notion' | 'dashboard' }> = []
   if (notionDestinationAvailable()) {
-    choices.push({ name: 'Notion (NOTION_API_KEY detected — output not yet implemented in 0.7.0)', value: 'notion' })
+    choices.push({ name: 'Notion (NOTION_API_KEY detected)', value: 'notion' })
   }
   choices.push({ name: 'Local dashboard (recommended)', value: 'dashboard' })
 
