@@ -1,0 +1,13 @@
+{
+  "skill": "connect-provider",
+  "input": {
+    "provider_name": "pappers",
+    "knowledge_yaml_content": "id: pappers\ndisplay_name: \"Pappers\"\nhomepage: https://pappers.fr\nkey_acquisition_url: https://www.pappers.fr/api/dashboard\nintegration_kind: rest\nenv_vars:\n  - name: PAPPERS_API_KEY\n    description: \"Get from your Pappers dashboard\"\n    example: \"demo-xxxxxxxx\"\n    required: true\ncapabilities_supported:\n  - id: icp-company-search\n    adapter_module: src/lib/providers/adapters/icp-company-search-pappers.ts\ninstall_steps:\n  - \"Sign up at $homepage if you don't have an account.\"\n  - \"Get your API key from $key_acquisition_url\"\n  - \"Run: yalc-gtm connect-provider $id\"\ntest_query:\n  capability: icp-company-search\n  input:\n    segments: \"SaaS startups in Europe\"\n    max_results: 1\n"
+  },
+  "expected_output": {
+    "provider_id": "pappers",
+    "install_status": "pending_keys",
+    "next_action": "Open ~/.gtm-os/.env and set PAPPERS_API_KEY, then run `yalc-gtm connect-provider pappers` again to finish wiring.",
+    "issues": []
+  }
+}
