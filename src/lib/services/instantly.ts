@@ -70,6 +70,19 @@ export interface LeadStatus {
   bounced_at?: string
 }
 
+export interface InboxReply {
+  id?: string
+  campaign_id?: string
+  lead_email?: string
+  from_email?: string
+  to_email?: string
+  subject?: string
+  body?: string
+  body_text?: string
+  received_at?: string
+  thread_id?: string
+}
+
 // ─── Service ───────────────────────────────────────────────────────────────
 
 export class InstantlyService {
@@ -151,6 +164,24 @@ export class InstantlyService {
 
   async listEmailAccounts(): Promise<InstantlyEmailAccount[]> {
     const res = await this.request<{ items?: InstantlyEmailAccount[] }>('GET', '/api/v2/accounts')
+    return res.items ?? []
+  }
+
+  // ─── Unibox / Inbox ────────────────────────────────────────────────────
+
+  /**
+   * Fetch recent inbox replies across all campaigns within a lookback window.
+   * Wraps Instantly's `/api/v2/unibox/emails` endpoint and filters server-side
+   * by `received_at >= now - lookback_hours`.
+   */
+  async listInboxReplies(opts: { lookbackHours: number; limit?: number }): Promise<InboxReply[]> {
+    const limit = opts.limit ?? 100
+    const cutoffMs = Date.now() - opts.lookbackHours * 3_600_000
+    const since = new Date(cutoffMs).toISOString()
+    const res = await this.request<{ items?: InboxReply[] }>(
+      'GET',
+      `/api/v2/unibox/emails?direction=inbound&since=${encodeURIComponent(since)}&limit=${limit}`,
+    )
     return res.items ?? []
   }
 
