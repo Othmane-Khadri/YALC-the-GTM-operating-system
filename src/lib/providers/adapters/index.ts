@@ -31,7 +31,7 @@ export const ICP_COMPANY_SEARCH_CAPABILITY = {
     },
     required: ['companies'],
   },
-  defaultPriority: ['crustdata', 'apollo'],
+  defaultPriority: ['crustdata', 'apollo', 'pappers'],
 } as const
 
 export const PEOPLE_ENRICH_CAPABILITY = {
@@ -323,6 +323,7 @@ export async function registerBuiltinCapabilities(registry: CapabilityRegistry):
 
   const { icpCompanySearchCrustdataAdapter } = await import('./icp-company-search-crustdata.js')
   const { icpCompanySearchApolloAdapter } = await import('./icp-company-search-apollo.js')
+  const { icpCompanySearchPappersAdapter } = await import('./icp-company-search-pappers.js')
   const { peopleEnrichFullenrichAdapter } = await import('./people-enrich-fullenrich.js')
   const { peopleEnrichCrustdataAdapter } = await import('./people-enrich-crustdata.js')
   const { linkedinEngagerFetchUnipileAdapter } = await import('./linkedin-engager-fetch-unipile.js')
@@ -338,6 +339,7 @@ export async function registerBuiltinCapabilities(registry: CapabilityRegistry):
 
   registry.register(icpCompanySearchCrustdataAdapter)
   registry.register(icpCompanySearchApolloAdapter)
+  registry.register(icpCompanySearchPappersAdapter)
   registry.register(peopleEnrichFullenrichAdapter)
   registry.register(peopleEnrichCrustdataAdapter)
   registry.register(linkedinEngagerFetchUnipileAdapter)
