@@ -1,0 +1,21 @@
+{
+  "input": {
+    "engagers": [
+      { "linkedin_urn": "urn:li:person:1", "name": "Alex Smith", "headline": "Head of RevOps @ Lattice", "company": "Lattice" },
+      { "linkedin_urn": "urn:li:person:2", "name": "Sam Patel", "headline": "Junior Recruiter @ TalentCo", "company": "TalentCo" }
+    ],
+    "min_score": 60,
+    "icp_yaml_content": "target_roles:\n  - Head of RevOps\n  - VP Sales\nindustries:\n  - SaaS\nemployee_range: 100-1000\n"
+  },
+  "expected_output": [
+    {
+      "linkedin_urn": "urn:li:person:1",
+      "name": "Alex Smith",
+      "icp_score": 85,
+      "role_fit": 38,
+      "company_fit": 35,
+      "signal_strength": 12,
+      "rationale": "Head of RevOps at a SaaS in target range — strong fit."
+    }
+  ]
+}

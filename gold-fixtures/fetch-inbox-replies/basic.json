@@ -1,0 +1,16 @@
+{
+  "input": {
+    "lookback_hours": 24
+  },
+  "expected_output": {
+    "replies": [
+      {
+        "thread_id": "thr-1",
+        "from": "jane@acme.com",
+        "received_at": "2026-04-27T10:11:00Z",
+        "subject": "Re: Quick question",
+        "body_excerpt": "Sure, happy to chat — does Tuesday work?"
+      }
+    ]
+  }
+}

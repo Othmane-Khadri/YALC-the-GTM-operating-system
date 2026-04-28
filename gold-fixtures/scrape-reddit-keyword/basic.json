@@ -1,0 +1,17 @@
+{
+  "input": {
+    "keywords": "Outreach,Apollo",
+    "subreddits": "salesops,revops",
+    "since": "yesterday-08:00"
+  },
+  "expected_output": {
+    "query": "Outreach OR Apollo subreddits:salesops,revops since:yesterday-08:00",
+    "results": [
+      {
+        "url": "https://reddit.com/r/salesops/posts/123",
+        "title": "Best alternatives to Outreach in 2026",
+        "snippet": "Looking for honest reviews."
+      }
+    ]
+  }
+}

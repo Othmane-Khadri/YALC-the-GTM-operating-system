@@ -1,0 +1,20 @@
+{
+  "input": {
+    "company_domain": "acme.com",
+    "baseline_job_count": 8
+  },
+  "expected_output": {
+    "changed": true,
+    "summary": "acme.com is hiring: 23 open positions (+15 since last check)",
+    "data": {
+      "company_domain": "acme.com",
+      "current_count": 23,
+      "previous_count": 8,
+      "delta": 15,
+      "threshold": 5
+    },
+    "newBaseline": {
+      "job_count": 23
+    }
+  }
+}

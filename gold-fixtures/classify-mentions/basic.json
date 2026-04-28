@@ -1,0 +1,27 @@
+{
+  "input": {
+    "mentions": [
+      { "id": "m1", "title": "Best alternatives to Outreach in 2026", "body": "Looking for honest reviews comparing Outreach vs Apollo." },
+      { "id": "m2", "title": "Random unrelated post", "body": "Just a quick question about something else." }
+    ],
+    "relevance_prompt": "A mention is relevant if it asks for honest reviews or comparisons between sales-engagement tools."
+  },
+  "expected_output": [
+    {
+      "id": "m1",
+      "title": "Best alternatives to Outreach in 2026",
+      "body": "Looking for honest reviews comparing Outreach vs Apollo.",
+      "relevance_score": 85,
+      "sentiment": "neutral",
+      "rationale": "Direct comparison request matches the rule."
+    },
+    {
+      "id": "m2",
+      "title": "Random unrelated post",
+      "body": "Just a quick question about something else.",
+      "relevance_score": 10,
+      "sentiment": "neutral",
+      "rationale": "No tooling comparison content."
+    }
+  ]
+}

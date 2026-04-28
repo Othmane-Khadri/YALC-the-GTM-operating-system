@@ -1,0 +1,18 @@
+{
+  "input": {
+    "first_name": "Jane",
+    "last_name": "Doe",
+    "company_domain": "acme.com"
+  },
+  "expected_output": {
+    "results": [
+      {
+        "email": "jane.doe@acme.com",
+        "confidence": "high",
+        "pattern": "first.last@domain",
+        "verified": true,
+        "source": "Crustdata people_enrich"
+      }
+    ]
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "input": {
+    "account_id": "acct_abc123",
+    "posts": [
+      { "post_id": "urn:li:share:1", "url": "https://linkedin.com/posts/me_post-1" }
+    ]
+  },
+  "expected_output": {
+    "engagers": [
+      {
+        "name": "Alex Smith",
+        "headline": "Head of RevOps @ Lattice",
+        "company": "Lattice",
+        "linkedin_url": "https://linkedin.com/in/alex-smith",
+        "engaged_posts": ["urn:li:share:1"],
+        "engagement_type": "comment"
+      }
+    ]
+  }
+}

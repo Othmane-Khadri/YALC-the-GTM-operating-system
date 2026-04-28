@@ -1,0 +1,20 @@
+{
+  "input": {
+    "account_id": "acct_abc123",
+    "lookback": 5
+  },
+  "expected_output": {
+    "posts": [
+      {
+        "post_id": "urn:li:share:1",
+        "url": "https://linkedin.com/posts/me_post-1",
+        "posted_at": "2026-04-20T08:30:00Z",
+        "text_excerpt": "We just launched...",
+        "engagement": { "likes": 142, "comments": 18 }
+      }
+    ],
+    "accountId": "acct_abc123",
+    "userId": "me",
+    "limit": 5
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "input": {
+    "company_domain": "acme.com",
+    "last_check_date": "2026-03-15"
+  },
+  "expected_output": {
+    "items": [
+      {
+        "title": "Acme Launches AI Platform",
+        "date": "2026-03-20",
+        "url": "https://acme.com/blog/ai-platform-launch"
+      }
+    ],
+    "query": "acme.com news",
+    "companyDomain": "acme.com",
+    "lastCheckDate": "2026-03-15"
+  }
+}

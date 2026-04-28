@@ -1,0 +1,20 @@
+{
+  "input": {
+    "person_linkedin_url": "https://linkedin.com/in/janedoe",
+    "baseline_title": "VP Sales",
+    "baseline_company": "Acme"
+  },
+  "expected_output": {
+    "changed": true,
+    "summary": "Jane Doe moved from VP Sales at Acme to CRO at NewCorp",
+    "data": {
+      "person_linkedin_url": "https://linkedin.com/in/janedoe",
+      "previous": { "title": "VP Sales", "company": "Acme" },
+      "current": { "title": "CRO", "company": "NewCorp" }
+    },
+    "newBaseline": {
+      "title": "CRO",
+      "company": "NewCorp"
+    }
+  }
+}

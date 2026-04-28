@@ -1,0 +1,10 @@
+{
+  "input": {
+    "company_url": "https://acme.com",
+    "question": "What is Acme's primary product and target market?"
+  },
+  "expected_output": {
+    "url": "https://acme.com",
+    "markdown": "# Acme Corp\nAcme is a Series B SaaS focused on RevOps automation for mid-market sales teams.\n"
+  }
+}

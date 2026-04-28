@@ -1,0 +1,25 @@
+{
+  "input": {
+    "replies": [
+      { "id": "r1", "from": "jane@acme.com", "subject": "Re: Quick question", "body": "Sure, happy to chat — does Tuesday work?" },
+      { "id": "r2", "from": "sam@beta.com", "subject": "Re: Quick question", "body": "Please remove me from this list." }
+    ],
+    "categories": ["interested", "objection", "not-now", "unsubscribe"]
+  },
+  "expected_output": [
+    {
+      "id": "r1",
+      "from": "jane@acme.com",
+      "category": "interested",
+      "confidence": 0.92,
+      "rationale": "Explicit yes plus calendar suggestion."
+    },
+    {
+      "id": "r2",
+      "from": "sam@beta.com",
+      "category": "unsubscribe",
+      "confidence": 0.99,
+      "rationale": "Explicit removal request."
+    }
+  ]
+}

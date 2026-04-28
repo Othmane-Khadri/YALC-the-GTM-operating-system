@@ -1,0 +1,17 @@
+{
+  "input": {
+    "communities": "salesops,revops",
+    "keywords": "Outreach,Apollo,SalesLoft",
+    "min_upvotes": 10
+  },
+  "expected_output": {
+    "query": "salesops Outreach OR Apollo OR SalesLoft min_upvotes:10",
+    "results": [
+      {
+        "url": "https://reddit.com/r/salesops/posts/123",
+        "title": "Best alternatives to Outreach in 2026",
+        "snippet": "Looking for honest reviews comparing Outreach vs Apollo."
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "input": {
+    "company_domain": "acme.com",
+    "baseline_funding_total": 13000000
+  },
+  "expected_output": {
+    "changed": true,
+    "summary": "acme.com raised a Series B: $25M (total funding now $38M)",
+    "data": {
+      "company_domain": "acme.com",
+      "previous_total": 13000000,
+      "current_total": 38000000,
+      "delta": 25000000,
+      "latest_round": {
+        "type": "Series B",
+        "amount": 25000000,
+        "date": "2026-03-15",
+        "investors": ["Sequoia", "a16z"]
+      }
+    },
+    "newBaseline": {
+      "funding_total": 38000000,
+      "last_round_date": "2026-03-15"
+    }
+  }
+}

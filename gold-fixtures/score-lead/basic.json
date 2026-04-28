@@ -1,0 +1,24 @@
+{
+  "input": {
+    "lead_name": "Jane Doe",
+    "lead_title": "VP of Sales",
+    "lead_company": "Acme Corp",
+    "icp_criteria": "Series A-B SaaS companies (50-300 employees), heads of sales/RevOps in EU/US.",
+    "additional_context": "Posted on LinkedIn last week about replacing Outreach with Apollo."
+  },
+  "expected_output": {
+    "overall_score": 82,
+    "verdict": "hot",
+    "dimensions": {
+      "title_fit": { "score": 90, "reason": "VP Sales matches target buyer persona." },
+      "company_fit": { "score": 80, "reason": "Acme is a Series B SaaS in target headcount band." },
+      "seniority_fit": { "score": 85, "reason": "VP-level decision maker." },
+      "intent_signals": { "score": 75, "reason": "Recent public discussion of swapping outbound stack." }
+    },
+    "recommended_action": "Reach out within 48h with a sales-stack-migration angle.",
+    "personalization_hooks": [
+      "LinkedIn post about Outreach → Apollo migration",
+      "Series B funding signal"
+    ]
+  }
+}

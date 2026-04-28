@@ -1,0 +1,17 @@
+{
+  "input": {
+    "segments": "Series A-B SaaS in EU/US, 50-300 employees, focus on RevOps tooling.",
+    "pain_points": "Stack consolidation, churn on legacy outbound tools."
+  },
+  "expected_output": {
+    "companies": [
+      {
+        "name": "Acme Corp",
+        "domain": "acme.com",
+        "industry": "SaaS",
+        "employeeRange": "100-250",
+        "country": "DE"
+      }
+    ]
+  }
+}

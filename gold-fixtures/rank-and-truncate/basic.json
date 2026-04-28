@@ -1,0 +1,14 @@
+{
+  "input": {
+    "mentions": [
+      { "id": "a", "relevance_score": 90 },
+      { "id": "b", "relevance_score": 50 },
+      { "id": "c", "relevance_score": 70 }
+    ],
+    "n": 2
+  },
+  "expected_output": [
+    { "id": "a", "relevance_score": 90 },
+    { "id": "c", "relevance_score": 70 }
+  ]
+}

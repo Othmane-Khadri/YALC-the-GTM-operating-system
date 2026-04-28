@@ -1,0 +1,34 @@
+{
+  "input": {
+    "replies": [
+      {
+        "thread_id": "thr-1",
+        "from": "jane@acme.com",
+        "category": "interested",
+        "body": "Sure, happy to chat — does Tuesday work?"
+      },
+      {
+        "thread_id": "thr-2",
+        "from": "sam@beta.com",
+        "category": "unsubscribe",
+        "body": "Please remove me."
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "thread_id": "thr-1",
+      "from": "jane@acme.com",
+      "category": "interested",
+      "next_action": "book-call",
+      "draft_reply": "Tuesday works on my end — would 10:30 ET be a fit? I'll send a calendar hold."
+    },
+    {
+      "thread_id": "thr-2",
+      "from": "sam@beta.com",
+      "category": "unsubscribe",
+      "next_action": "mark-unsubscribed",
+      "draft_reply": "Got it — removing you now. Apologies for the interruption."
+    }
+  ]
+}

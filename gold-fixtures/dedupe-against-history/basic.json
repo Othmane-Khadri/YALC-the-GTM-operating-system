@@ -1,0 +1,14 @@
+{
+  "input": {
+    "candidates": [
+      { "domain": "acme.com", "name": "Acme Corp" },
+      { "domain": "beta.io", "name": "Beta Inc" },
+      { "domain": "acme.com", "name": "Acme Corp (duplicate)" }
+    ],
+    "lookback_days": 30
+  },
+  "expected_output": [
+    { "domain": "acme.com", "name": "Acme Corp" },
+    { "domain": "beta.io", "name": "Beta Inc" }
+  ]
+}
