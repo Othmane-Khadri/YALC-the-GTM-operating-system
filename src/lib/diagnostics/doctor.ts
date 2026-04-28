@@ -831,6 +831,106 @@ async function checkProviders(): Promise<LayerResult> {
   return { layer: 'Provider Connectivity', checks }
 }
 
+// ─── Preview Confidence (0.8.F) ──────────────────────────────────────────────
+//
+// Surfaces the per-section confidence scores synthesis stamped into
+// `_preview/_meta.json`. Only runs when a preview folder exists — once the
+// user has committed (or discarded), the layer is omitted entirely so a
+// healthy `~/.gtm-os/` doesn't pick up a noisy section it doesn't need.
+
+interface PreviewConfidenceEntry {
+  section: string
+  confidence: number
+  inputChars: number
+}
+
+function readPreviewConfidenceEntries(): PreviewConfidenceEntry[] | null {
+  const previewDir = join(GTM_OS_DIR, '_preview')
+  if (!existsSync(previewDir)) return null
+  const metaPath = join(previewDir, '_meta.json')
+  if (!existsSync(metaPath)) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(readFileSync(metaPath, 'utf-8'))
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object') return null
+  const sections = (parsed as { sections?: Record<string, unknown> }).sections
+  if (!sections || typeof sections !== 'object') return null
+
+  const entries: PreviewConfidenceEntry[] = []
+  for (const [name, raw] of Object.entries(sections)) {
+    if (!raw || typeof raw !== 'object') continue
+    const confidence = (raw as { confidence?: unknown }).confidence
+    if (typeof confidence !== 'number' || !Number.isFinite(confidence)) continue
+    const signals = (raw as { confidence_signals?: { input_chars?: unknown } }).confidence_signals
+    const inputChars =
+      signals && typeof signals.input_chars === 'number' ? signals.input_chars : 0
+    entries.push({ section: name, confidence, inputChars })
+  }
+  return entries
+}
+
+function suggestionForSection(section: string): string {
+  // Map each section to the capture flag(s) most likely to add grounding
+  // signal. Used in the WARN message so the user has an actionable next
+  // step rather than a bare score.
+  switch (section) {
+    case 'voice':
+      return '`--voice <path-with-samples>` or `--linkedin <url>`'
+    case 'icp':
+      return '`--icp-summary "<description>"` or `--docs <path>`'
+    case 'positioning':
+    case 'qualification_rules':
+    case 'campaign_templates':
+    case 'search_queries':
+    case 'framework':
+      return '`--docs <path>` or `--icp-summary "<description>"`'
+    default:
+      return '`--docs <path>`'
+  }
+}
+
+function previewConfidenceLayer(): LayerResult | null {
+  const entries = readPreviewConfidenceEntries()
+  if (!entries || entries.length === 0) return null
+
+  const checks: CheckResult[] = []
+  // Bucket counts (high ≥0.85, medium 0.6–0.85, low <0.6) drive the summary.
+  let high = 0
+  let medium = 0
+  let low = 0
+  for (const e of entries) {
+    if (e.confidence >= 0.85) high++
+    else if (e.confidence >= 0.6) medium++
+    else low++
+  }
+  checks.push({
+    name: `Preview confidence — ${high} high (≥0.85), ${medium} medium (0.6–0.85), ${low} low (<0.6)`,
+    status: 'pass',
+    detail: '',
+  })
+
+  // Surface each low-confidence section with an actionable hint. Sort by
+  // ascending confidence so the worst offenders appear first.
+  const lows = entries
+    .filter((e) => e.confidence < 0.6)
+    .sort((a, b) => a.confidence - b.confidence)
+  for (const e of lows) {
+    const score = e.confidence.toFixed(2)
+    const detail =
+      `confidence ${score} — input was thin (${e.inputChars} chars). ` +
+      `Consider re-running with ${suggestionForSection(e.section)}.`
+    checks.push({
+      name: `Low-confidence section: ${e.section}`,
+      status: 'warn',
+      detail,
+    })
+  }
+  return { layer: 'Preview Confidence', checks }
+}
+
 // ─── Layer 5: Rate Limits & Runtime State ────────────────────────────────────
 
 function checkRuntimeState(): LayerResult {
@@ -968,6 +1068,15 @@ export async function runDoctor(opts: { report?: boolean } = {}): Promise<void> 
   const cfgResult = checkConfiguration()
   layers.push(cfgResult)
   for (const check of cfgResult.checks) printCheck(check)
+
+  // Preview Confidence (0.8.F) — only emitted when a `_preview/` folder is
+  // staged. Post-commit installs see no extra noise.
+  const previewLayer = previewConfidenceLayer()
+  if (previewLayer) {
+    console.log('\n── Preview Confidence ──')
+    layers.push(previewLayer)
+    for (const check of previewLayer.checks) printCheck(check)
+  }
 
   // Layer 4
   console.log('\n── Provider Connectivity ──')
