@@ -30,6 +30,7 @@ import type { DashboardRun } from './output/dashboard-adapter.js'
 import { appendRun as notionAppendRun } from './output/notion-adapter.js'
 import { getSkillRegistryReady } from '../skills/registry.js'
 import { loadMarkdownSkill } from '../skills/markdown-loader.js'
+import { resolveSkillAlias } from '../skills/aliases.js'
 import { getRegistryReady } from '../providers/registry.js'
 import type { FrameworkStep } from './types.js'
 import type { Skill, SkillContext } from '../skills/types.js'
@@ -125,7 +126,17 @@ export function substituteStepInput(
   return value
 }
 
-/** Resolve a step's skill via the registry, falling back to bundled markdown. */
+/**
+ * Resolve a step's skill via the registry, falling back to bundled markdown.
+ *
+ * Resolution order:
+ *   1. Exact-match lookup against the registry (`<name>` then `md:<name>`).
+ *   2. Bundled fallback (`configs/skills/<name>.md`).
+ *   3. Alias map (e.g. `crustdata-icp-search` → `icp-company-search`).
+ *
+ * Exact-match always wins over the alias so a user can keep authoring a
+ * locally-named skill that happens to collide with a deprecated alias.
+ */
 async function resolveStepSkill(skillId: string): Promise<Skill | null> {
   const registry = await getSkillRegistryReady()
   const direct = registry.get(skillId)
@@ -139,6 +150,12 @@ async function resolveStepSkill(skillId: string): Promise<Skill | null> {
       registry.register(result.skill)
       return result.skill
     }
+  }
+  // Last resort: walk the alias table. This is what keeps user-authored
+  // YAMLs that still reference renamed skills working without edits.
+  const aliased = resolveSkillAlias(skillId)
+  if (aliased !== skillId) {
+    return resolveStepSkill(aliased)
   }
   return null
 }
