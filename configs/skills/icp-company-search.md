@@ -1,6 +1,6 @@
 ---
-name: crustdata-icp-search
-description: Run a Crustdata company search using the user's ICP segments
+name: icp-company-search
+description: Run an ICP company search using the user's segments and pain-point hints
 category: research
 inputs:
   - name: segments
@@ -9,7 +9,7 @@ inputs:
   - name: pain_points
     description: Pain points to bias the search by
     required: false
-provider: crustdata
+capability: icp-company-search
 capabilities: [search]
 output: structured_json
 ---

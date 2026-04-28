@@ -3,7 +3,7 @@ name: detect-hiring-surge
 description: Detect if a company has a significant increase in open job postings
 category: research
 version: 1.0.0
-provider: crustdata
+capability: hiring-signal
 capabilities: [search]
 inputs:
   - name: company_domain

@@ -34,7 +34,7 @@ schedule:
   timezone: "$context.company.timezone"
 
 steps:
-  - skill: crustdata-icp-search
+  - skill: icp-company-search
     input:
       segments: "{{segments}}"
       pain_points: "{{pain_points}}"

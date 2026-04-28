@@ -3,7 +3,7 @@ name: detect-funding
 description: Detect new funding rounds for a company by comparing against stored baseline
 category: research
 version: 1.0.0
-provider: crustdata
+capability: funding-feed
 capabilities: [enrich]
 inputs:
   - name: company_domain

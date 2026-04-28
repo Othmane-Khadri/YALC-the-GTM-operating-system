@@ -34,7 +34,7 @@ schedule:
   timezone: "$context.company.timezone"
 
 steps:
-  - skill: crustdata-funding-feed
+  - skill: detect-funding
     input:
       segments: "{{segments}}"
       min_round_size_usd: "{{min_round_size_usd}}"
