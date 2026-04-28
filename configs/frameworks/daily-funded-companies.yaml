@@ -34,7 +34,7 @@ schedule:
   timezone: "$context.company.timezone"
 
 steps:
-  - skill: detect-funding
+  - skill: funding-feed-search
     input:
       segments: "{{segments}}"
       min_round_size_usd: "{{min_round_size_usd}}"

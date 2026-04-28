@@ -1,0 +1,20 @@
+{
+  "input": {
+    "segments": "B2B SaaS startups in Europe",
+    "min_round_size_usd": 1000000,
+    "window": "24h"
+  },
+  "expected_output": {
+    "companies": [
+      {
+        "domain": "example.com",
+        "name": "Example Inc",
+        "round_type": "Series A",
+        "round_size_usd": 8000000,
+        "lead_investor": "Index Ventures",
+        "announced_at": "2026-04-28T00:00:00Z",
+        "rationale": "European B2B SaaS, fits the captured ICP."
+      }
+    ]
+  }
+}
