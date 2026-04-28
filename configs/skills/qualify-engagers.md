@@ -1,7 +1,7 @@
 ---
 name: qualify-engagers
 description: Score post engagers (commenters/likers) against the user's ICP and return only those above a threshold
-category: qualification
+category: analysis
 inputs:
   - name: engagers
     description: Array of engager profiles (LinkedIn URN, name, headline, company)
@@ -9,7 +9,7 @@ inputs:
   - name: min_score
     description: ICP score threshold (0-100). Engagers below this are filtered out.
     required: true
-provider: anthropic
+capability: reasoning
 capabilities: [qualify]
 output: structured_json
 ---

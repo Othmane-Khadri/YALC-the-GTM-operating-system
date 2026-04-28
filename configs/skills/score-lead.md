@@ -18,7 +18,7 @@ inputs:
   - name: additional_context
     description: Any extra signals like LinkedIn activity, website visits, content engagement
     required: false
-provider: mock
+capability: reasoning
 capabilities: [qualify]
 output: structured_json
 ---

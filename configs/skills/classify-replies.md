@@ -9,7 +9,7 @@ inputs:
   - name: categories
     description: Allowed category labels
     required: true
-provider: anthropic
+capability: reasoning
 capabilities: [qualify]
 output: structured_json
 ---

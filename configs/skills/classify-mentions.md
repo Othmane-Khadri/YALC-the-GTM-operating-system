@@ -9,7 +9,7 @@ inputs:
   - name: relevance_prompt
     description: One-line description of what makes a mention "relevant" for this framework
     required: true
-provider: anthropic
+capability: reasoning
 capabilities: [filter, qualify]
 output: structured_json
 ---

@@ -6,7 +6,7 @@ inputs:
   - name: replies
     description: Array of classified reply records (with `category` field)
     required: true
-provider: anthropic
+capability: reasoning
 capabilities: [custom]
 output: structured_json
 ---
