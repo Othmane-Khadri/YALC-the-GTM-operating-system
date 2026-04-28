@@ -29,7 +29,7 @@ output_schema:
       type: integer
 ---
 
-Use the Unipile API to fetch the user's {{lookback}} most recent posts.
+Use the Unipile API on account `{{account_id}}` to fetch the user's {{lookback}} most recent posts.
 
 Return:
 ```json

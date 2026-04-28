@@ -25,6 +25,9 @@ inputs:
   - name: max_per_run
     description: "Maximum qualified leads to surface per run."
     default: 50
+  - name: linkedin_account_id
+    description: "Unipile account id whose LinkedIn engagement is harvested. Sourced from sources.linkedin_account_id in company_context.yaml; the doctor surfaces a WARN when missing."
+    default: "$context.sources.linkedin_account_id"
 
 schedule:
   cron: "0 9 * * 1"
@@ -34,9 +37,11 @@ steps:
   - skill: list-recent-linkedin-posts
     input:
       lookback: "{{posts_lookback}}"
+      account_id: "{{linkedin_account_id}}"
   - skill: scrape-post-engagers
     input:
       posts: "{{steps[0].output}}"
+      account_id: "{{linkedin_account_id}}"
   - skill: qualify-engagers
     input:
       engagers: "{{steps[1].output}}"

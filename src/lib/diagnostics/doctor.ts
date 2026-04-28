@@ -490,6 +490,27 @@ function checkConfiguration(): LayerResult {
       status: 'pass',
       detail: '',
     })
+    // 0.8.D: weekly-engagement-harvest sources the Unipile account id from
+    // sources.linkedin_account_id. Surface a WARN when the field is missing
+    // so the user knows to populate it before installing the framework.
+    try {
+      const ctx = (yaml.load(readFileSync(companyContextPath, 'utf-8')) as Record<string, unknown>) ?? {}
+      const sources = (ctx.sources as Record<string, unknown> | undefined) ?? {}
+      const acct = sources.linkedin_account_id
+      if (!acct || typeof acct !== 'string' || acct.trim() === '') {
+        checks.push({
+          name: 'sources.linkedin_account_id',
+          status: 'warn',
+          detail:
+            'Not captured. weekly-engagement-harvest needs this to know which Unipile account to scrape. ' +
+            'Run `yalc-gtm provider:add unipile` or set it manually under sources: in company_context.yaml.',
+        })
+      } else {
+        checks.push({ name: 'sources.linkedin_account_id', status: 'pass', detail: '' })
+      }
+    } catch {
+      // already-handled malformed yaml above
+    }
   }
 
   return { layer: 'Configuration', checks }

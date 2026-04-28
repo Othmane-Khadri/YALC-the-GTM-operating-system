@@ -50,6 +50,15 @@ export interface CompanyContextSources {
   website_fetched_at?: string
   linkedin?: string
   linkedin_fetched_at?: string
+  /**
+   * Unipile account id whose LinkedIn engagement is harvested. Populated
+   * when the user runs `yalc-gtm provider:add unipile` or sets
+   * UNIPILE_DEFAULT_ACCOUNT_ID. Resolved via
+   * `$context.sources.linkedin_account_id` from framework yamls. The
+   * doctor command emits a WARN when it's missing on a tenant that has
+   * an installed framework which requires a LinkedIn account.
+   */
+  linkedin_account_id?: string
   /** Local doc folder roots / file paths read at capture. */
   docs?: string[]
   /** Voice samples file path used for tone extraction. */
