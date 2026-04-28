@@ -2073,9 +2073,10 @@ program
 program
   .command('framework:run <name>')
   .description('Run an installed framework now (off-schedule)')
-  .action(withDiagnostics(async (name: string) => {
+  .option('--seed', "Use seed_run.override_inputs from the framework definition")
+  .action(withDiagnostics(async (name: string, opts) => {
     const { runFrameworkRun } = await import('./commands/framework.js')
-    await runFrameworkRun(name)
+    await runFrameworkRun(name, { seed: !!opts.seed })
   }))
 
 program

@@ -16,9 +16,21 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import type { InstalledFrameworkConfig } from './types.js'
 
-const GTM_OS_DIR = join(homedir(), '.gtm-os')
-const INSTALLED_DIR = join(GTM_OS_DIR, 'frameworks', 'installed')
-const AGENTS_DIR = join(GTM_OS_DIR, 'agents')
+/**
+ * Path helpers resolve $HOME at call time so HOME-overrides in test
+ * harnesses (and per-process home pivots) take effect. Resolving at
+ * import time would freeze the constants to whatever HOME was set when
+ * the module first loaded.
+ */
+function gtmOsDir(): string {
+  return join(homedir(), '.gtm-os')
+}
+function installedDir(): string {
+  return join(gtmOsDir(), 'frameworks', 'installed')
+}
+function agentsDir(): string {
+  return join(gtmOsDir(), 'agents')
+}
 
 function ensureDir(dir: string) {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
@@ -26,22 +38,22 @@ function ensureDir(dir: string) {
 
 /** Path the per-user installed metadata lives at. */
 export function installedConfigPath(name: string): string {
-  return join(INSTALLED_DIR, `${name}.json`)
+  return join(installedDir(), `${name}.json`)
 }
 
 /** Directory that holds the framework's per-run output JSON files. */
 export function runsDir(name: string): string {
-  return join(AGENTS_DIR, `${name}.runs`)
+  return join(agentsDir(), `${name}.runs`)
 }
 
 /** Path of the agent-runner-readable schedule file. */
 export function agentYamlPath(name: string): string {
-  return join(AGENTS_DIR, `${name}.yaml`)
+  return join(agentsDir(), `${name}.yaml`)
 }
 
 /** Persist the installed-framework metadata to disk. */
 export function saveInstalledConfig(cfg: InstalledFrameworkConfig): void {
-  ensureDir(INSTALLED_DIR)
+  ensureDir(installedDir())
   writeFileSync(installedConfigPath(cfg.name), JSON.stringify(cfg, null, 2) + '\n', 'utf-8')
 }
 
@@ -67,8 +79,9 @@ export function removeInstalledConfig(name: string): void {
 
 /** Names of every framework that has an installed config on disk. */
 export function listInstalledFrameworks(): string[] {
-  if (!existsSync(INSTALLED_DIR)) return []
-  return readdirSync(INSTALLED_DIR)
+  const dir = installedDir()
+  if (!existsSync(dir)) return []
+  return readdirSync(dir)
     .filter((f) => f.endsWith('.json'))
     .map((f) => f.replace(/\.json$/, ''))
     .sort()

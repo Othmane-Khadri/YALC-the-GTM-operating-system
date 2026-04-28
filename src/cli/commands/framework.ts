@@ -327,7 +327,11 @@ export async function runFrameworkInstall(name: string, opts: InstallOpts): Prom
 
 // ─── framework:run ─────────────────────────────────────────────────────────
 
-export async function runFrameworkRun(name: string): Promise<void> {
+interface RunOpts {
+  seed?: boolean
+}
+
+export async function runFrameworkRun(name: string, opts: RunOpts = {}): Promise<void> {
   const framework = findFramework(name)
   if (!framework) {
     console.error(`Unknown framework: ${name}`)
@@ -338,20 +342,21 @@ export async function runFrameworkRun(name: string): Promise<void> {
     console.error(`Framework "${name}" is not installed. Install it first: yalc-gtm framework:install ${name}`)
     process.exit(1)
   }
+  void framework
   console.log(`\nRunning ${name} now…`)
-  // 0.7.0 ships a placeholder runner — the real step execution will use
-  // the existing BackgroundAgent runner once skill mappings are wired.
-  // For the seed/manual run path we record an empty execution so the
-  // dashboard surfaces a "manually triggered" entry.
-  const run: DashboardRun = {
-    title: `${framework.display_name} — manual run`,
-    summary: 'Manual run recorded. Scheduled runs will populate full output.',
-    rows: [],
-    ranAt: new Date().toISOString(),
-    meta: { manual: true, inputs: cfg.inputs },
+  const { runFramework, FrameworkRunError } = await import('../../lib/frameworks/runner.js')
+  try {
+    const { path, run } = await runFramework(name, { seed: !!opts.seed })
+    console.log(`  Wrote: ${path}`)
+    console.log(`  Rows:  ${run.rows.length}\n`)
+  } catch (err) {
+    if (err instanceof FrameworkRunError) {
+      console.error(`  Step ${err.step} (${err.stepSkill}) failed: ${err.message}`)
+      if (err.partialPath) console.error(`  Partial output: ${err.partialPath}`)
+      process.exit(1)
+    }
+    throw err
   }
-  const path = writeRun(name, run)
-  console.log(`  Wrote: ${path}\n`)
 }
 
 // ─── framework:status ──────────────────────────────────────────────────────
