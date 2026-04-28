@@ -12,7 +12,7 @@ inputs:
   - name: min_upvotes
     description: Skip posts below this engagement threshold
     required: true
-provider: firecrawl
+capability: web-fetch
 capabilities: [search]
 output: structured_json
 ---

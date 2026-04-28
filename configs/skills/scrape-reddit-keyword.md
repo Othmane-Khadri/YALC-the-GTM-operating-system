@@ -12,7 +12,7 @@ inputs:
   - name: since
     description: Lower-bound time window (relative phrase like "yesterday-08:00" or "7-days-ago")
     required: true
-provider: firecrawl
+capability: web-fetch
 capabilities: [search]
 output: structured_json
 ---

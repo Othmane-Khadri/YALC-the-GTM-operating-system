@@ -9,7 +9,8 @@ inputs:
   - name: question
     description: Specific question to answer about the company
     required: true
-provider: firecrawl
+capability: web-fetch
+requires_capabilities: [reasoning]
 capabilities: [search, enrich]
 output: structured_json
 ---
