@@ -6,7 +6,7 @@ inputs:
   - name: lookback_hours
     description: How many hours of inbox history to pull
     required: true
-provider: instantly
+capability: inbox-replies-fetch
 capabilities: [search]
 output: structured_json
 ---

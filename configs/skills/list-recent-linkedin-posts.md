@@ -3,10 +3,13 @@ name: list-recent-linkedin-posts
 description: List the user's most recent LinkedIn posts via Unipile
 category: research
 inputs:
+  - name: account_id
+    description: Unipile account id whose LinkedIn posts to list
+    required: true
   - name: lookback
     description: Number of recent posts to return
     required: true
-provider: unipile
+capability: linkedin-user-posts-fetch
 capabilities: [search]
 output: structured_json
 ---

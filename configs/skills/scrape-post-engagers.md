@@ -3,10 +3,13 @@ name: scrape-post-engagers
 description: Fetch likers and commenters of a list of LinkedIn posts via Unipile
 category: research
 inputs:
+  - name: account_id
+    description: Unipile account id whose engagement to scrape from
+    required: true
   - name: posts
     description: Array of post records (each with `post_id`)
     required: true
-provider: unipile
+capability: linkedin-engager-fetch
 capabilities: [search, enrich]
 output: structured_json
 ---
