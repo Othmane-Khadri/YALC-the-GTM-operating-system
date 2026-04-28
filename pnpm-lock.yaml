@@ -29,6 +29,9 @@ importers:
       '@notionhq/client':
         specifier: ^2.0.0
         version: 2.3.0
+      ajv:
+        specifier: ^8.18.0
+        version: 8.18.0
       chokidar:
         specifier: ^5.0.0
         version: 5.0.0

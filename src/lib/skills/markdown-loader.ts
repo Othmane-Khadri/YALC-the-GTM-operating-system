@@ -1,11 +1,13 @@
 import { readdir, readFile } from 'fs/promises'
 import { join } from 'path'
 import { homedir } from 'node:os'
+import yaml from 'js-yaml'
 import type { Skill, SkillEvent, SkillContext, SkillCategory } from './types'
 import { validateMarkdownSkill, type MarkdownSkillDefinition } from './markdown-validator'
 
 // ---------------------------------------------------------------------------
-// Frontmatter parser — avoids external dependency (gray-matter)
+// Frontmatter parser — js-yaml-backed for full Draft 7 / nested-object support
+// (`output_schema:` blocks need real YAML semantics).
 // ---------------------------------------------------------------------------
 
 interface ParsedMarkdown {
@@ -26,94 +28,19 @@ function parseMarkdownFrontmatter(raw: string): ParsedMarkdown {
 
   const yamlBlock = trimmed.slice(4, endIndex).trim()
   const body = trimmed.slice(endIndex + 4).trim()
-  const frontmatter = parseSimpleYaml(yamlBlock)
 
-  return { frontmatter, body }
-}
-
-/**
- * Minimal YAML parser supporting:
- * - key: value (string, number, boolean)
- * - key: [a, b, c] (inline arrays)
- * - key:\n  - item (block arrays with nested objects)
- */
-function parseSimpleYaml(yaml: string): Record<string, unknown> {
-  const result: Record<string, unknown> = {}
-  const lines = yaml.split('\n')
-  let i = 0
-
-  while (i < lines.length) {
-    const line = lines[i]
-    const match = line.match(/^(\w[\w-]*):\s*(.*)$/)
-    if (!match) { i++; continue }
-
-    const key = match[1]
-    const valueStr = match[2].trim()
-
-    // Inline array: [a, b, c]
-    if (valueStr.startsWith('[') && valueStr.endsWith(']')) {
-      const inner = valueStr.slice(1, -1)
-      result[key] = inner.split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean)
-      i++
-      continue
+  let frontmatter: Record<string, unknown> = {}
+  try {
+    const parsed = yaml.load(yamlBlock)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      frontmatter = parsed as Record<string, unknown>
     }
-
-    // Non-empty scalar value
-    if (valueStr !== '') {
-      result[key] = parseScalar(valueStr)
-      i++
-      continue
-    }
-
-    // Block sequence (list of items)
-    const items: unknown[] = []
-    i++
-    while (i < lines.length) {
-      const itemLine = lines[i]
-      // Check for list item at 2-space indent
-      const itemMatch = itemLine.match(/^  - (.+)$/)
-      if (!itemMatch) break
-
-      // Check if the next lines are indented sub-keys (object item)
-      const firstValue = itemMatch[1].trim()
-      const subKeyMatch = firstValue.match(/^(\w[\w-]*):\s*(.+)$/)
-
-      if (subKeyMatch) {
-        // Object item starting on the dash line
-        const obj: Record<string, unknown> = {}
-        obj[subKeyMatch[1]] = parseScalar(subKeyMatch[2])
-        i++
-        // Collect continuation keys at 4-space indent
-        while (i < lines.length) {
-          const subLine = lines[i]
-          const subMatch = subLine.match(/^    (\w[\w-]*):\s*(.+)$/)
-          if (!subMatch) break
-          obj[subMatch[1]] = parseScalar(subMatch[2])
-          i++
-        }
-        items.push(obj)
-      } else {
-        // Simple scalar item
-        items.push(parseScalar(firstValue))
-        i++
-      }
-    }
-    if (items.length > 0) {
-      result[key] = items
-    }
-    continue
+  } catch {
+    // Malformed frontmatter — leave empty so validator surfaces a useful error.
+    frontmatter = {}
   }
 
-  return result
-}
-
-function parseScalar(val: string): string | number | boolean {
-  if (val === 'true') return true
-  if (val === 'false') return false
-  const trimmed = val.replace(/^["']|["']$/g, '')
-  const num = Number(trimmed)
-  if (!isNaN(num) && trimmed !== '') return num
-  return trimmed
+  return { frontmatter, body }
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +105,7 @@ function buildSkillFromDefinition(def: MarkdownSkillDefinition, promptTemplate: 
         result: { type: 'object' },
       },
     },
+    validationSchema: def.output_schema,
     requiredCapabilities: def.capabilities ?? [],
 
     async *execute(input: unknown, context: SkillContext): AsyncIterable<SkillEvent> {
@@ -298,6 +226,15 @@ export async function loadMarkdownSkill(filePath: string): Promise<MarkdownSkill
   const raw = await readFile(filePath, 'utf-8')
   const { frontmatter, body } = parseMarkdownFrontmatter(raw)
 
+  const rawSchema = (frontmatter as Record<string, unknown>).output_schema
+  // Distinguish "not declared" (undefined) from "explicit pass-through" (null).
+  const outputSchema: Record<string, unknown> | null | undefined =
+    rawSchema === undefined
+      ? undefined
+      : rawSchema === null
+        ? null
+        : (rawSchema as Record<string, unknown>)
+
   const definition: MarkdownSkillDefinition = {
     name: frontmatter.name as string,
     description: frontmatter.description as string,
@@ -309,6 +246,7 @@ export async function loadMarkdownSkill(filePath: string): Promise<MarkdownSkill
     output: frontmatter.output as string | undefined,
     category: frontmatter.category as string | undefined,
     version: frontmatter.version as string | undefined,
+    output_schema: outputSchema,
   }
 
   const errors = validateMarkdownSkill(definition, body)

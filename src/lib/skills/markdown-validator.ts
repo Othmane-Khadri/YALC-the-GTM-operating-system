@@ -3,6 +3,8 @@
 // Validates at load time. Bad skills never register.
 // ---------------------------------------------------------------------------
 
+import Ajv from 'ajv'
+
 export interface MarkdownInputDefinition {
   name: string
   description: string
@@ -32,6 +34,13 @@ export interface MarkdownSkillDefinition {
   output?: string
   category?: string
   version?: string
+  /**
+   * Optional JSON Schema (Draft 7 subset) constraining the shape of the
+   * skill's runtime output. `null` is an explicit opt-out for deterministic
+   * pass-through skills. `undefined` means "not declared" — runtime skips
+   * validation (backward-compatible default).
+   */
+  output_schema?: Record<string, unknown> | null
 }
 
 /**
@@ -132,6 +141,21 @@ export function validateMarkdownSkill(
     const validCategories = ['research', 'content', 'outreach', 'analysis', 'data', 'integration']
     if (!validCategories.includes(definition.category)) {
       errors.push(`Invalid category "${definition.category}". Valid: ${validCategories.join(', ')}`)
+    }
+  }
+
+  // 9. output_schema (if present and not null) must be a compilable JSON Schema.
+  if (definition.output_schema !== undefined && definition.output_schema !== null) {
+    if (typeof definition.output_schema !== 'object' || Array.isArray(definition.output_schema)) {
+      errors.push('Frontmatter "output_schema" must be a JSON Schema object or null')
+    } else {
+      const ajv = new Ajv({ allErrors: true, strict: false })
+      try {
+        ajv.compile(definition.output_schema)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        errors.push(`Frontmatter "output_schema" is not a valid JSON Schema: ${msg}`)
+      }
     }
   }
 

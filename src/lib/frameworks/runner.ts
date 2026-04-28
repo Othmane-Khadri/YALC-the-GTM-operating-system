@@ -20,9 +20,10 @@
  *     result rows.
  */
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
+import Ajv, { type ErrorObject } from 'ajv'
 import { PKG_ROOT } from '../paths.js'
 import { findFramework } from './loader.js'
 import { loadInstalledConfig } from './registry.js'
@@ -81,9 +82,39 @@ function flattenStepRows(stepOutputs: unknown[]): Array<Record<string, unknown>>
 }
 
 /**
+ * Resolve a `$file:<path>` reference to the file's text content. Used by
+ * framework yamls to inject captured config files (e.g. `~/.gtm-os/icp.yaml`)
+ * into a step's input at runtime — the LLM body never has to "read" a file.
+ *
+ * Supported path forms:
+ *   - `~/...` — expanded against the current `homedir()` (HOME-isolated tests).
+ *   - absolute paths — used as-is.
+ *
+ * Missing files resolve to an empty string; the skill body is expected to
+ * handle the empty case gracefully (matches the legacy "file not present"
+ * behavior the body assumed).
+ */
+export function resolveFileReference(ref: string): string {
+  let pathPart = ref.slice('$file:'.length)
+  if (pathPart.startsWith('~/')) {
+    pathPart = join(homedir(), pathPart.slice(2))
+  } else if (pathPart === '~') {
+    pathPart = homedir()
+  }
+  if (!existsSync(pathPart)) return ''
+  try {
+    return readFileSync(pathPart, 'utf-8')
+  } catch {
+    return ''
+  }
+}
+
+/**
  * Recursively walk an input value, substituting `{{var}}` and
  * `{{steps[N].output}}` references. Strings get string substitution; nested
- * objects / arrays get recursed.
+ * objects / arrays get recursed. Strings prefixed with `$file:` are resolved
+ * to file contents at framework-run time so prompt bodies receive the data
+ * directly via `{{var}}`.
  */
 export function substituteStepInput(
   value: unknown,
@@ -91,6 +122,10 @@ export function substituteStepInput(
   stepOutputs: unknown[],
 ): unknown {
   if (typeof value === 'string') {
+    // `$file:<path>` — read the file and inject its contents as the value.
+    if (value.startsWith('$file:')) {
+      return resolveFileReference(value)
+    }
     // Whole-value substitution — `{{steps[0].output}}` → real array.
     const stepRef = value.match(/^\{\{\s*steps\[(\d+)\]\.output\s*\}\}$/)
     if (stepRef) {
@@ -124,6 +159,58 @@ export function substituteStepInput(
     return out
   }
   return value
+}
+
+/**
+ * Coerce a skill's collected output into the value the schema describes.
+ *
+ * The reasoning capability adapter returns `{ text: "...JSON..." }` — to
+ * meaningfully validate the LLM's output we parse JSON out of `text` and
+ * validate the parsed value. For other shapes we validate the value as-is.
+ */
+export function unwrapForValidation(out: unknown): unknown {
+  if (out && typeof out === 'object' && !Array.isArray(out)) {
+    const o = out as Record<string, unknown>
+    if (typeof o.text === 'string') {
+      const text = o.text.trim()
+      // Strip ```json ...``` fences if present.
+      const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/)
+      const candidate = fenced ? fenced[1] : text
+      try {
+        return JSON.parse(candidate)
+      } catch {
+        return o.text
+      }
+    }
+  }
+  return out
+}
+
+const sharedAjv = new Ajv({ allErrors: true, strict: false })
+
+/**
+ * Validate a step output against its skill's declared `validationSchema`.
+ * Returns AJV error list on mismatch, or `null` when valid (or when the
+ * skill has no schema declared / explicit `null`).
+ */
+export function validateStepOutput(
+  skill: Skill,
+  output: unknown,
+): ErrorObject[] | null {
+  // No-schema or explicit pass-through (`output_schema: null`) → skip.
+  if (skill.validationSchema === undefined || skill.validationSchema === null) {
+    return null
+  }
+  let validate
+  try {
+    validate = sharedAjv.compile(skill.validationSchema)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return [{ instancePath: '', schemaPath: '', keyword: 'schema', params: {}, message: `schema compile error: ${msg}` } as ErrorObject]
+  }
+  const value = unwrapForValidation(output)
+  const ok = validate(value)
+  return ok ? null : (validate.errors ?? [])
 }
 
 /**
@@ -248,8 +335,32 @@ export async function runFramework(
 
     try {
       const out = await executeSkill(skill, resolvedInput, context)
+      const validationErrors = validateStepOutput(skill, out)
+      if (validationErrors && validationErrors.length > 0) {
+        const summary = validationErrors
+          .slice(0, 3)
+          .map((e) => `${e.instancePath || '/'} ${e.message ?? ''}`.trim())
+          .join('; ')
+        const partial: DashboardRun & {
+          error: { step: number; message: string; validation_errors: ErrorObject[] }
+        } = {
+          title: `${framework.display_name} — failed`,
+          summary: `Step ${i} (${step.skill}) output failed schema validation.`,
+          rows: flattenStepRows(stepOutputs),
+          ranAt,
+          meta: { manual: !opts.seed, seed: !!opts.seed, inputs: vars, completedSteps: i },
+          error: {
+            step: i,
+            message: `Output schema validation failed: ${summary}`,
+            validation_errors: validationErrors,
+          },
+        }
+        const path = persistRun(name, partial)
+        throw new FrameworkRunError(i, step.skill, partial.error.message, path)
+      }
       stepOutputs.push(out)
     } catch (err) {
+      if (err instanceof FrameworkRunError) throw err
       const message = err instanceof Error ? err.message : String(err)
       const partial: DashboardRun & { error: { step: number; message: string } } = {
         title: `${framework.display_name} — failed`,

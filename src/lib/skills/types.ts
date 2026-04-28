@@ -36,6 +36,16 @@ export interface Skill {
   category: SkillCategory
   inputSchema: Record<string, unknown>
   outputSchema: Record<string, unknown>
+  /**
+   * Optional strict JSON-Schema (Draft 7 subset) describing the shape the
+   * skill's `result` event(s) must satisfy. When present, the framework
+   * runner validates each step's collected output against this schema and
+   * halts the run on mismatch. `null` is used by deterministic skills that
+   * pass-through their input shape and cannot statically describe output.
+   * Skills that don't declare `output_schema:` in frontmatter leave this
+   * `undefined` and are NOT validated (legacy behavior).
+   */
+  validationSchema?: Record<string, unknown> | null
   requiredCapabilities: string[]
   estimatedCost?: (input: unknown) => number
   execute: (input: unknown, context: SkillContext) => AsyncIterable<SkillEvent>
