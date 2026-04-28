@@ -1,0 +1,24 @@
+id: salesforce
+display_name: "Salesforce"
+homepage: https://salesforce.com
+docs_url: https://developer.salesforce.com/docs
+key_acquisition_url: https://help.salesforce.com/s/articleView?id=sf.connected_app_create.htm
+integration_kind: rest
+mcp_template: null
+env_vars:
+  - name: SALESFORCE_INSTANCE_URL
+    description: "Your Salesforce instance URL (e.g. https://acme.my.salesforce.com)."
+    example: "https://your-domain.my.salesforce.com"
+    required: true
+  - name: SALESFORCE_ACCESS_TOKEN
+    description: "OAuth access token from a connected app."
+    example: "00Dxx0000000000!AQ4AQxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    required: true
+capabilities_supported: []
+install_steps:
+  - "Sign in at $homepage if you don't have an account."
+  - "Create a Connected App and grab your access token — see $key_acquisition_url"
+  - "No bundled MCP template ships for Salesforce yet — wire your own MCP server (or REST endpoint) via skills:create."
+  - "Run: yalc-gtm connect-provider $id"
+  - "When prompted, paste your access token. (Use the form at http://localhost:3847/keys/connect once UI ships in 0.9.0.)"
+test_query: null

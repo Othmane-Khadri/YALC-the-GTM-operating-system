@@ -1,0 +1,21 @@
+id: instantly
+display_name: "Instantly"
+homepage: https://instantly.ai
+docs_url: https://developer.instantly.ai
+key_acquisition_url: https://app.instantly.ai/app/settings/integrations
+integration_kind: rest
+mcp_template: null
+env_vars:
+  - name: INSTANTLY_API_KEY
+    description: "Instantly API v2 key. Settings → Integrations → API."
+    example: "ist_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    required: true
+capabilities_supported:
+  - id: inbox-replies-fetch
+    adapter_module: src/lib/providers/adapters/inbox-replies-fetch-instantly.ts
+install_steps:
+  - "Sign up at $homepage if you don't have an account."
+  - "Get your API key from $key_acquisition_url"
+  - "Run: yalc-gtm connect-provider $id"
+  - "When prompted, paste your key. (Use the form at http://localhost:3847/keys/connect once UI ships in 0.9.0.)"
+test_query: null

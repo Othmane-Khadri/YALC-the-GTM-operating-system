@@ -1,0 +1,19 @@
+id: hubspot
+display_name: "HubSpot CRM"
+homepage: https://hubspot.com
+docs_url: https://developers.hubspot.com/docs/api/private-apps
+key_acquisition_url: https://app.hubspot.com/private-apps
+integration_kind: mcp
+mcp_template: hubspot
+env_vars:
+  - name: HUBSPOT_ACCESS_TOKEN
+    description: "HubSpot private-app access token. Create one under Settings → Integrations → Private Apps."
+    example: "pat-na1-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+    required: true
+capabilities_supported: []
+install_steps:
+  - "Sign up at $homepage if you don't have an account."
+  - "Get your access token from $key_acquisition_url"
+  - "Run: yalc-gtm connect-provider $id"
+  - "When prompted, paste your token. (Use the form at http://localhost:3847/keys/connect once UI ships in 0.9.0.)"
+test_query: null

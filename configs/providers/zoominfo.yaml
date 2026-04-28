@@ -1,0 +1,19 @@
+id: zoominfo
+display_name: "ZoomInfo"
+homepage: https://zoominfo.com
+docs_url: https://api-docs.zoominfo.com
+key_acquisition_url: https://app.zoominfo.com/#/apps/admin-portal/integrations/api
+integration_kind: mcp
+mcp_template: zoominfo
+env_vars:
+  - name: ZOOMINFO_API_KEY
+    description: "ZoomInfo API key. Generated under Admin Portal → Integrations → API."
+    example: "zi_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    required: true
+capabilities_supported: []
+install_steps:
+  - "Sign up at $homepage if you don't have an account."
+  - "Get your API key from $key_acquisition_url"
+  - "Run: yalc-gtm connect-provider $id"
+  - "When prompted, paste your key. (Use the form at http://localhost:3847/keys/connect once UI ships in 0.9.0.)"
+test_query: null
