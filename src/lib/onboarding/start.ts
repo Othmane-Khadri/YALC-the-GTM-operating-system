@@ -97,6 +97,14 @@ export interface StartOptions {
   forceOverwritePreview?: boolean
   /** Bypass the captured-input content validation before synthesis (#3). */
   forceSynthesis?: boolean
+  /**
+   * Re-run synthesis for every preview section whose confidence is below
+   * `confidenceThreshold` (default 0.6). 0.8.F glue over the existing
+   * `regenerateSection` plumbing — no new synthesis code path.
+   */
+  regenerateLowConfidence?: boolean
+  /** Threshold used by `regenerateLowConfidence`. Defaults to 0.6. */
+  confidenceThreshold?: number
 }
 
 export async function runStart(opts: StartOptions): Promise<void> {
@@ -160,6 +168,15 @@ export async function runStart(opts: StartOptions): Promise<void> {
     await runRegenerateSection({
       tenantId,
       section: opts.regenerateSection,
+      hint: opts.regenerateHint,
+    })
+    return
+  }
+
+  if (opts.regenerateLowConfidence) {
+    await runRegenerateLowConfidence({
+      tenantId,
+      threshold: opts.confidenceThreshold,
       hint: opts.regenerateHint,
     })
     return
@@ -1036,4 +1053,68 @@ async function runRegenerateSection(args: {
   console.log(
     `  ✓ Regenerated ${result.written.length} file(s) for section "${args.section}"`,
   )
+}
+
+/**
+ * Re-run synthesis for every preview section whose confidence dipped below
+ * `threshold` (default 0.6). Pure glue: scans `_preview/_meta.json`, then
+ * defers to `runRegenerateSection()` per low-confidence section so the
+ * regenerate plumbing stays the single source of truth.
+ */
+async function runRegenerateLowConfidence(args: {
+  tenantId: string
+  threshold?: number
+  hint?: string
+}): Promise<void> {
+  const tenant = { tenantId: args.tenantId }
+  const { previewExists, readPreviewMeta, previewRoot } = await import('./preview.js')
+  const { ALL_SECTION_IDS } = await import('./synthesis.js')
+
+  const threshold = args.threshold ?? 0.6
+  if (!Number.isFinite(threshold) || threshold < 0 || threshold > 1) {
+    console.error(`  Invalid --confidence-threshold ${threshold}. Must be between 0 and 1.`)
+    process.exitCode = 1
+    return
+  }
+
+  if (!previewExists(tenant)) {
+    console.error(
+      '  No preview to scan. Run capture first: yalc-gtm start --non-interactive --website ...',
+    )
+    process.exitCode = 1
+    return
+  }
+
+  const meta = readPreviewMeta(tenant)
+  const sections = meta?.sections ?? {}
+  const valid = new Set<string>(ALL_SECTION_IDS as readonly string[])
+  // A section is eligible only if the writer for it knows how to
+  // regenerate (i.e. it's in ALL_SECTION_IDS — `company_context` doesn't
+  // run through synthesis so we skip it even if it's in the meta).
+  const lowConfidence = Object.entries(sections)
+    .filter(([name, entry]) => valid.has(name) && entry.confidence < threshold)
+    .map(([name, entry]) => ({ name, confidence: entry.confidence }))
+    .sort((a, b) => a.confidence - b.confidence)
+
+  if (lowConfidence.length === 0) {
+    console.log(
+      `  ✓ No sections below threshold ${threshold.toFixed(2)} in ${previewRoot(tenant)}.`,
+    )
+    return
+  }
+
+  console.log(
+    `  Regenerating ${lowConfidence.length} section(s) below threshold ${threshold.toFixed(2)}:`,
+  )
+  for (const { name, confidence } of lowConfidence) {
+    console.log(`    - ${name} (confidence ${confidence.toFixed(2)})`)
+  }
+
+  for (const { name } of lowConfidence) {
+    await runRegenerateSection({
+      tenantId: args.tenantId,
+      section: name,
+      hint: args.hint,
+    })
+  }
 }

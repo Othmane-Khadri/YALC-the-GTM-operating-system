@@ -1289,6 +1289,15 @@ Examples (recommended — flag-driven, zero prompts):
   .option('--discard <section>', 'Skip a section on commit (repeatable)', (val: string, prev: string[] = []) => prev.concat(val))
   .option('--regenerate <section>', 'Re-run synthesis for a single preview section')
   .option('--hint <text>', 'Hint forwarded to the synthesis prompt during --regenerate')
+  .option(
+    '--regenerate-low-confidence',
+    'Re-run synthesis for every preview section below --confidence-threshold (default 0.6)',
+  )
+  .option(
+    '--confidence-threshold <value>',
+    'Threshold (0–1) used by --regenerate-low-confidence. Defaults to 0.6.',
+    (val) => Number.parseFloat(val),
+  )
   .option('--discard-preview', 'Delete the _preview/ folder entirely (no new capture)')
   .option('--force-overwrite-preview', 'Proceed past the uncommitted-preview block')
   .option('--force-synthesis', 'Run synthesis even if captured inputs are below the minimum content bar')
@@ -1308,6 +1317,8 @@ Examples (recommended — flag-driven, zero prompts):
       discardSections: opts.discard,
       regenerateSection: opts.regenerate,
       regenerateHint: opts.hint,
+      regenerateLowConfidence: opts.regenerateLowConfidence ?? false,
+      confidenceThreshold: opts.confidenceThreshold,
       discardPreview: opts.discardPreview ?? false,
       forceOverwritePreview: opts.forceOverwritePreview ?? false,
       forceSynthesis: opts.forceSynthesis ?? false,
