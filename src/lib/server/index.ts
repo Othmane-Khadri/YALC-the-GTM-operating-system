@@ -12,6 +12,7 @@ import { campaignRoutes } from './routes/campaigns'
 import { swipeRoutes } from './routes/swipe'
 import { webhookRoutes } from './routes/webhooks'
 import { frameworkRoutes } from './routes/frameworks'
+import { setupRoutes } from './routes/setup'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -70,6 +71,7 @@ export function createApp() {
   app.route('/api/campaigns', campaignRoutes)
   app.route('/api/swipe', swipeRoutes)
   app.route('/api/webhooks', webhookRoutes)
+  app.route('/api/setup', setupRoutes)
 
   // Framework dashboard routes
   app.route('/frameworks', frameworkRoutes)

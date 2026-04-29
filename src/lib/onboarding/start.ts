@@ -989,6 +989,53 @@ function printReadinessReport(
  * sections require an Anthropic key — without one, we emit the same
  * "needs an LLM" handoff used elsewhere in the CLI.
  */
+/**
+ * Public wrapper around `runRegenerateSection` for the API surface (0.9.B).
+ *
+ * Throws on validation errors (unknown section, missing preview, missing key)
+ * instead of setting `process.exitCode`, so HTTP handlers can map to a 4xx.
+ * Returns the list of files synthesis wrote.
+ */
+export async function regeneratePreviewSection(args: {
+  tenantId: string
+  section: string
+  hint?: string
+}): Promise<{ section: string; written: string[] }> {
+  const tenant = { tenantId: args.tenantId }
+  const { previewExists, previewPath } = await import('./preview.js')
+  const { ALL_SECTION_IDS, writeSynthesizedPreview } = await import('./synthesis.js')
+
+  if (!previewExists(tenant)) {
+    throw new Error('No preview to regenerate. Run capture first.')
+  }
+  if (!ALL_SECTION_IDS.includes(args.section as (typeof ALL_SECTION_IDS)[number])) {
+    throw new Error(
+      `Unknown section "${args.section}". Valid: ${ALL_SECTION_IDS.join(', ')}`,
+    )
+  }
+  const ctxPath = previewPath('company_context.yaml', tenant)
+  if (!existsSync(ctxPath)) {
+    throw new Error(`Missing ${ctxPath}. Re-run start with capture flags first.`)
+  }
+  const yamlMod = (await import('js-yaml')).default
+  const ctx = yamlMod.load(readFileSync(ctxPath, 'utf-8')) as
+    | import('../framework/context-types.js').CompanyContext
+    | null
+  if (!ctx) throw new Error('Could not parse company_context.yaml.')
+
+  const inCC = isClaudeCode()
+  if (!process.env.ANTHROPIC_API_KEY && !inCC) {
+    throw new Error('--regenerate needs an Anthropic key (or run inside Claude Code).')
+  }
+  const result = await writeSynthesizedPreview({
+    context: ctx,
+    tenant,
+    only: [args.section as (typeof ALL_SECTION_IDS)[number]],
+    hint: args.hint,
+  })
+  return { section: args.section, written: result.written }
+}
+
 async function runRegenerateSection(args: {
   tenantId: string
   section: string
