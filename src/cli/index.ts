@@ -3123,4 +3123,33 @@ program
     }
   }))
 
+// ─── visualize ─────────────────────────────────────────────────────────────
+//
+// Generate a tailored interactive HTML page from local JSON data + an intent
+// string. Persists to `~/.gtm-os/visualizations/<view_id>.html` plus a
+// sidecar metadata JSON. Re-running with the same view_id overwrites both.
+program
+  .command('visualize <viewId>')
+  .description('Generate a tailored interactive page from local data + intent.')
+  .option(
+    '--data <glob>',
+    'Path or glob for one or more JSON files (repeat for multiple sources)',
+    (val: string, prev: string[] | undefined) => (prev ? [...prev, val] : [val]),
+    [] as string[],
+  )
+  .option('--intent <text>', 'One-line description of what the page should show')
+  .option('--open', 'Open the generated page in the default browser', false)
+  .option('--port <number>', 'Server port for the printed URL', '3847')
+  .action(withDiagnostics(async (viewId: string, options: { data?: string[]; intent?: string; open?: boolean; port?: string }) => {
+    const { runVisualizeCli } = await import('./commands/visualize')
+    const port = Number(options.port ?? '3847')
+    const result = await runVisualizeCli(viewId, {
+      data: options.data ?? [],
+      intent: options.intent ?? '',
+      open: !!options.open,
+      port: Number.isFinite(port) ? port : 3847,
+    })
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
 program.parse()
