@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, real, uniqueIndex, index } from 'drizzle-orm/sqlite-core'
 import { relations, sql } from 'drizzle-orm'
 
 // ─── Conversations ──────────────────────────────────────────────────────────
@@ -401,6 +401,50 @@ export const providerPreferences = sqliteTable('provider_preferences', {
   createdAt: text('created_at').default(sql`(datetime('now'))`),
 })
 
+// ─── Company Signals ────────────────────────────────────────────────────────
+// Observed company-level signals fetched from PredictLeads (and future
+// providers). Keyed by domain + signal type + provider's stable signal ID
+// so re-fetches dedupe via upsert.
+export const companySignals = sqliteTable('company_signals', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text('tenant_id').notNull().default('default'),
+  provider: text('provider').notNull().default('predictleads'),
+  domain: text('domain').notNull(),
+  // 'job_opening' | 'financing' | 'technology' | 'news' | 'similar_company'
+  signalType: text('signal_type').notNull(),
+  // Provider's stable UUID for the signal. NULL for similar_company rows
+  // (those are lookup results, not events).
+  signalId: text('signal_id'),
+  // Raw provider payload — let downstream consumers pick what they need.
+  payload: text('payload', { mode: 'json' }).notNull(),
+  // Sortable date for the underlying event (job opening first_seen_at,
+  // funding announcement date, news published_at, etc.). NULL for static
+  // facts like technology presence.
+  eventDate: text('event_date'),
+  firstSeenAt: integer('first_seen_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+}, (t) => ({
+  byDomainType: index('company_signals_domain_type_idx').on(t.domain, t.signalType),
+  uniqByProviderDomainTypeSignal: uniqueIndex('company_signals_unique_idx')
+    .on(t.provider, t.domain, t.signalType, t.signalId),
+}))
+
+// ─── Company Signal Fetches ────────────────────────────────────────────────
+// TTL cache: tracks the last time a (domain, signalType) pair was pulled,
+// so bulk enrichment can skip recently-refreshed companies.
+export const companySignalFetches = sqliteTable('company_signal_fetches', {
+  // Composite key encoded as `${provider}:${domain}:${signalType}`
+  id: text('id').primaryKey(),
+  tenantId: text('tenant_id').notNull().default('default'),
+  provider: text('provider').notNull().default('predictleads'),
+  domain: text('domain').notNull(),
+  signalType: text('signal_type').notNull(),
+  lastFetchedAt: integer('last_fetched_at', { mode: 'timestamp' })
+    .$defaultFn(() => new Date()),
+  apiCallCount: integer('api_call_count').notNull().default(0),
+  rowsReturned: integer('rows_returned').notNull().default(0),
+})
+
 // ─── Signal Watches ──────────────────────────────────────────────────────────
 // Active monitoring targets — companies/people to watch for intent signals
 export const signalWatches = sqliteTable('signal_watches', {
@@ -604,5 +648,7 @@ export const providerStatsRelations = relations(providerStats, () => ({}))
 export const providerPreferencesRelations = relations(providerPreferences, () => ({}))
 
 export const signalWatchesRelations = relations(signalWatches, () => ({}))
+export const companySignalsRelations = relations(companySignals, () => ({}))
+export const companySignalFetchesRelations = relations(companySignalFetches, () => ({}))
 export const dataQualityLogRelations = relations(dataQualityLog, () => ({}))
 export const leadBlocklistRelations = relations(leadBlocklist, () => ({}))

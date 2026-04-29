@@ -5,6 +5,8 @@ import { notionService } from '../services/notion'
 import { IntelligenceStore } from '../intelligence/store'
 import type { GTMOSConfig } from '../config/types'
 import { resolveTenant } from '../tenant'
+import { listSignals } from '../services/predictleads-storage'
+import { buildNotionSummary } from '../services/predictleads-enrichment'
 
 interface SyncOptions {
   config: GTMOSConfig
@@ -72,6 +74,46 @@ export async function syncLeadToNotion(
   }
 
   await notionService.updatePage(lead.notionPageId, properties)
+}
+
+// ─── Push: PredictLeads signals → Notion lead row ────────────────────────────
+
+/**
+ * Mirrors a compact summary of the most recent PredictLeads signals onto a
+ * Notion page. The target row needs two properties on its parent DB:
+ *   - "Signals" (rich_text) — compact one-line summary
+ *   - "Signals Updated At" (date)
+ *
+ * Both are no-ops if the page doesn't have those properties — Notion just
+ * silently ignores unknown property keys.
+ */
+export async function syncSignalsToLead(
+  notionPageId: string,
+  domain: string,
+  opts: { maxItems?: number; tenantId?: string } = {},
+): Promise<{ summary: string; signalCount: number }> {
+  const signals = await listSignals(db, {
+    domain,
+    limit: opts.maxItems ?? 3,
+    tenantId: opts.tenantId,
+  })
+
+  const summary = buildNotionSummary(
+    signals.map((s) => ({ signalType: s.signalType, payload: s.payload, eventDate: s.eventDate })),
+    opts.maxItems ?? 3,
+  )
+
+  const properties: Record<string, unknown> = {
+    Signals: {
+      rich_text: [{ text: { content: summary || 'No recent signals' } }],
+    },
+    'Signals Updated At': {
+      date: { start: new Date().toISOString().slice(0, 10) },
+    },
+  }
+
+  await notionService.updatePage(notionPageId, properties)
+  return { summary, signalCount: signals.length }
 }
 
 // ─── Push: Campaign metrics → Notion ─────────────────────────────────────────

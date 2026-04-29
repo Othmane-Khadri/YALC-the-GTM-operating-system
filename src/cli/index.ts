@@ -1002,6 +1002,9 @@ program
   .option('--dry-run', 'Preview qualification without writing results')
   .option('--no-dedup', 'Skip dedup gate entirely')
   .option('--slack-confirm', 'Enable Slack confirmation for ambiguous dedup matches')
+  .option('--enrich-signals', 'After qualify, pull PredictLeads company signals for surviving leads')
+  .option('--signals-types <types>', 'Comma-separated signal types (jobs,funding,tech,news)')
+  .option('--no-cache', 'Force re-fetch even if cached within TTL (used with --enrich-signals)')
   .action(withDiagnostics(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', homedir()))
     const { runQualify } = await import('../lib/qualification/pipeline')
@@ -1014,6 +1017,145 @@ program
       noDedup: opts.noDedup === true || opts.dedup === false,
       slackConfirm: opts.slackConfirm ?? false,
     })
+
+    if (opts.enrichSignals) {
+      const { enrichResultSet } = await import('../lib/services/predictleads-bulk')
+      await enrichResultSet({
+        resultSetId: opts.resultSet,
+        types: opts.signalsTypes,
+        forceRefresh: opts.cache === false,
+        tenantId: getTenant(),
+      })
+    }
+  }))
+
+// ─── signals:fetch ──────────────────────────────────────────────────────────
+program
+  .command('signals:fetch')
+  .description('Pull PredictLeads signals for a single company domain')
+  .requiredOption('--domain <d>', 'Company domain (e.g. hubspot.com)')
+  .option('--types <types>', 'Comma-separated signal types (jobs,funding,tech,news,similar)')
+  .option('--no-cache', 'Force re-fetch even if cached within TTL')
+  .option('--ttl-days <n>', 'Cache TTL in days', '7')
+  .action(withDiagnostics(async (opts) => {
+    const { db } = await import('../lib/db')
+    const { enrichDomain, parseSignalTypes } = await import('../lib/services/predictleads-enrichment')
+    const types = parseSignalTypes(opts.types)
+    const result = await enrichDomain(db, {
+      domain: opts.domain,
+      types,
+      ttlDays: parseInt(opts.ttlDays, 10),
+      forceRefresh: opts.cache === false,
+      tenantId: getTenant(),
+    })
+    console.log(`[signals:fetch] ${result.domain}`)
+    for (const [type, info] of Object.entries(result.perType)) {
+      const tag = info.cacheHit ? 'cache hit' : `+${info.count} signals`
+      console.log(`  ${type.padEnd(18)} ${tag}`)
+    }
+    if (result.errors.length > 0) {
+      console.log('  errors:')
+      for (const err of result.errors) console.log(`    ${err.signalType}: ${err.message}`)
+    }
+  }))
+
+// ─── signals:show ───────────────────────────────────────────────────────────
+// Reads PredictLeads signals from local SQLite. Distinct from signals:list
+// which lists watch entries in the existing detection subsystem.
+program
+  .command('signals:show')
+  .description('Read cached PredictLeads signals for a domain from local SQLite (no API call)')
+  .requiredOption('--domain <d>', 'Company domain')
+  .option('--type <type>', 'Filter by signal type')
+  .option('--limit <n>', 'Max rows', '20')
+  .action(withDiagnostics(async (opts) => {
+    const { db } = await import('../lib/db')
+    const { listSignals } = await import('../lib/services/predictleads-storage')
+    const { parseSignalTypes } = await import('../lib/services/predictleads-enrichment')
+    const signalType = opts.type ? parseSignalTypes(opts.type)[0] : undefined
+    const rows = await listSignals(db, {
+      domain: opts.domain,
+      signalType,
+      limit: parseInt(opts.limit, 10),
+      tenantId: getTenant(),
+    })
+    if (rows.length === 0) {
+      console.log(`No cached signals for ${opts.domain}. Run signals:fetch first.`)
+      return
+    }
+    for (const row of rows) {
+      const date = row.eventDate ? row.eventDate.slice(0, 10) : '         '
+      const payload = row.payload as Record<string, unknown>
+      const headline = String(
+        payload.title
+          ?? payload.headline
+          ?? payload.summary
+          ?? payload.round
+          ?? payload.name
+          ?? payload.similar_company
+          ?? '',
+      ).slice(0, 80)
+      console.log(`  ${date}  ${row.signalType.padEnd(18)} ${headline}`)
+    }
+  }))
+
+// ─── signals:enrich ─────────────────────────────────────────────────────────
+program
+  .command('signals:enrich')
+  .description('Pull signals for every unique domain in a result set')
+  .requiredOption('--result-set <id>', 'Result set ID to enrich')
+  .option('--types <types>', 'Comma-separated signal types')
+  .option('--no-cache', 'Force re-fetch even if cached')
+  .option('--ttl-days <n>', 'Cache TTL in days', '7')
+  .action(withDiagnostics(async (opts) => {
+    const { enrichResultSet } = await import('../lib/services/predictleads-bulk')
+    await enrichResultSet({
+      resultSetId: opts.resultSet,
+      types: opts.types,
+      ttlDays: parseInt(opts.ttlDays, 10),
+      forceRefresh: opts.cache === false,
+      tenantId: getTenant(),
+    })
+  }))
+
+// ─── signals:similar ────────────────────────────────────────────────────────
+program
+  .command('signals:similar')
+  .description('Fetch lookalike companies for a given domain (account discovery)')
+  .requiredOption('--domain <d>', 'Seed company domain')
+  .option('--limit <n>', 'Max similar companies to fetch', '50')
+  .action(withDiagnostics(async (opts) => {
+    const { predictleadsService } = await import('../lib/services/predictleads')
+    const { db } = await import('../lib/db')
+    const { upsertSignals, recordFetch } = await import('../lib/services/predictleads-storage')
+    const { normalizeListResponse } = await import('../lib/services/predictleads-enrichment')
+
+    const raw = await predictleadsService.getSimilarCompanies(opts.domain, {
+      limit: parseInt(opts.limit, 10),
+    })
+    const signals = normalizeListResponse(raw)
+
+    await upsertSignals(db, {
+      domain: opts.domain,
+      signalType: 'similar_company',
+      signals,
+      tenantId: getTenant(),
+    })
+    await recordFetch(db, {
+      domain: opts.domain,
+      signalType: 'similar_company',
+      rowsReturned: signals.length,
+      tenantId: getTenant(),
+    })
+
+    console.log(`[signals:similar] ${opts.domain}: ${signals.length} lookalikes`)
+    for (const sig of signals.slice(0, 20)) {
+      const p = sig.payload as Record<string, unknown>
+      const sim = String(p.similar_company ?? p.domain ?? '')
+      const score = p.score ? ` (score=${p.score})` : ''
+      const reason = p.reason ? ` — ${p.reason}` : ''
+      console.log(`  ${sim}${score}${reason}`)
+    }
   }))
 
 // ─── leads:import ───────────────────────────────────────────────────────────

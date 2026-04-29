@@ -8,6 +8,13 @@
       "when": 1777032325372,
       "tag": "0000_bootstrap",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1777456559945,
+      "tag": "0001_sticky_junta",
+      "breakpoints": true
     }
   ]
 }
