@@ -30,6 +30,18 @@ export default defineConfig({
     sourcemap: false,
     target: 'es2020',
     cssCodeSplit: true,
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        passes: 3,
+        ecma: 2020,
+        unsafe_arrows: true,
+        unsafe_methods: true,
+        pure_getters: true,
+        drop_console: true,
+      },
+      mangle: { toplevel: true },
+    },
     rollupOptions: {
       output: {
         manualChunks(id) {

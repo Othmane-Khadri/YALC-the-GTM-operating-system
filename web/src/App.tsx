@@ -5,6 +5,7 @@ import { SetupReview } from './pages/SetupReview'
 import { Today } from './pages/Today'
 import { Brain } from './pages/Brain'
 import { Keys } from './pages/Keys'
+import { KeysConnect } from './pages/KeysConnect'
 import { Skills } from './pages/Skills'
 
 // Minimal client-side routing. We intentionally avoid pulling in
@@ -23,6 +24,7 @@ export function App() {
   if (path.startsWith('/setup/review')) return <SetupReview />
   if (path.startsWith('/today')) return <Today />
   if (path.startsWith('/brain')) return <Brain />
+  if (path.startsWith('/keys/connect')) return <KeysConnect />
   if (path.startsWith('/keys')) return <Keys />
   if (path.startsWith('/skills')) return <Skills />
   return <Landing />
