@@ -179,7 +179,7 @@ export async function runStart(opts: StartOptions): Promise<void> {
     }
     const result = commitPreview({ tenant: tenantCtx, discardSections })
     await refreshLiveIndex(tenantCtx)
-    writeReviewCommittedSentinel(tenantCtx)
+    await writeReviewCommittedSentinel(tenantCtx)
     console.log(`  ✓ Committed ${result.committed.length} path(s) to live`)
     if (result.discarded.length > 0) {
       console.log(`  ⊘ Left in preview (discarded): ${result.discarded.join(', ')}`)
@@ -1225,10 +1225,15 @@ async function runRegenerateLowConfidence(args: {
  * Write `<liveRoot>/_handoffs/setup/review.committed` so non-interactive
  * harnesses (Claude Code, CI) can detect that commit completed without
  * polling the preview directory. Best-effort.
+ *
+ * Async because the preview helpers ship as ESM and we can't `require()`
+ * them. Callers can fire-and-forget — failures never propagate.
  */
-export function writeReviewCommittedSentinel(tenant: { tenantId: string }): void {
+export async function writeReviewCommittedSentinel(tenant: {
+  tenantId: string
+}): Promise<void> {
   try {
-    const { liveRoot } = require('./preview.js') as typeof import('./preview.js')
+    const { liveRoot } = await import('./preview.js')
     const dir = join(liveRoot(tenant), '_handoffs', 'setup')
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
     writeFileSync(
@@ -1276,6 +1281,6 @@ async function runChatReviewWalk(args: { tenantId: string }): Promise<void> {
 
   const result = commitPreview({ tenant })
   await refreshLiveIndex(tenant)
-  writeReviewCommittedSentinel(tenant)
+  await writeReviewCommittedSentinel(tenant)
   console.log(`  ✓ Committed ${result.committed.length} path(s) to live`)
 }

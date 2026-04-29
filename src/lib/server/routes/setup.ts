@@ -295,7 +295,7 @@ setupRoutes.post('/commit', async (c) => {
 
   // Drop a sentinel so non-interactive harnesses can detect commit completion
   // without polling the preview directory.
-  writeReviewCommittedSentinel(tenant)
+  await writeReviewCommittedSentinel(tenant)
 
   return c.json({
     ok: true,
@@ -308,10 +308,10 @@ setupRoutes.post('/commit', async (c) => {
  * Write `~/.gtm-os/_handoffs/setup/review.committed` once the SPA commits.
  * Best-effort — never fails the commit response.
  */
-function writeReviewCommittedSentinel(tenant: TenantContext): void {
+async function writeReviewCommittedSentinel(tenant: TenantContext): Promise<void> {
   try {
-    const { liveRoot } = require('../../onboarding/preview.js') as typeof import('../../onboarding/preview.js')
-    const { mkdirSync } = require('node:fs') as typeof import('node:fs')
+    const { liveRoot } = await import('../../onboarding/preview.js')
+    const { mkdirSync } = await import('node:fs')
     const dir = join(liveRoot(tenant), '_handoffs', 'setup')
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
     writeFileSync(
