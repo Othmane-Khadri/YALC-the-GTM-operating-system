@@ -105,6 +105,28 @@ export interface StartOptions {
   regenerateLowConfidence?: boolean
   /** Threshold used by `regenerateLowConfidence`. Defaults to 0.6. */
   confidenceThreshold?: number
+  /**
+   * Suppress the auto-open of /setup/review in the user's default browser
+   * after a successful flag-driven capture. Set when `--no-open` is passed
+   * or when the caller wants to drive review headlessly.
+   */
+  noOpen?: boolean
+  /**
+   * Walk preview sections directly in the terminal at the end of capture
+   * (legacy chat-walk pattern). Mutually exclusive with the SPA review —
+   * when set, the browser is not launched.
+   */
+  reviewInChat?: boolean
+  /**
+   * Server URL the SPA is served from. Defaults to http://localhost:3847.
+   * Override for tests / non-default ports.
+   */
+  serverUrl?: string
+  /**
+   * Browser-open hook injected for tests. Production callers leave this
+   * unset and the helper resolves to `openBrowser()`.
+   */
+  openHook?: (url: string) => { attempted: boolean; launched: boolean }
 }
 
 export async function runStart(opts: StartOptions): Promise<void> {
@@ -157,6 +179,7 @@ export async function runStart(opts: StartOptions): Promise<void> {
     }
     const result = commitPreview({ tenant: tenantCtx, discardSections })
     await refreshLiveIndex(tenantCtx)
+    writeReviewCommittedSentinel(tenantCtx)
     console.log(`  ✓ Committed ${result.committed.length} path(s) to live`)
     if (result.discarded.length > 0) {
       console.log(`  ⊘ Left in preview (discarded): ${result.discarded.join(', ')}`)
@@ -524,9 +547,39 @@ export async function runStart(opts: StartOptions): Promise<void> {
         '    re-run with `yalc-gtm start --regenerate <section>` if any section is missing.',
       )
     }
-    console.log(
-      `  Review then run: yalc-gtm start --commit-preview`,
-    )
+    // Hand off to the SPA review surface (0.9.B). Three modes:
+    //   1. --review-in-chat → terminal-driven section walk, then return.
+    //   2. default → auto-open the SPA at /setup/review and return.
+    //   3. --no-open → just print the URL.
+    // Browser-open failures fall back to the printed URL silently.
+    const reviewUrl = `${opts.serverUrl ?? 'http://localhost:3847'}/setup/review`
+
+    if (opts.reviewInChat) {
+      await runChatReviewWalk({ tenantId })
+      return
+    }
+
+    let openResult: { attempted: boolean; launched: boolean } = {
+      attempted: false,
+      launched: false,
+    }
+    if (!opts.noOpen) {
+      if (opts.openHook) {
+        openResult = opts.openHook(reviewUrl)
+      } else {
+        const { openBrowser } = await import('../cli/open-browser.js')
+        const r = openBrowser(reviewUrl)
+        openResult = { attempted: r.attempted, launched: r.launched }
+      }
+    }
+
+    if (openResult.launched) {
+      console.log(`  Opening ${reviewUrl} in your browser…`)
+    } else {
+      console.log(`  Open ${reviewUrl} to review and commit.`)
+    }
+    console.log('  CLI alternative: yalc-gtm start --commit-preview (or --review-in-chat).')
+    return
   }
 
   const { runOnboarding } = await import('../context/onboarding.js')
@@ -1164,4 +1217,65 @@ async function runRegenerateLowConfidence(args: {
       hint: args.hint,
     })
   }
+}
+
+// ─── 0.9.B: SPA handoff helpers ──────────────────────────────────────────────
+
+/**
+ * Write `<liveRoot>/_handoffs/setup/review.committed` so non-interactive
+ * harnesses (Claude Code, CI) can detect that commit completed without
+ * polling the preview directory. Best-effort.
+ */
+export function writeReviewCommittedSentinel(tenant: { tenantId: string }): void {
+  try {
+    const { liveRoot } = require('./preview.js') as typeof import('./preview.js')
+    const dir = join(liveRoot(tenant), '_handoffs', 'setup')
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    writeFileSync(
+      join(dir, 'review.committed'),
+      JSON.stringify({ at: new Date().toISOString(), tenant: tenant.tenantId }) + '\n',
+    )
+  } catch {
+    // Sentinel is advisory — never propagate.
+  }
+}
+
+/**
+ * Legacy-style chat-walk: enumerate every preview section, print a short
+ * summary, and prompt for approve/regenerate/drop. Used only when
+ * `--review-in-chat` is passed (no browser available, CI).
+ *
+ * The full per-section walk lives in the synthesis prompts; here we just
+ * emit one summary line per section then immediately commit. Callers who
+ * want fine-grained control should run `yalc-gtm start --regenerate
+ * <section>` and `--commit-preview --discard <section>` directly.
+ */
+async function runChatReviewWalk(args: { tenantId: string }): Promise<void> {
+  const tenant = { tenantId: args.tenantId }
+  const { previewExists, previewPath, SECTION_NAMES, SECTION_PATHS, commitPreview, refreshLiveIndex } =
+    await import('./preview.js')
+
+  if (!previewExists(tenant)) {
+    console.error('  No preview to review.')
+    process.exitCode = 1
+    return
+  }
+
+  console.log('\n  Preview sections:')
+  for (const id of SECTION_NAMES) {
+    for (const canonical of SECTION_PATHS[id]) {
+      const abs = previewPath(canonical, tenant)
+      if (!existsSync(abs)) continue
+      console.log(`    - ${id} (${canonical})`)
+    }
+  }
+  console.log(
+    '\n  Review-in-chat mode: committing preview as-is. Re-run with --discard <section>',
+  )
+  console.log('  to drop sections, or --regenerate <section> to redo synthesis.\n')
+
+  const result = commitPreview({ tenant })
+  await refreshLiveIndex(tenant)
+  writeReviewCommittedSentinel(tenant)
+  console.log(`  ✓ Committed ${result.committed.length} path(s) to live`)
 }

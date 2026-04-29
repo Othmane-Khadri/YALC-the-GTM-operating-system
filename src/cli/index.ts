@@ -1301,6 +1301,11 @@ Examples (recommended — flag-driven, zero prompts):
   .option('--discard-preview', 'Delete the _preview/ folder entirely (no new capture)')
   .option('--force-overwrite-preview', 'Proceed past the uncommitted-preview block')
   .option('--force-synthesis', 'Run synthesis even if captured inputs are below the minimum content bar')
+  // 0.9.B: review handoff controls. By default we auto-open the SPA at
+  // /setup/review at the end of capture. --no-open suppresses the launch;
+  // --review-in-chat falls back to the legacy CLI section walk.
+  .option('--no-open', 'Suppress browser auto-open at the end of capture')
+  .option('--review-in-chat', 'Walk preview sections in the terminal instead of the SPA')
   .action(withDiagnostics(async (opts) => {
     const { runStart } = await import('../lib/onboarding/start')
     await runStart({
@@ -1322,6 +1327,8 @@ Examples (recommended — flag-driven, zero prompts):
       discardPreview: opts.discardPreview ?? false,
       forceOverwritePreview: opts.forceOverwritePreview ?? false,
       forceSynthesis: opts.forceSynthesis ?? false,
+      noOpen: opts.open === false,
+      reviewInChat: opts.reviewInChat ?? false,
     })
   }))
 
