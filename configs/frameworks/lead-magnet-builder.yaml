@@ -1,0 +1,65 @@
+name: lead-magnet-builder
+display_name: "Lead Magnet Builder"
+description: >
+  On-demand wizard that proposes 5 lead-magnet ideas for a buyer persona,
+  outlines the one you pick, renders the asset, and optionally deploys it
+  to a public URL via vercel-mcp (with a local-file fallback when no MCP
+  is configured).
+
+requires:
+  any_of_keys:
+    - ANTHROPIC_API_KEY
+
+recommended_when:
+  not_has_active_framework: lead-magnet-builder
+
+inputs:
+  - name: target_persona
+    description: "Buyer persona the magnet must resonate with (e.g. \"VP RevOps at Series B SaaS\")."
+    default: ""
+  - name: format
+    description: "Output asset format — html, pdf, or png."
+    default: "html"
+  - name: deploy
+    description: "Deploy the rendered asset to a public URL via vercel-mcp (yes/no)."
+    default: "no"
+
+mode: on-demand
+
+steps:
+  - skill: propose-magnets
+    input:
+      company_context: "$file:~/.gtm-os/company_context.yaml"
+      target_persona: "{{target_persona}}"
+  - gate:
+      id: pick-magnet
+      prompt: "Pick the magnet to outline + render."
+      surface: ui-modal
+      payload_from_step: 0
+  - skill: outline-magnet
+    input:
+      magnet: "{{steps[1].output}}"
+      company_context: "$file:~/.gtm-os/company_context.yaml"
+      target_persona: "{{target_persona}}"
+  - gate:
+      id: approve-outline
+      prompt: "Approve the outline before generating the asset."
+      surface: ui-today
+      payload_from_step: 2
+  - skill: generate-magnet-asset
+    input:
+      outline_html: "{{steps[3].output}}"
+      filename: "lead-magnet"
+      format: "{{format}}"
+      title: "{{target_persona}} — Lead Magnet"
+  - skill: landing-page-deploy
+    input:
+      html: "{{steps[3].output}}"
+      slug: "lead-magnet"
+      title: "{{target_persona}} — Lead Magnet"
+
+output:
+  destination_choice:
+    - dashboard:
+        when: "$has_provider:dashboard_local"
+        route: "/frameworks/lead-magnet-builder"

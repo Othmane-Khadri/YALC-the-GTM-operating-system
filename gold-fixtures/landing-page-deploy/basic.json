@@ -1,0 +1,12 @@
+{
+  "input": {
+    "html": "<h1>CMO Playbook</h1>",
+    "slug": "cmo-playbook",
+    "title": "CMO Playbook"
+  },
+  "expected_output": {
+    "deployed": false,
+    "url": "file:///Users/operator/.gtm-os/landing-pages/cmo-playbook/index.html",
+    "fallbackReason": "No Vercel MCP configured — page written locally only. Install vercel-mcp and set VERCEL_MCP_URL + VERCEL_TOKEN to enable real deploys."
+  }
+}
