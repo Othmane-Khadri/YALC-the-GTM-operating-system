@@ -3,6 +3,7 @@ import { BrandKit } from './pages/BrandKit'
 import { Landing } from './pages/Landing'
 import { SetupReview } from './pages/SetupReview'
 import { Today } from './pages/Today'
+import { Brain } from './pages/Brain'
 
 // Minimal client-side routing. We intentionally avoid pulling in
 // react-router for the bootstrap so the bundle stays under budget;
@@ -19,5 +20,6 @@ export function App() {
   if (path.startsWith('/brand')) return <BrandKit />
   if (path.startsWith('/setup/review')) return <SetupReview />
   if (path.startsWith('/today')) return <Today />
+  if (path.startsWith('/brain')) return <Brain />
   return <Landing />
 }

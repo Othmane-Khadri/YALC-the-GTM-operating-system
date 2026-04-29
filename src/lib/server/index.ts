@@ -14,6 +14,7 @@ import { webhookRoutes } from './routes/webhooks'
 import { frameworkRoutes } from './routes/frameworks'
 import { setupRoutes } from './routes/setup'
 import { todayRoutes } from './routes/today'
+import { brainRoutes } from './routes/brain'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -74,6 +75,7 @@ export function createApp() {
   app.route('/api/webhooks', webhookRoutes)
   app.route('/api/setup', setupRoutes)
   app.route('/api/today', todayRoutes)
+  app.route('/api/brain', brainRoutes)
 
   // Framework dashboard routes
   app.route('/frameworks', frameworkRoutes)
