@@ -389,12 +389,18 @@ export async function runFrameworkRun(name: string, opts: RunOpts = {}): Promise
   }
   void framework
   console.log(`\nRunning ${name} now…`)
-  const { runFramework, FrameworkRunError } = await import('../../lib/frameworks/runner.js')
+  const { runFramework, FrameworkRunError, FrameworkGatePauseError, EXIT_CODE_AWAITING_GATE } =
+    await import('../../lib/frameworks/runner.js')
   try {
     const { path, run } = await runFramework(name, { seed: !!opts.seed })
     console.log(`  Wrote: ${path}`)
     console.log(`  Rows:  ${run.rows.length}\n`)
   } catch (err) {
+    if (err instanceof FrameworkGatePauseError) {
+      console.log(`  Run paused at gate \`${err.gateId}\`. View: http://localhost:3847/today`)
+      console.log(`  Awaiting gate file: ${err.awaitingGatePath}`)
+      process.exit(EXIT_CODE_AWAITING_GATE)
+    }
     if (err instanceof FrameworkRunError) {
       console.error(`  Step ${err.step} (${err.stepSkill}) failed: ${err.message}`)
       if (err.partialPath) console.error(`  Partial output: ${err.partialPath}`)

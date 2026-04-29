@@ -75,6 +75,15 @@ function discoverRunFiles(): DiscoveredRunFile[] {
 function collectJsonFiles(dir: string, push: (abs: string) => void): void {
   for (const f of readdirSync(dir)) {
     if (!f.endsWith('.json')) continue
+    // Skip gate sentinels — those are surfaced through discoverAwaitingGates,
+    // not as completed-run feed cards. Also skip approved/rejected sentinels.
+    if (
+      f.endsWith('.awaiting-gate.json') ||
+      f.endsWith('.gate-approved.json') ||
+      f.endsWith('.gate-rejected.json')
+    ) {
+      continue
+    }
     push(join(dir, f))
   }
 }
@@ -90,24 +99,25 @@ interface AwaitingGate {
 }
 
 /**
- * Walk `~/.gtm-os/agents/<framework>.awaiting-gate.json`. The 0.9.E gate
- * writer hasn't landed yet; we structurally support the shape today so the
- * /today view "just works" once it does.
+ * Walk for awaiting-gate sentinels. Two layouts are supported:
+ *
+ *   1. `~/.gtm-os/agents/<framework>.runs/<run-id>.awaiting-gate.json`
+ *      (canonical 0.9.E runner output — one per paused run).
+ *   2. `~/.gtm-os/agents/<framework>.awaiting-gate.json` (legacy
+ *      single-per-framework shape; kept so 0.9.C-era seed harnesses
+ *      and any pre-runner scripts that wrote the sentinel keep working).
  */
 function discoverAwaitingGates(): AwaitingGate[] {
   const root = agentsDir()
   if (!existsSync(root)) return []
   const out: AwaitingGate[] = []
-  for (const entry of readdirSync(root)) {
-    if (!entry.endsWith('.awaiting-gate.json')) continue
-    const abs = join(root, entry)
+  const pushFromFile = (abs: string, fallbackFramework: string) => {
     try {
       const parsed = JSON.parse(readFileSync(abs, 'utf-8')) as Partial<AwaitingGate>
-      if (!parsed || typeof parsed !== 'object') continue
-      const framework = entry.slice(0, -'.awaiting-gate.json'.length)
+      if (!parsed || typeof parsed !== 'object') return
       out.push({
         run_id: String(parsed.run_id ?? ''),
-        framework: String(parsed.framework ?? framework),
+        framework: String(parsed.framework ?? fallbackFramework),
         step_index: typeof parsed.step_index === 'number' ? parsed.step_index : 0,
         gate_id: String(parsed.gate_id ?? ''),
         prompt: String(parsed.prompt ?? ''),
@@ -116,6 +126,39 @@ function discoverAwaitingGates(): AwaitingGate[] {
       })
     } catch {
       // Best-effort — skip malformed files.
+    }
+  }
+  for (const entry of readdirSync(root)) {
+    const abs = join(root, entry)
+    let st
+    try {
+      st = statSync(abs)
+    } catch {
+      continue
+    }
+    if (st.isDirectory()) {
+      // Layout 1 — `<framework>.runs/<run-id>.awaiting-gate.json`.
+      if (!entry.endsWith('.runs')) continue
+      const framework = entry.slice(0, -'.runs'.length)
+      for (const f of readdirSync(abs)) {
+        if (!f.endsWith('.awaiting-gate.json')) continue
+        // Suppress sentinels that have already been processed (an
+        // approved or rejected sibling exists for the same run-id).
+        const runId = f.slice(0, -'.awaiting-gate.json'.length)
+        if (
+          existsSync(join(abs, `${runId}.gate-approved.json`)) ||
+          existsSync(join(abs, `${runId}.gate-rejected.json`))
+        ) {
+          continue
+        }
+        pushFromFile(join(abs, f), framework)
+      }
+      continue
+    }
+    // Layout 2 — legacy single-per-framework file.
+    if (entry.endsWith('.awaiting-gate.json')) {
+      const framework = entry.slice(0, -'.awaiting-gate.json'.length)
+      pushFromFile(abs, framework)
     }
   }
   return out

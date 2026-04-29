@@ -42,9 +42,31 @@ function runsDirFor(name: string): string {
   return join(homedir(), '.gtm-os', 'agents', `${name}.runs`)
 }
 
+/** Process exit code emitted when a run paused at a human-gate step. */
+export const EXIT_CODE_AWAITING_GATE = 30
+
 export interface FrameworkRunOptions {
   /** Use `seed_run.override_inputs` from the framework yaml when present. */
   seed?: boolean
+  /**
+   * Resume a previously-paused run from a gate.
+   *
+   * The runner re-creates `stepOutputs` from `priorStepOutputs`, applies
+   * any `payloadOverride` to the slot referenced by the gate, optionally
+   * threads `rejectionReason` into the run context, and continues from
+   * `startAtStep`. Used by `framework:resume`.
+   */
+  resume?: {
+    runId: string
+    /** Step index to resume at. For approve, this is the step AFTER the gate. */
+    startAtStep: number
+    /** Outputs of every step that ran before the gate, in execution order. */
+    priorStepOutputs: unknown[]
+    /** Optional edits applied to a specific prior step's output before resume. */
+    payloadOverride?: { stepIndex: number; value: unknown }
+    /** When set, exposed via `vars.rejection_reason` on a retry. */
+    rejectionReason?: string
+  }
 }
 
 export class FrameworkRunError extends Error {
@@ -58,6 +80,48 @@ export class FrameworkRunError extends Error {
     this.stepSkill = stepSkill
     this.partialPath = partialPath
   }
+}
+
+/**
+ * Thrown when execution reaches a gate step. The CLI catches this and
+ * exits with `EXIT_CODE_AWAITING_GATE` after surfacing the file path.
+ */
+export class FrameworkGatePauseError extends Error {
+  readonly framework: string
+  readonly runId: string
+  readonly stepIndex: number
+  readonly gateId: string
+  readonly awaitingGatePath: string
+  constructor(args: {
+    framework: string
+    runId: string
+    stepIndex: number
+    gateId: string
+    awaitingGatePath: string
+  }) {
+    super(
+      `Run paused at gate "${args.gateId}" (framework=${args.framework}, run=${args.runId}, step=${args.stepIndex}).`,
+    )
+    this.name = 'FrameworkGatePauseError'
+    this.framework = args.framework
+    this.runId = args.runId
+    this.stepIndex = args.stepIndex
+    this.gateId = args.gateId
+    this.awaitingGatePath = args.awaitingGatePath
+  }
+}
+
+/** Shape of the awaiting-gate sentinel persisted on disk. */
+export interface AwaitingGateRecord {
+  run_id: string
+  framework: string
+  step_index: number
+  gate_id: string
+  prompt: string
+  payload: unknown
+  prior_step_outputs: unknown[]
+  inputs: Record<string, unknown>
+  created_at: string
 }
 
 /** Render the cumulative output of a finished run as a flat row list. */
@@ -303,6 +367,9 @@ export async function runFramework(
   if (opts.seed && framework.seed_run?.override_inputs) {
     Object.assign(vars, framework.seed_run.override_inputs)
   }
+  if (opts.resume?.rejectionReason) {
+    vars.rejection_reason = opts.resume.rejectionReason
+  }
 
   const providers = await getRegistryReady()
   const context: SkillContext = {
@@ -312,15 +379,54 @@ export async function runFramework(
     userId: 'framework-runner',
   }
 
-  const stepOutputs: unknown[] = []
+  // Restore any prior step outputs first so {{steps[N].output}} references
+  // continue to resolve correctly after a resume. Apply the optional payload
+  // override (the human's edits) to the referenced slot.
+  const stepOutputs: unknown[] = opts.resume ? [...opts.resume.priorStepOutputs] : []
+  if (opts.resume?.payloadOverride) {
+    const { stepIndex, value } = opts.resume.payloadOverride
+    if (stepIndex >= 0 && stepIndex < stepOutputs.length) {
+      stepOutputs[stepIndex] = value
+    }
+  }
+  const startAt = opts.resume ? opts.resume.startAtStep : 0
   const ranAt = new Date().toISOString()
+  // Run ID: a resume reuses the original ID so the awaiting-gate / approved
+  // / rejected sentinels share lineage. New runs use the run timestamp.
+  const runId = opts.resume?.runId ?? ranAt.replace(/[:.]/g, '-')
 
-  for (let i = 0; i < framework.steps.length; i++) {
+  for (let i = startAt; i < framework.steps.length; i++) {
     const stepEntry: FrameworkStepEntry = framework.steps[i]
     if (isGateStep(stepEntry)) {
-      // Gate handling lands in the runner extension commit; for now
-      // gate steps are a no-op so the schema commit stays atomic.
-      continue
+      // Resolve the editable payload — defaults to the immediately-previous
+      // step's output, with `payload_from_step` allowing reach-back.
+      const fromStep =
+        stepEntry.gate.payload_from_step !== undefined
+          ? stepEntry.gate.payload_from_step
+          : Math.max(0, i - 1)
+      const payload = stepOutputs[fromStep] ?? null
+      const dir = runsDirFor(name)
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+      const awaitingPath = join(dir, `${runId}.awaiting-gate.json`)
+      const record: AwaitingGateRecord = {
+        run_id: runId,
+        framework: name,
+        step_index: i,
+        gate_id: stepEntry.gate.id,
+        prompt: stepEntry.gate.prompt,
+        payload,
+        prior_step_outputs: stepOutputs,
+        inputs: vars,
+        created_at: ranAt,
+      }
+      writeFileSync(awaitingPath, JSON.stringify(record, null, 2) + '\n', 'utf-8')
+      throw new FrameworkGatePauseError({
+        framework: name,
+        runId,
+        stepIndex: i,
+        gateId: stepEntry.gate.id,
+        awaitingGatePath: awaitingPath,
+      })
     }
     const step: FrameworkStep = stepEntry
     const skill = await resolveStepSkill(step.skill)
