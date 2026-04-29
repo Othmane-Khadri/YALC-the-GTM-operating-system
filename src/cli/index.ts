@@ -1306,6 +1306,17 @@ Examples (recommended — flag-driven, zero prompts):
   // --review-in-chat falls back to the legacy CLI section walk.
   .option('--no-open', 'Suppress browser auto-open at the end of capture')
   .option('--review-in-chat', 'Walk preview sections in the terminal instead of the SPA')
+  // 0.9.F: confidence-banded auto-commit. High-confidence sections move
+  // straight to live; low-confidence ones queue at /setup/review.
+  .option(
+    '--no-auto-commit',
+    'Force every preview section into the /setup/review queue regardless of confidence.',
+  )
+  .option(
+    '--auto-commit-threshold <value>',
+    'Threshold (0–1) for confidence-banded auto-commit. Defaults to 0.85.',
+    (val) => Number.parseFloat(val),
+  )
   .action(withDiagnostics(async (opts) => {
     const { runStart } = await import('../lib/onboarding/start')
     await runStart({
@@ -1329,6 +1340,8 @@ Examples (recommended — flag-driven, zero prompts):
       forceSynthesis: opts.forceSynthesis ?? false,
       noOpen: opts.open === false,
       reviewInChat: opts.reviewInChat ?? false,
+      noAutoCommit: opts.autoCommit === false,
+      autoCommitThreshold: opts.autoCommitThreshold,
     })
   }))
 

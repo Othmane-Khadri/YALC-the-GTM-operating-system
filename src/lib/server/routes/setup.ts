@@ -94,6 +94,14 @@ interface SectionEntry {
     llm_self_rating: number
     has_metadata_anchors: boolean
   } | null
+  /**
+   * True when the section's confidence was at or above the configured
+   * auto-commit threshold and was already promoted to live. The frontend
+   * uses this to filter the review queue down to genuinely low-confidence
+   * sections; the API still returns every section so the SPA can show a
+   * complete audit trail when needed.
+   */
+  auto_committed: boolean
 }
 
 // ─── GET /api/setup/preview ─────────────────────────────────────────────────
@@ -108,18 +116,24 @@ setupRoutes.get('/preview', async (c) => {
   }
 
   const meta = readPreviewMeta(tenant)
+  const { resolveEffectiveThreshold } = await import('../../onboarding/auto-commit.js')
+  const threshold = resolveEffectiveThreshold()
   const sections: SectionEntry[] = []
   for (const id of SECTION_NAMES) {
     const files = collectSectionFiles(id, tenant)
     if (files.length === 0) continue
     const sectionMeta = meta?.sections?.[id] ?? null
+    const confidence = sectionMeta?.confidence ?? null
+    const auto_committed =
+      confidence !== null && confidence >= threshold && threshold <= 1
     for (const { canonical, abs } of files) {
       sections.push({
         id,
         canonical,
         content: readFileSync(abs, 'utf-8'),
-        confidence: sectionMeta?.confidence ?? null,
+        confidence,
         confidence_signals: sectionMeta?.confidence_signals ?? null,
+        auto_committed,
       })
     }
   }

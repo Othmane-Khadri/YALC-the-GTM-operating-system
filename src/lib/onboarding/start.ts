@@ -128,6 +128,15 @@ export interface StartOptions {
    * unset and the helper resolves to `openBrowser()`.
    */
   openHook?: (url: string) => { attempted: boolean; launched: boolean }
+  /**
+   * 0.9.F: confidence-banded auto-commit controls. When `noAutoCommit`
+   * is true (CLI: `--no-auto-commit`), every section stays in the review
+   * queue; otherwise sections with confidence ≥ `autoCommitThreshold`
+   * (default 0.85, configurable via config.yaml) auto-commit and only
+   * low-confidence sections appear in `/setup/review`.
+   */
+  noAutoCommit?: boolean
+  autoCommitThreshold?: number
 }
 
 export async function runStart(opts: StartOptions): Promise<void> {
@@ -540,6 +549,36 @@ export async function runStart(opts: StartOptions): Promise<void> {
     console.log(
       `\n  Captured + synthesized in ${elapsedSec}s. Preview ready at ~/.gtm-os/_preview/`,
     )
+
+    // 0.9.F: confidence-banded auto-commit. High-confidence sections
+    // move straight to live; everything else stays in `_preview/` for
+    // explicit review. Failures are non-fatal — the user can always
+    // commit manually via the SPA.
+    try {
+      const { applyAutoCommit, resolveEffectiveThreshold } = await import('./auto-commit.js')
+      const threshold = resolveEffectiveThreshold({
+        threshold: opts.autoCommitThreshold,
+        noAutoCommit: opts.noAutoCommit,
+      })
+      const ac = await applyAutoCommit({ tenantId }, {
+        threshold: opts.autoCommitThreshold,
+        noAutoCommit: opts.noAutoCommit,
+      })
+      if (ac.committed.length > 0) {
+        console.log(
+          `  ✓ Auto-committed ${ac.committed.length} high-confidence section(s) ` +
+            `(threshold ${threshold.toFixed(2)}): ${ac.committed.join(', ')}`,
+        )
+      }
+      if (ac.queued.length > 0) {
+        console.log(
+          `  ⊘ Queued ${ac.queued.length} section(s) for /setup/review: ${ac.queued.join(', ')}`,
+        )
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn(`  ! Auto-commit pass skipped: ${msg}`)
+    }
     if (elapsedMs > 120_000) {
       console.warn(
         '  ⚠ Capture took longer than expected. Synthesis may be slow due to model load —',
