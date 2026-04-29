@@ -2475,10 +2475,47 @@ function levenshtein(a: string, b: string): number {
   return dp[m][n]
 }
 
+// ─── keys:connect ──────────────────────────────────────────────────────────
+//
+// Primary surface: open the SPA's /keys/connect form, wait for the user to
+// paste their key, then exit when the sentinel appears at
+// ~/.gtm-os/_handoffs/keys/<provider>.ready. Reuses openBrowser() for the
+// platform launch and the same sentinel pattern the 0.8.E connect-provider
+// CLI established.
+program
+  .command('keys:connect [provider]')
+  .description(
+    'Open the /keys/connect form for a provider (or agnostic mode) and wait for the sentinel.',
+  )
+  .option('--open', 'Open the form in the default browser', false)
+  .option('--no-open', 'Do not auto-open the browser')
+  .option('--timeout <ms>', 'Sentinel-poll timeout in ms', `${30 * 60 * 1000}`)
+  .action(withDiagnostics(async (provider: string | undefined, options: { open?: boolean; timeout?: string }) => {
+    const { runKeysConnect } = await import('./commands/keys-connect')
+    const timeoutMs = options.timeout ? Number(options.timeout) : undefined
+    const result = await runKeysConnect(provider, {
+      open: options.open !== false,
+      timeoutMs: Number.isFinite(timeoutMs) ? timeoutMs : undefined,
+    })
+    if (result.status === 'timeout') {
+      console.error(`Timed out waiting for ${result.url}`)
+    } else if (result.status === 'failed') {
+      console.warn(`Sentinel ${result.sentinelPath} reports a failed health check.`)
+    } else {
+      console.log(`Configured. Sentinel: ${result.sentinelPath}`)
+    }
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
 // ─── connect-provider ──────────────────────────────────────────────────────
+//
+// Preserved as a thin wrapper around `keys:connect` so existing scripts and
+// docs from 0.8.E keep working. The headline UX is now the agnostic flow —
+// "tell us about your provider" — and the bundled knowledge yamls are
+// suggestions, not the menu.
 program
   .command('connect-provider <name>')
-  .description('Walk through adding a provider (key, capability registration, test)')
+  .description('Add a provider end-to-end (legacy alias — wraps keys:connect).')
   .action(withDiagnostics(async (name: string) => {
     const { runConnectProvider } = await import('./commands/connect-provider')
     const result = await runConnectProvider(name)
