@@ -18,6 +18,7 @@ import { SIGNUP_URLS } from '../constants.js'
 import { isClaudeCode } from '../env/claude-code.js'
 import { isChannelOptedOut } from '../config/loader.js'
 import {
+  applyCollectedKeysToEnv,
   envTemplateInstructions,
   writeEnvTemplate,
   type WriteEnvTemplateOutcome,
@@ -689,56 +690,6 @@ function printEnvOutcome(outcome: WriteEnvTemplateOutcome): void {
     )
   }
   // 'unchanged' is silent — the file is already up-to-date.
-}
-
-/**
- * Update the template `.env` in-place with concrete `KEY=value` pairs the
- * user supplied during interactive prompts. Algorithm:
- *
- *   1. Read existing file.
- *   2. For each line matching `^\s*#?\s*KEY\s*=`, if `KEY` is in the
- *      collectedKeys map AND the value is non-empty, replace the line with
- *      `KEY=<value>` (drops any leading `# `).
- *   3. Any keys in the map that did not match an existing line get appended
- *      at the bottom (so freshly-set keys never go missing).
- *
- * Existing comments and blank lines are preserved verbatim.
- */
-function applyCollectedKeysToEnv(
-  envPath: string,
-  collected: Record<string, string>,
-): void {
-  let lines: string[] = []
-  if (existsSync(envPath)) {
-    lines = readFileSync(envPath, 'utf-8').split('\n')
-  }
-
-  const seen = new Set<string>()
-  const keyLineRe = /^(\s*)(#\s*)?([A-Z][A-Z0-9_]*)\s*=/
-
-  const out: string[] = lines.map((rawLine) => {
-    const match = rawLine.match(keyLineRe)
-    if (!match) return rawLine
-    const key = match[3]
-    const live = collected[key]
-    if (typeof live !== 'string' || live === '') return rawLine
-    seen.add(key)
-    return `${key}=${live}`
-  })
-
-  const missing = Object.entries(collected).filter(
-    ([k, v]) => !seen.has(k) && typeof v === 'string' && v !== '',
-  )
-  if (missing.length > 0) {
-    if (out.length > 0 && out[out.length - 1] !== '') out.push('')
-    for (const [k, v] of missing) {
-      out.push(`${k}=${v}`)
-    }
-  }
-
-  let next = out.join('\n')
-  if (!next.endsWith('\n')) next += '\n'
-  writeFileSync(envPath, next)
 }
 
 /**
