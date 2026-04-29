@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BrandKit } from './pages/BrandKit'
 import { Landing } from './pages/Landing'
+import { SetupReview } from './pages/SetupReview'
 
 // Minimal client-side routing. We intentionally avoid pulling in
 // react-router for the bootstrap so the bundle stays under budget;
@@ -15,5 +16,6 @@ export function App() {
   }, [])
 
   if (path.startsWith('/brand')) return <BrandKit />
+  if (path.startsWith('/setup/review')) return <SetupReview />
   return <Landing />
 }
