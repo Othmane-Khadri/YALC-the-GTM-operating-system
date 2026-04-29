@@ -286,6 +286,210 @@ export const LINKEDIN_USER_POSTS_FETCH_CAPABILITY = {
   defaultPriority: ['unipile'],
 } as const
 
+export const LINKEDIN_CONTENT_FETCH_CAPABILITY = {
+  id: 'linkedin-content-fetch',
+  description:
+    'Fetch recent posts authored by a competitor LinkedIn URL (or explicit user id).',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      accountId: { type: 'string' },
+      competitorUrl: { type: 'string', description: 'LinkedIn URL of the competitor profile or company.' },
+      userId: { type: 'string', description: 'Optional explicit user id (skips URL resolution).' },
+      limit: { type: 'number' },
+    },
+    required: ['accountId'],
+    additionalProperties: true,
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      posts: { type: 'array', items: { type: 'object' } },
+    },
+    required: ['posts'],
+  },
+  defaultPriority: ['unipile'],
+} as const
+
+export const LINKEDIN_TRENDING_CONTENT_CAPABILITY = {
+  id: 'linkedin-trending-content',
+  description:
+    'Search LinkedIn for high-engagement posts matching a keyword (engagement floor configurable).',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      accountId: { type: 'string' },
+      keyword: { type: 'string', description: 'Free-text search query.' },
+      minEngagement: { type: 'number', description: 'Minimum likes+comments (default 50).' },
+      limit: { type: 'number' },
+    },
+    required: ['accountId', 'keyword'],
+    additionalProperties: true,
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      posts: { type: 'array', items: { type: 'object' } },
+    },
+    required: ['posts'],
+  },
+  defaultPriority: ['unipile'],
+} as const
+
+export const LINKEDIN_CAMPAIGN_CREATE_CAPABILITY = {
+  id: 'linkedin-campaign-create',
+  description:
+    'Create a LinkedIn outreach campaign (sequence + leads) and start the first step. Subsequent DMs are scheduled by `campaign:track`.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      accountId: { type: 'string' },
+      campaignName: { type: 'string' },
+      leads: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            provider_id: { type: 'string' },
+            message: { type: 'string' },
+          },
+          required: ['provider_id'],
+        },
+      },
+      sequence: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            kind: { type: 'string', enum: ['connection', 'dm'] },
+            delay_days: { type: 'number' },
+            body: { type: 'string' },
+          },
+          required: ['kind', 'body'],
+        },
+      },
+    },
+    required: ['accountId', 'campaignName', 'leads', 'sequence'],
+    additionalProperties: true,
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      campaignId: { type: 'string' },
+      status: { type: 'string' },
+      leadsAttempted: { type: 'number' },
+      leadsSucceeded: { type: 'number' },
+    },
+    required: ['campaignId', 'status'],
+  },
+  defaultPriority: ['unipile'],
+} as const
+
+export const EMAIL_CAMPAIGN_CREATE_CAPABILITY = {
+  id: 'email-campaign-create',
+  description:
+    'Create an email outreach campaign (sequence + leads) and start it via the configured cold-email provider.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      campaignName: { type: 'string' },
+      leads: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            email: { type: 'string' },
+            first_name: { type: 'string' },
+            last_name: { type: 'string' },
+            company: { type: 'string' },
+          },
+          required: ['email'],
+        },
+      },
+      sequence: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            subject: { type: 'string' },
+            body: { type: 'string' },
+            delay_days: { type: 'number' },
+            variant_label: { type: 'string' },
+          },
+          required: ['body'],
+        },
+      },
+      accountIds: { type: 'array', items: { type: 'string' } },
+    },
+    required: ['campaignName', 'sequence'],
+    additionalProperties: true,
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      campaignId: { type: 'string' },
+      status: { type: 'string' },
+      leadsAdded: { type: 'number' },
+    },
+    required: ['campaignId', 'status'],
+  },
+  defaultPriority: ['instantly'],
+} as const
+
+export const ASSET_RENDERING_CAPABILITY = {
+  id: 'asset-rendering',
+  description:
+    'Render an HTML or markdown asset to disk (and optionally to PDF/PNG via Playwright when installed).',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      content: { type: 'string', description: 'HTML body or markdown to render.' },
+      filename: { type: 'string' },
+      format: { type: 'string', enum: ['html', 'pdf', 'png'] },
+      title: { type: 'string' },
+    },
+    required: ['content'],
+    additionalProperties: true,
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      rendered: { type: 'boolean' },
+      path: { type: 'string' },
+      format: { type: 'string' },
+      fallbackReason: { type: ['string', 'null'] },
+    },
+    required: ['rendered', 'path', 'format'],
+  },
+  defaultPriority: ['builtin'],
+} as const
+
+export const LANDING_PAGE_DEPLOY_CAPABILITY = {
+  id: 'landing-page-deploy',
+  description:
+    'Deploy a single-page HTML asset to a hosted URL (vercel-mcp when configured; local file fallback otherwise).',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      html: { type: 'string' },
+      slug: { type: 'string' },
+      title: { type: 'string' },
+    },
+    required: ['html'],
+    additionalProperties: true,
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      deployed: { type: 'boolean' },
+      url: { type: 'string' },
+      fallbackReason: { type: ['string', 'null'] },
+    },
+    required: ['deployed', 'url'],
+  },
+  defaultPriority: ['vercel-mcp'],
+} as const
+
 export class MissingApiKeyError extends Error {
   readonly providerId: string
   readonly envVar: string
@@ -320,6 +524,12 @@ export async function registerBuiltinCapabilities(registry: CapabilityRegistry):
   registry.registerCapability({ ...WEB_FETCH_CAPABILITY, defaultPriority: [...WEB_FETCH_CAPABILITY.defaultPriority] })
   registry.registerCapability({ ...INBOX_REPLIES_FETCH_CAPABILITY, defaultPriority: [...INBOX_REPLIES_FETCH_CAPABILITY.defaultPriority] })
   registry.registerCapability({ ...LINKEDIN_USER_POSTS_FETCH_CAPABILITY, defaultPriority: [...LINKEDIN_USER_POSTS_FETCH_CAPABILITY.defaultPriority] })
+  registry.registerCapability({ ...LINKEDIN_CONTENT_FETCH_CAPABILITY, defaultPriority: [...LINKEDIN_CONTENT_FETCH_CAPABILITY.defaultPriority] })
+  registry.registerCapability({ ...LINKEDIN_TRENDING_CONTENT_CAPABILITY, defaultPriority: [...LINKEDIN_TRENDING_CONTENT_CAPABILITY.defaultPriority] })
+  registry.registerCapability({ ...LINKEDIN_CAMPAIGN_CREATE_CAPABILITY, defaultPriority: [...LINKEDIN_CAMPAIGN_CREATE_CAPABILITY.defaultPriority] })
+  registry.registerCapability({ ...EMAIL_CAMPAIGN_CREATE_CAPABILITY, defaultPriority: [...EMAIL_CAMPAIGN_CREATE_CAPABILITY.defaultPriority] })
+  registry.registerCapability({ ...ASSET_RENDERING_CAPABILITY, defaultPriority: [...ASSET_RENDERING_CAPABILITY.defaultPriority] })
+  registry.registerCapability({ ...LANDING_PAGE_DEPLOY_CAPABILITY, defaultPriority: [...LANDING_PAGE_DEPLOY_CAPABILITY.defaultPriority] })
 
   const { icpCompanySearchCrustdataAdapter } = await import('./icp-company-search-crustdata.js')
   const { icpCompanySearchApolloAdapter } = await import('./icp-company-search-apollo.js')
@@ -336,6 +546,12 @@ export async function registerBuiltinCapabilities(registry: CapabilityRegistry):
   const { webFetchFirecrawlAdapter } = await import('./web-fetch-firecrawl.js')
   const { inboxRepliesFetchInstantlyAdapter } = await import('./inbox-replies-fetch-instantly.js')
   const { linkedinUserPostsFetchUnipileAdapter } = await import('./linkedin-user-posts-fetch-unipile.js')
+  const { linkedinContentFetchUnipileAdapter } = await import('./linkedin-content-fetch-unipile.js')
+  const { linkedinTrendingContentUnipileAdapter } = await import('./linkedin-trending-content-unipile.js')
+  const { linkedinCampaignCreateUnipileAdapter } = await import('./linkedin-campaign-create-unipile.js')
+  const { emailCampaignCreateInstantlyAdapter } = await import('./email-campaign-create-instantly.js')
+  const { assetRenderingStubAdapter } = await import('./asset-rendering-stub.js')
+  const { landingPageDeployStubAdapter } = await import('./landing-page-deploy-stub.js')
 
   registry.register(icpCompanySearchCrustdataAdapter)
   registry.register(icpCompanySearchApolloAdapter)
@@ -352,4 +568,10 @@ export async function registerBuiltinCapabilities(registry: CapabilityRegistry):
   registry.register(webFetchFirecrawlAdapter)
   registry.register(inboxRepliesFetchInstantlyAdapter)
   registry.register(linkedinUserPostsFetchUnipileAdapter)
+  registry.register(linkedinContentFetchUnipileAdapter)
+  registry.register(linkedinTrendingContentUnipileAdapter)
+  registry.register(linkedinCampaignCreateUnipileAdapter)
+  registry.register(emailCampaignCreateInstantlyAdapter)
+  registry.register(assetRenderingStubAdapter)
+  registry.register(landingPageDeployStubAdapter)
 }
