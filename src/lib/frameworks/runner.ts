@@ -33,7 +33,8 @@ import { getSkillRegistryReady } from '../skills/registry.js'
 import { loadMarkdownSkill } from '../skills/markdown-loader.js'
 import { resolveSkillAlias } from '../skills/aliases.js'
 import { getRegistryReady } from '../providers/registry.js'
-import type { FrameworkStep } from './types.js'
+import type { FrameworkStep, FrameworkStepEntry } from './types.js'
+import { isGateStep } from './types.js'
 import type { Skill, SkillContext } from '../skills/types.js'
 
 /** Resolve the runs directory at call time so HOME-overrides in tests apply. */
@@ -315,7 +316,13 @@ export async function runFramework(
   const ranAt = new Date().toISOString()
 
   for (let i = 0; i < framework.steps.length; i++) {
-    const step: FrameworkStep = framework.steps[i]
+    const stepEntry: FrameworkStepEntry = framework.steps[i]
+    if (isGateStep(stepEntry)) {
+      // Gate handling lands in the runner extension commit; for now
+      // gate steps are a no-op so the schema commit stays atomic.
+      continue
+    }
+    const step: FrameworkStep = stepEntry
     const skill = await resolveStepSkill(step.skill)
     if (!skill) {
       const partial: DashboardRun & { error: { step: number; message: string } } = {

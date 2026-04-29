@@ -50,12 +50,54 @@ export interface FrameworkStep {
   input?: Record<string, unknown>
 }
 
+/** Surface used to render a human-gate prompt. */
+export type GateSurface = 'ui-today' | 'ui-modal'
+
+/**
+ * A human-gate step: pauses the framework run and waits for a human to
+ * approve, edit, or reject the previous step's output before continuing.
+ *
+ * The runner persists an `awaiting-gate.json` sentinel on disk and exits
+ * with a special status code so the CLI / API can surface the pause.
+ */
+export interface FrameworkGateStep {
+  gate: {
+    id: string
+    prompt: string
+    surface: GateSurface
+    /** Index of the step whose output becomes the gate's editable payload. */
+    payload_from_step?: number
+  }
+}
+
+/** Either a normal skill step or a human-gate step. */
+export type FrameworkStepEntry = FrameworkStep | FrameworkGateStep
+
+/** Type-guard: distinguish gate steps from skill steps. */
+export function isGateStep(step: FrameworkStepEntry): step is FrameworkGateStep {
+  return (
+    typeof step === 'object' &&
+    step !== null &&
+    'gate' in step &&
+    typeof (step as FrameworkGateStep).gate === 'object'
+  )
+}
+
 /** Schedule (mirrors AgentSchedule but allows cron strings too). */
 export interface FrameworkSchedule {
   cron?: string
   /** Falls back to UTC when omitted. May reference `$context.company.timezone`. */
   timezone?: string
 }
+
+/**
+ * Execution mode:
+ *   - `scheduled` — framework MUST have a `schedule.cron`; install creates
+ *     the launchd job (current 0.7.0 / 0.8.0 behaviour, also the default).
+ *   - `on-demand` — framework MUST NOT have a `schedule.cron`; install
+ *     skips launchd, only `framework:run <name>` triggers execution.
+ */
+export type FrameworkMode = 'scheduled' | 'on-demand'
 
 /** One destination option in the framework's output choice list. */
 export interface FrameworkOutputOption {
@@ -97,8 +139,19 @@ export interface FrameworkDefinition {
   recommended_when?: RecommendedWhenClauses
 
   inputs: FrameworkInput[]
+  /**
+   * Schedule. Required when `mode === 'scheduled'` (the default), forbidden
+   * to contain a `cron:` when `mode === 'on-demand'`. Kept as the same shape
+   * as before so 0.7.0/0.8.0 frameworks (no `mode:` key) install unchanged.
+   */
   schedule: FrameworkSchedule
-  steps: FrameworkStep[]
+  /**
+   * Execution mode. Optional in YAML; defaults to `scheduled` for
+   * backward-compat with 0.7.0 / 0.8.0 frameworks that omit it entirely.
+   */
+  mode?: FrameworkMode
+  /** Skill steps and (optional) human-gate pauses, in execution order. */
+  steps: FrameworkStepEntry[]
   output: FrameworkOutput
   seed_run?: FrameworkSeedRun
 

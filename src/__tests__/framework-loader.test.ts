@@ -39,7 +39,8 @@ output:
     const f = parseFrameworkYaml('/x/my-framework.yaml', yaml)
     expect(f.name).toBe('my-framework')
     expect(f.requires.providers).toEqual(['firecrawl'])
-    expect(f.steps[0].skill).toBe('scrape-something')
+    const first = f.steps[0]
+    expect('skill' in first ? first.skill : null).toBe('scrape-something')
   })
 
   it('throws with file path on invalid yaml', () => {

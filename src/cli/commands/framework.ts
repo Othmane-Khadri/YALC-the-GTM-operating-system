@@ -45,9 +45,11 @@ import { cronToAgentSchedule } from '../../lib/frameworks/cron-conversion.js'
 import { getRegistryReady } from '../../lib/providers/registry.js'
 import type {
   FrameworkDefinition,
+  FrameworkStep,
   InstalledFrameworkConfig,
   FrameworkOutputDestination,
 } from '../../lib/frameworks/types.js'
+import { isGateStep } from '../../lib/frameworks/types.js'
 
 const AGENTS_DIR = join(homedir(), '.gtm-os', 'agents')
 
@@ -251,18 +253,30 @@ async function collectInputs(
   return out
 }
 
-/** Write the agent yaml that the existing runner picks up via launchd. */
+/**
+ * Write the agent yaml that the existing runner picks up via launchd.
+ *
+ * On-demand frameworks (`mode: on-demand`) are intentionally NOT written —
+ * launchd would have nothing to schedule, and `framework:run <name>` is the
+ * only sanctioned trigger. The caller checks `mode` and skips this when so.
+ *
+ * Gate steps are dropped from the launchd-readable step list — they're
+ * runtime-only pauses and the agent runner doesn't know how to wait for
+ * a human. The framework runner re-reads the original yaml and handles
+ * gates there.
+ */
 function writeAgentYaml(framework: FrameworkDefinition, cfg: InstalledFrameworkConfig): string {
   ensureAgentsDir()
   if (!framework.schedule.cron) {
     throw new Error(`Framework "${framework.name}" has no schedule.cron — cannot install`)
   }
   const schedule = cronToAgentSchedule(framework.schedule.cron)
+  const skillSteps = framework.steps.filter((s): s is FrameworkStep => !isGateStep(s))
   const agent = {
     id: framework.name,
     name: framework.display_name,
     description: framework.description,
-    steps: framework.steps.map((s) => ({
+    steps: skillSteps.map((s) => ({
       skillId: s.skill,
       input: { ...(s.input ?? {}), ...cfg.inputs },
       continueOnError: true,
@@ -333,17 +347,25 @@ export async function runFrameworkInstall(name: string, opts: InstallOpts): Prom
     inputs,
   }
   saveInstalledConfig(cfg)
-  const yamlPath = writeAgentYaml(framework, cfg)
+  // On-demand frameworks skip the launchd agent yaml — they only run via
+  // `framework:run`. Scheduled frameworks (the default) keep the legacy
+  // 0.7.0 / 0.8.0 install plumbing.
+  const isOnDemand = framework.mode === 'on-demand'
+  const yamlPath = isOnDemand ? null : writeAgentYaml(framework, cfg)
   runSeed(framework, inputs)
 
   console.log(`\nInstalled ${framework.name}.`)
-  console.log(`  Agent yaml: ${yamlPath}`)
+  if (yamlPath) console.log(`  Agent yaml: ${yamlPath}`)
   if (dest.destination === 'dashboard') {
     console.log(`  Output:     http://localhost:3847/frameworks/${framework.name}`)
   } else {
     console.log(`  Output:     Notion (parent: ${dest.notionParent})`)
   }
-  console.log(`  Schedule:   ${framework.schedule.cron}${framework.schedule.timezone ? ` (${framework.schedule.timezone})` : ''}`)
+  if (isOnDemand) {
+    console.log(`  Schedule:   on-demand (run with: yalc-gtm framework:run ${framework.name})`)
+  } else {
+    console.log(`  Schedule:   ${framework.schedule.cron}${framework.schedule.timezone ? ` (${framework.schedule.timezone})` : ''}`)
+  }
   console.log(`  Logs:       yalc-gtm framework:logs ${framework.name}`)
   console.log()
 }
