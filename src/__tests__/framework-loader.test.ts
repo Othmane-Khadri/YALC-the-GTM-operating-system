@@ -151,7 +151,12 @@ describe('loadAllFrameworks', () => {
     for (const f of all) {
       expect(f.steps.length).toBeGreaterThan(0)
       expect(f.output.destination_choice.length).toBeGreaterThan(0)
-      expect(f.schedule.cron).toMatch(/^\S+ \S+ \S+ \S+ \S+$/)
+      // Scheduled frameworks must declare cron; on-demand frameworks must NOT.
+      if (f.mode === 'scheduled') {
+        expect(f.schedule.cron).toMatch(/^\S+ \S+ \S+ \S+ \S+$/)
+      } else {
+        expect(f.schedule.cron).toBeUndefined()
+      }
     }
   })
 

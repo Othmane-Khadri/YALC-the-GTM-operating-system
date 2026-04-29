@@ -1,0 +1,77 @@
+name: outreach-campaign-builder
+display_name: "Outreach Campaign Builder"
+description: >
+  On-demand wizard that proposes 3 outreach campaign variants for a given
+  hypothesis, lets you pick one, builds a fresh lead list against your ICP,
+  drafts the sequence, runs a final verification gate, and launches via
+  Unipile (LinkedIn) or Instantly (email). Replaces the previous scheduled
+  outreach frameworks with a hypothesis-led on-demand flow.
+
+requires:
+  any_of_keys:
+    - ANTHROPIC_API_KEY
+
+recommended_when:
+  not_has_active_framework: outreach-campaign-builder
+
+inputs:
+  - name: hypothesis
+    description: "One-line hypothesis the campaign should test (e.g. \"Series A SaaS CTOs care about LLM compliance\")."
+    default: ""
+  - name: channel
+    description: "linkedin or email."
+    default: "linkedin"
+  - name: industry
+    description: "Industry filter for ICP search."
+    default: "$context.icp.industry"
+  - name: location
+    description: "Location filter for ICP search."
+    default: "$context.icp.location"
+  - name: lead_limit
+    description: "Max leads to enrich for the campaign."
+    default: 50
+  - name: account_id
+    description: "Unipile account id (required for LinkedIn channel)."
+    default: "$context.sources.linkedin_account_id"
+
+mode: on-demand
+
+steps:
+  - skill: propose-campaigns
+    input:
+      company_context: "$file:~/.gtm-os/company_context.yaml"
+      hypothesis: "{{hypothesis}}"
+      channel: "{{channel}}"
+  - gate:
+      id: pick-variant
+      prompt: "Pick the variant you want to launch."
+      surface: ui-modal
+      payload_from_step: 0
+  - skill: icp-company-search
+    input:
+      industry: "{{industry}}"
+      location: "{{location}}"
+      limit: "{{lead_limit}}"
+  - skill: people-enrich
+    input:
+      contacts: "{{steps[2].output}}"
+  - skill: verify-campaign-launch
+    input:
+      campaign_payload: "{{steps[3].output}}"
+  - gate:
+      id: verify-and-launch
+      prompt: "Verify the lead list, sequence, and schedule before launch."
+      surface: ui-today
+      payload_from_step: 4
+  - skill: linkedin-campaign-create
+    input:
+      account_id: "{{account_id}}"
+      campaign_name: "{{hypothesis}}"
+      leads: "{{steps[3].output}}"
+      sequence: "{{steps[1].output}}"
+
+output:
+  destination_choice:
+    - dashboard:
+        when: "$has_provider:dashboard_local"
+        route: "/frameworks/outreach-campaign-builder"
