@@ -54,6 +54,17 @@ describe('server SPA mount', () => {
     expect(ct).not.toContain('text/html')
   })
 
+  it.each(['/today', '/brain', '/keys', '/skills'])(
+    'serves the SPA shell for the new daily view %s',
+    async (path) => {
+      const app = createApp()
+      const res = await app.request(path)
+      expect(res.status).toBe(200)
+      const html = await res.text()
+      expect(html).toContain('<div id="root">')
+    },
+  )
+
   it('still serves the legacy /campaigns static HTML page', async () => {
     const app = createApp()
     const res = await app.request('/campaigns')
