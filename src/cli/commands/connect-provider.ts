@@ -1,29 +1,31 @@
 /**
- * `yalc-gtm connect-provider <name>` — interactive walk-through that adds a
- * provider end-to-end:
+ * `yalc-gtm connect-provider <name>` — legacy alias for `keys:connect`.
+ *
+ * 0.8.E shipped this command as the primary surface for adding a provider.
+ * 0.9.D inverts the headline UX: the agnostic flow ("tell us about your
+ * provider") is now the default — the bundled knowledge base ships entries
+ * for ~10 providers as *suggestions*, not as the menu. The browser-based
+ * /keys/connect SPA route is the recommended flow because keys never cross
+ * the chat transcript.
+ *
+ * This file preserves the 0.8.E behavior so existing scripts keep working:
  *
  *   1. Resolve the provider in the knowledge base (closest-match suggest on miss).
  *   2. Print install steps (template-substituted) and required env vars.
  *   3. Wait for the user to confirm "keys done" — TTY: stdin sentinel; non-TTY:
  *      filesystem sentinel under `~/.gtm-os/_handoffs/keys/<id>.ready`.
- *   4. Reload `.env` from `~/.gtm-os/.env`, run a minimal "keys present"
- *      health check (or the registered provider's `selfHealthCheck()` when
- *      available).
- *   5. Copy the bundled MCP template (when `integration_kind: mcp`) into
- *      `~/.gtm-os/mcp/<name>.json`.
- *   6. Run the `test_query` from the knowledge yaml and print a truncated result.
- *   7. Append `<id>` to `capabilities.<cap>.priority` in `~/.gtm-os/config.yaml`
- *      for every capability the knowledge entry declares (preserving order
- *      and deduping).
+ *   4. Reload `.env`, run the registered provider's `selfHealthCheck()`.
+ *   5. Copy the bundled MCP template into `~/.gtm-os/mcp/<name>.json`.
+ *   6. Run the `test_query` and print a truncated result.
+ *   7. Append `<id>` to `capabilities.<cap>.priority` in `~/.gtm-os/config.yaml`.
  *
  * Custom-provider fallthrough (when the name is not in the knowledge base):
  *   - In TTY mode prompt for kind / command / env vars and write a yaml to
- *     `configs/providers/_user/<name>.yaml` (which the loader picks up on
- *     the next call).
+ *     `configs/providers/_user/<name>.yaml`.
  *   - In non-TTY mode emit a JSON instruction blob the orchestrator can act on.
  *
- * The implementation aims to be `requireTTY`-safe but TTY-optional: the
- * sentinel-file path is the bridge that lets Claude Code drive this end-to-end.
+ * For new flows, prefer `yalc-gtm keys:connect [<provider>] --open` — it
+ * opens the SPA form, polls the same sentinel, and never echoes keys to chat.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs'
