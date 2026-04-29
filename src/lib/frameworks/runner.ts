@@ -31,7 +31,7 @@ import type { DashboardRun } from './output/dashboard-adapter.js'
 import { appendRun as notionAppendRun } from './output/notion-adapter.js'
 import { getSkillRegistryReady } from '../skills/registry.js'
 import { loadMarkdownSkill } from '../skills/markdown-loader.js'
-import { resolveSkillAlias } from '../skills/aliases.js'
+import { resolveSkillAlias, noteRetiredSkill } from '../skills/aliases.js'
 import { getRegistryReady } from '../providers/registry.js'
 import type { FrameworkStep, FrameworkStepEntry } from './types.js'
 import { isGateStep } from './types.js'
@@ -309,6 +309,10 @@ async function resolveStepSkill(skillId: string): Promise<Skill | null> {
       return result.skill
     }
   }
+  // Retired skills (Reddit-only frameworks from 0.7.0/0.8.0) emit a
+  // one-shot WARN and resolve to null so the runner surfaces a helpful
+  // error pointing at the replacement archetype.
+  if (noteRetiredSkill(skillId)) return null
   // Last resort: walk the alias table. This is what keeps user-authored
   // YAMLs that still reference renamed skills working without edits.
   const aliased = resolveSkillAlias(skillId)

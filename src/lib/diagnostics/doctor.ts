@@ -892,6 +892,44 @@ function suggestionForSection(section: string): string {
   }
 }
 
+/**
+ * 0.9.F retired-framework layer.
+ *
+ * Emits a single WARN per installed framework whose name is in the
+ * 0.9.F retirement registry, telling the user which archetype replaces
+ * it. Layer is only added when ≥1 retired framework is still installed —
+ * users on a clean 0.9.0 install see no extra noise.
+ */
+function retiredFrameworksLayer(): LayerResult | null {
+  try {
+    // Lazy-require so the doctor module stays usable in environments
+    // where the framework registry hasn't been initialized yet.
+    const { listInstalledFrameworks } = require('../frameworks/registry') as {
+      listInstalledFrameworks: () => string[]
+    }
+    const { RETIRED_FRAMEWORKS } = require('../frameworks/retired') as {
+      RETIRED_FRAMEWORKS: Array<{ name: string; replacement: string; note?: string }>
+    }
+    const installed = new Set(listInstalledFrameworks())
+    const retiredHits = RETIRED_FRAMEWORKS.filter((r) => installed.has(r.name))
+    if (retiredHits.length === 0) return null
+    const checks: CheckResult[] = []
+    for (const r of retiredHits) {
+      checks.push({
+        name: `Retired framework still installed: ${r.name}`,
+        status: 'warn',
+        detail:
+          `Replaced by '${r.replacement}'. Install the archetype with ` +
+          `\`yalc-gtm framework:install ${r.replacement}\` and remove the legacy ` +
+          `agent yaml under ~/.gtm-os/agents/${r.name}.yaml when ready.`,
+      })
+    }
+    return { layer: 'Retired Frameworks', checks }
+  } catch {
+    return null
+  }
+}
+
 function previewConfidenceLayer(): LayerResult | null {
   const entries = readPreviewConfidenceEntries()
   if (!entries || entries.length === 0) return null
@@ -1076,6 +1114,15 @@ export async function runDoctor(opts: { report?: boolean } = {}): Promise<void> 
     console.log('\n── Preview Confidence ──')
     layers.push(previewLayer)
     for (const check of previewLayer.checks) printCheck(check)
+  }
+
+  // Retired Frameworks (0.9.F) — only emitted when ≥1 retired framework is
+  // still installed locally so a clean 0.9.0 install stays quiet.
+  const retiredLayer = retiredFrameworksLayer()
+  if (retiredLayer) {
+    console.log('\n── Retired Frameworks ──')
+    layers.push(retiredLayer)
+    for (const check of retiredLayer.checks) printCheck(check)
   }
 
   // Layer 4

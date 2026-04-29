@@ -66,9 +66,12 @@ describe('E4 — framework runner injects voice file via $file resolver', () => 
     expect(resolved.voice_md_content).toBe(sentinel)
     expect(resolved.replies).toEqual([{ thread_id: 'thr-1', body: 'hi' }])
 
-    // And the framework yaml carries the resolver reference.
+    // And a bundled archetype carries the resolver reference. The
+    // 0.9.F catalog replaced inbound-reply-triage with on-demand outreach
+    // builders; content-calendar-builder is the surviving consumer of the
+    // voice file.
     const fwk = readFileSync(
-      join(PKG_ROOT, 'configs', 'frameworks', 'inbound-reply-triage.yaml'),
+      join(PKG_ROOT, 'configs', 'frameworks', 'content-calendar-builder.yaml'),
       'utf-8',
     )
     expect(fwk).toMatch(/voice_md_content:\s*"\$file:~\/\.gtm-os\/voice\/tone-of-voice\.md"/)

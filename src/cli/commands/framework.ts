@@ -112,16 +112,28 @@ function fmtRec(name: string, displayName: string, description: string, dest: st
 export async function runFrameworkList(): Promise<void> {
   const all = loadAllFrameworks()
   const installed = new Set(listInstalledFrameworks())
+  const { RETIRED_FRAMEWORKS } = await import('../../lib/frameworks/retired.js')
 
-  if (all.length === 0) {
+  // Surface retired frameworks the user still has installed locally so they
+  // see a migration breadcrumb next to their healthy installs.
+  const retiredInstalled = RETIRED_FRAMEWORKS.filter((r) => installed.has(r.name))
+
+  if (all.length === 0 && retiredInstalled.length === 0) {
     console.log('No frameworks found.')
     return
   }
-  console.log(`\nFrameworks (${all.length} bundled, ${installed.size} installed):\n`)
+  console.log(
+    `\nFrameworks (${all.length} bundled, ${installed.size} installed, ${retiredInstalled.length} retired):\n`,
+  )
   for (const f of all) {
     const status = installed.has(f.name) ? 'INSTALLED' : 'available'
     console.log(`  ${f.name.padEnd(34)} ${status.padEnd(10)} ${f.display_name}`)
     console.log(`     ${f.description}`)
+  }
+  for (const r of retiredInstalled) {
+    const status = `retired (replaced by ${r.replacement})`
+    console.log(`  ${r.name.padEnd(34)} ${status}`)
+    if (r.note) console.log(`     ${r.note}`)
   }
   console.log()
 }
