@@ -16,6 +16,7 @@ import { setupRoutes } from './routes/setup'
 import { todayRoutes } from './routes/today'
 import { brainRoutes } from './routes/brain'
 import { keysRoutes } from './routes/keys'
+import { skillsRoutes } from './routes/skills'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -78,6 +79,7 @@ export function createApp() {
   app.route('/api/today', todayRoutes)
   app.route('/api/brain', brainRoutes)
   app.route('/api/keys', keysRoutes)
+  app.route('/api/skills', skillsRoutes)
 
   // Framework dashboard routes
   app.route('/frameworks', frameworkRoutes)

@@ -11,11 +11,18 @@
  * past the 200KB raw bundle budget. 0.9.G can revisit if needed.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { api, ApiError } from '@/lib/api'
+import { api } from '@/lib/api'
+import {
+  bucketBadgeClass,
+  bucketForConfidence,
+  describeError,
+  eyebrowClass,
+  preBlockClass,
+} from '@/lib/feedback'
 
 type SectionId =
   | 'company_context'
@@ -32,7 +39,6 @@ interface BrainSectionFile {
   canonical: string
   abs: string
   content: string
-  format: 'yaml' | 'markdown' | 'text'
 }
 
 interface BrainSection {
@@ -64,18 +70,6 @@ const TITLES: Record<SectionId, string> = {
   config: 'Config',
 }
 
-function bucketForConfidence(score: number): 'high' | 'medium' | 'low' {
-  if (score >= 0.85) return 'high'
-  if (score >= 0.6) return 'medium'
-  return 'low'
-}
-
-function badgeColorFor(bucket: 'high' | 'medium' | 'low'): string {
-  if (bucket === 'high') return 'bg-[#3F8F5A] text-white border-transparent'
-  if (bucket === 'medium') return 'bg-[#D4A23A] text-white border-transparent'
-  return 'bg-[#C9506E] text-white border-transparent'
-}
-
 export function Brain() {
   const [data, setData] = useState<ContextResponse | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -86,16 +80,9 @@ export function Brain() {
   const reload = useCallback(async () => {
     setLoadError(null)
     try {
-      const res = await api.get<ContextResponse>('/api/brain/context')
-      setData(res)
+      setData(await api.get<ContextResponse>('/api/brain/context'))
     } catch (err) {
-      const msg =
-        err instanceof ApiError
-          ? `Failed to load context (${err.status})`
-          : err instanceof Error
-            ? err.message
-            : 'Failed to load context'
-      setLoadError(msg)
+      setLoadError(describeError(err, 'Failed to load context'))
     }
   }, [])
 
@@ -104,8 +91,8 @@ export function Brain() {
   }, [reload])
 
   const handleRegenerate = async (id: SectionId) => {
-    setBusy((prev) => ({ ...prev, [id]: true }))
-    setErrorMap((prev) => ({ ...prev, [id]: null }))
+    setBusy((p) => ({ ...p, [id]: true }))
+    setErrorMap((p) => ({ ...p, [id]: null }))
     setRegenMessage(null)
     try {
       await api.post(`/api/brain/regenerate/${encodeURIComponent(id)}`, {})
@@ -113,21 +100,11 @@ export function Brain() {
         `Regenerated ${TITLES[id]}. Open /setup/review to commit the new draft.`,
       )
     } catch (err) {
-      const msg =
-        err instanceof ApiError
-          ? typeof err.body === 'object' && err.body && 'message' in err.body
-            ? String((err.body as { message: unknown }).message)
-            : `Regenerate failed (${err.status})`
-          : err instanceof Error
-            ? err.message
-            : 'Regenerate failed'
-      setErrorMap((prev) => ({ ...prev, [id]: msg }))
+      setErrorMap((p) => ({ ...p, [id]: describeError(err, 'Regenerate failed') }))
     } finally {
-      setBusy((prev) => ({ ...prev, [id]: false }))
+      setBusy((p) => ({ ...p, [id]: false }))
     }
   }
-
-  const sections = useMemo(() => data?.sections ?? [], [data])
 
   if (loadError) {
     return (
@@ -144,13 +121,12 @@ export function Brain() {
     )
   }
 
+  const sections = data?.sections ?? []
   return (
     <main className="min-h-screen px-6 py-12">
       <div className="max-w-3xl mx-auto space-y-6">
         <header>
-          <p className="font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground mb-2">
-            Brain
-          </p>
+          <p className={eyebrowClass}>Brain</p>
           <h1 className="font-heading text-3xl font-bold tracking-tight">Context viewer</h1>
           {data && (
             <p className="text-sm text-muted-foreground mt-1">
@@ -160,11 +136,7 @@ export function Brain() {
         </header>
 
         {regenMessage && (
-          <Card>
-            <CardContent className="pt-6 text-sm" data-testid="brain-regen-message">
-              {regenMessage}
-            </CardContent>
-          </Card>
+          <p className="text-sm" data-testid="brain-regen-message">{regenMessage}</p>
         )}
 
         <div className="space-y-4">
@@ -187,7 +159,7 @@ export function Brain() {
                       <Badge
                         data-testid={`brain-confidence-${s.id}`}
                         title={tooltip}
-                        className={badgeColorFor(bucket)}
+                        className={bucketBadgeClass(bucket)}
                       >
                         {bucket} · {s.confidence!.toFixed(2)}
                       </Badge>
@@ -196,27 +168,23 @@ export function Brain() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {s.files.map((f) => (
-                    <div key={f.canonical} className="space-y-1">
-                      <p className="font-mono text-[11px] text-muted-foreground">{f.canonical}</p>
-                      <pre
-                        data-testid={`brain-content-${f.canonical}`}
-                        className="rounded-md border border-border bg-background p-3 font-mono text-xs whitespace-pre-wrap break-words max-h-[280px] overflow-auto"
-                      >
-                        {f.content}
-                      </pre>
-                    </div>
-                  ))}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      data-testid={`brain-regen-${s.id}`}
-                      disabled={!!busy[s.id]}
-                      onClick={() => handleRegenerate(s.id)}
+                    <pre
+                      key={f.canonical}
+                      data-testid={`brain-content-${f.canonical}`}
+                      className={preBlockClass}
                     >
-                      {busy[s.id] ? 'Regenerating…' : 'Regenerate this section'}
-                    </Button>
-                  </div>
+                      {f.content}
+                    </pre>
+                  ))}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    data-testid={`brain-regen-${s.id}`}
+                    disabled={!!busy[s.id]}
+                    onClick={() => handleRegenerate(s.id)}
+                  >
+                    {busy[s.id] ? 'Regenerating…' : 'Regenerate this section'}
+                  </Button>
                   {errorMap[s.id] && (
                     <p
                       data-testid={`brain-error-${s.id}`}

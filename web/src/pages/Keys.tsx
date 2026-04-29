@@ -9,11 +9,12 @@
  * to the eventual URLs (`/keys/connect`).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { api, ApiError } from '@/lib/api'
+import { api } from '@/lib/api'
+import { describeError, eyebrowClass } from '@/lib/feedback'
 
 interface KeyEntry {
   id: string
@@ -56,16 +57,9 @@ export function Keys() {
   const reload = useCallback(async () => {
     setLoadError(null)
     try {
-      const res = await api.get<ListResponse>('/api/keys/list')
-      setData(res)
+      setData(await api.get<ListResponse>('/api/keys/list'))
     } catch (err) {
-      const msg =
-        err instanceof ApiError
-          ? `Failed to load providers (${err.status})`
-          : err instanceof Error
-            ? err.message
-            : 'Failed to load providers'
-      setLoadError(msg)
+      setLoadError(describeError(err, 'Failed to load providers'))
     }
   }, [])
 
@@ -79,17 +73,9 @@ export function Keys() {
       const res = await api.post<TestResult>(`/api/keys/test/${encodeURIComponent(id)}`, {})
       setTestResults((prev) => ({ ...prev, [id]: res }))
     } catch (err) {
-      const detail =
-        err instanceof ApiError
-          ? typeof err.body === 'object' && err.body && 'detail' in err.body
-            ? String((err.body as { detail: unknown }).detail)
-            : `Test failed (${err.status})`
-          : err instanceof Error
-            ? err.message
-            : 'Test failed'
       setTestResults((prev) => ({
         ...prev,
-        [id]: { status: 'fail', detail, ok: false },
+        [id]: { status: 'fail', detail: describeError(err, 'Test failed'), ok: false },
       }))
     } finally {
       setBusy((prev) => ({ ...prev, [id]: false }))
@@ -110,16 +96,14 @@ export function Keys() {
     }
   }
 
-  const providers = useMemo(() => data?.providers ?? [], [data])
+  const providers = data?.providers ?? []
 
   return (
     <main className="min-h-screen px-6 py-12">
       <div className="max-w-3xl mx-auto space-y-6">
         <header className="flex items-start justify-between gap-4">
           <div>
-            <p className="font-mono text-xs uppercase tracking-[0.18em] text-muted-foreground mb-2">
-              Keys
-            </p>
+            <p className={eyebrowClass}>Keys</p>
             <h1 className="font-heading text-3xl font-bold tracking-tight">Providers</h1>
             <p className="text-sm text-muted-foreground mt-1">
               Status of every registered provider. Test runs the provider&apos;s self-health
@@ -135,11 +119,7 @@ export function Keys() {
           </Button>
         </header>
 
-        {loadError && (
-          <Card>
-            <CardContent className="pt-6 text-sm text-destructive">{loadError}</CardContent>
-          </Card>
-        )}
+        {loadError && <p className="text-sm text-destructive">{loadError}</p>}
 
         <div className="space-y-4">
           {providers.map((p) => {
