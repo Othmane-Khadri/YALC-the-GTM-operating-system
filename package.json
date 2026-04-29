@@ -39,6 +39,8 @@
     "gold-fixtures",
     "scripts",
     "templates",
+    "web/dist",
+    "web/brand/tokens.json",
     ".claude/**/*.md",
     "docs/mcp.md",
     "data/intelligence/README.md",
