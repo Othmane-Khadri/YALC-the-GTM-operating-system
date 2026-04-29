@@ -2079,6 +2079,7 @@ program
   .option('--auto-confirm', 'Accept defaults for every input')
   .option('--destination <dest>', 'Output destination (notion or dashboard)')
   .option('--notion-parent <id>', 'Notion parent page ID (required if --destination notion)')
+  .option('--open', 'Open the framework dashboard in the browser after install')
   .action(withDiagnostics(async (name: string, opts) => {
     const { runFrameworkInstall } = await import('./commands/framework.js')
     await runFrameworkInstall(name, {
@@ -2086,15 +2087,28 @@ program
       destination: opts.destination,
       notionParent: opts.notionParent,
     })
+    if (opts.open) {
+      const { openBrowser } = await import('../lib/cli/open-browser.js')
+      const url = `http://localhost:3847/frameworks/${name}`
+      const r = openBrowser(url)
+      console.log(r.launched ? `  Opening ${url}…` : `  Open ${url} to view the dashboard.`)
+    }
   }))
 
 program
   .command('framework:run <name>')
   .description('Run an installed framework now (off-schedule)')
   .option('--seed', "Use seed_run.override_inputs from the framework definition")
+  .option('--open', 'Open the framework dashboard in the browser after the run')
   .action(withDiagnostics(async (name: string, opts) => {
     const { runFrameworkRun } = await import('./commands/framework.js')
     await runFrameworkRun(name, { seed: !!opts.seed })
+    if (opts.open) {
+      const { openBrowser } = await import('../lib/cli/open-browser.js')
+      const url = `http://localhost:3847/frameworks/${name}`
+      const r = openBrowser(url)
+      console.log(r.launched ? `  Opening ${url}…` : `  Open ${url} to view the dashboard.`)
+    }
   }))
 
 program
