@@ -51,7 +51,14 @@ import type {
 } from '../../lib/frameworks/types.js'
 import { isGateStep } from '../../lib/frameworks/types.js'
 
-const AGENTS_DIR = join(homedir(), '.gtm-os', 'agents')
+/**
+ * Resolve the agents/ directory at call time so HOME pivots in tests are
+ * honoured. (Prior to 0.9.E this was a top-level constant frozen at import
+ * time, which broke install tests that pivot HOME mid-suite.)
+ */
+function agentsDir(): string {
+  return join(homedir(), '.gtm-os', 'agents')
+}
 
 /**
  * Hardcoded fallback values for `$context.icp.*` paths that may legitimately
@@ -91,7 +98,8 @@ function resolveDefault(value: unknown): unknown {
 }
 
 function ensureAgentsDir() {
-  if (!existsSync(AGENTS_DIR)) mkdirSync(AGENTS_DIR, { recursive: true })
+  const dir = agentsDir()
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 }
 
 /** Render a single recommendation row for the printed list. */
