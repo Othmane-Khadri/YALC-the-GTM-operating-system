@@ -81,31 +81,46 @@ export function createApp() {
   app.route('/api/keys', keysRoutes)
   app.route('/api/skills', skillsRoutes)
 
-  // Framework dashboard routes
+  // Framework dashboard routes.
+  // DEPRECATED in 1.0.0 — installed framework runs surface in /today and
+  // per-framework detail moves into the SPA. Kept for 0.9.x scripts that
+  // open `/frameworks/<name>` directly (e.g. `framework:install --open`).
   app.route('/frameworks', frameworkRoutes)
 
   // Legacy static HTML pages — served BEFORE the SPA fallback so they win.
-  // These are progressively migrated to the SPA in the 0.9.C sub-phase.
+  // DEPRECATION: these dashboards retire in 1.0.0 once the SPA equivalents
+  // (/today, /brain, /keys, /skills) cover their feature surface. They're
+  // kept reachable through 0.9.x so existing scripts and bookmarks survive
+  // the cut-over window.
+
+  // DEPRECATED in 1.0.0 — replaced by /review functionality folded into
+  // /today + the Approve gate flow. SPA migration tracked separately.
   app.get('/review', (c) => {
     const html = readFileSync(join(__dirname, 'public', 'review.html'), 'utf-8')
     return c.html(html)
   })
 
+  // DEPRECATED in 1.0.0 — RL skill optimisation moves into /skills detail.
   app.get('/swipe/:sessionId', (c) => {
     const html = readFileSync(join(__dirname, 'public', 'swipe.html'), 'utf-8')
     return c.html(html)
   })
 
+  // DEPRECATED in 1.0.0 — campaign overview folds into /today; per-campaign
+  // detail will live under /campaigns/:id in the SPA.
   app.get('/campaigns', (c) => {
     const html = readFileSync(join(__dirname, 'public', 'campaigns.html'), 'utf-8')
     return c.html(html)
   })
 
+  // DEPRECATED in 1.0.0 — see /campaigns above.
   app.get('/campaigns/:id', (c) => {
     const html = readFileSync(join(__dirname, 'public', 'campaign-detail.html'), 'utf-8')
     return c.html(html)
   })
 
+  // DEPRECATED in 1.0.0 — monthly report becomes a /today filter once the
+  // run timeline gains date pinning.
   app.get('/monthly-report', (c) => {
     const html = readFileSync(join(__dirname, 'public', 'monthly-report.html'), 'utf-8')
     return c.html(html)
