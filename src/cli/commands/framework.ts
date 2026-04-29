@@ -311,7 +311,7 @@ function writeAgentYaml(framework: FrameworkDefinition, cfg: InstalledFrameworkC
 }
 
 /** Stub seed run — produces an empty DashboardRun so the route always 200s. */
-function runSeed(framework: FrameworkDefinition, inputs: Record<string, unknown>): void {
+function runSeed(framework: FrameworkDefinition, inputs: Record<string, unknown>): string {
   const run: DashboardRun = {
     title: `${framework.display_name} — initial state`,
     summary:
@@ -321,7 +321,38 @@ function runSeed(framework: FrameworkDefinition, inputs: Record<string, unknown>
     ranAt: new Date().toISOString(),
     meta: { inputs, seed: true },
   }
-  writeRun(framework.name, run)
+  return writeRun(framework.name, run)
+}
+
+/**
+ * After the seed run lands, generate the framework's `default_visualization`
+ * (when declared). Uses the seed run JSON as the data source so the saved
+ * page reflects the framework's real shape from the first install. Failures
+ * are best-effort — they print a WARN and the install still completes.
+ */
+async function generateDefaultVisualization(
+  framework: FrameworkDefinition,
+  seedRunPath: string,
+): Promise<{ url: string; idiom: string } | null> {
+  if (!framework.default_visualization) return null
+  try {
+    const { runVisualize } = await import('../../lib/visualize/runner.js')
+    const result = await runVisualize({
+      view_id: framework.default_visualization.view_id,
+      intent: framework.default_visualization.intent,
+      data_paths: [seedRunPath],
+    })
+    return {
+      url: `http://localhost:3847/visualize/${encodeURIComponent(result.view_id)}`,
+      idiom: result.idiom,
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[framework:install] Default visualization skipped: ${err instanceof Error ? err.message : String(err)}`,
+    )
+    return null
+  }
 }
 
 export async function runFrameworkInstall(name: string, opts: InstallOpts): Promise<void> {
@@ -372,7 +403,8 @@ export async function runFrameworkInstall(name: string, opts: InstallOpts): Prom
   // 0.7.0 / 0.8.0 install plumbing.
   const isOnDemand = framework.mode === 'on-demand'
   const yamlPath = isOnDemand ? null : writeAgentYaml(framework, cfg)
-  runSeed(framework, inputs)
+  const seedRunPath = runSeed(framework, inputs)
+  const visualization = await generateDefaultVisualization(framework, seedRunPath)
 
   console.log(`\nInstalled ${framework.name}.`)
   if (yamlPath) console.log(`  Agent yaml: ${yamlPath}`)
@@ -385,6 +417,9 @@ export async function runFrameworkInstall(name: string, opts: InstallOpts): Prom
     console.log(`  Schedule:   on-demand (run with: yalc-gtm framework:run ${framework.name})`)
   } else {
     console.log(`  Schedule:   ${framework.schedule.cron}${framework.schedule.timezone ? ` (${framework.schedule.timezone})` : ''}`)
+  }
+  if (visualization) {
+    console.log(`  Visualize:  ${visualization.url} (${visualization.idiom})`)
   }
   console.log(`  Logs:       yalc-gtm framework:logs ${framework.name}`)
   console.log()

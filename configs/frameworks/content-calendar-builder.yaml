@@ -80,3 +80,7 @@ seed_run:
   description: "On install, run once with a 14-day news lookback to seed the calendar."
   override_inputs:
     idea_count: 7
+
+default_visualization:
+  view_id: content-calendar
+  intent: "weekly content calendar grid with draft preview, approve/edit buttons"

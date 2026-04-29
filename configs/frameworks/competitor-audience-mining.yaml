@@ -75,3 +75,7 @@ seed_run:
   description: "On install, run once with a 14-day lookback to seed the audience."
   override_inputs:
     posts_lookback: 14
+
+default_visualization:
+  view_id: competitor-mining-leads
+  intent: "ICP-scored lead list grouped by competitor source, click-through to LinkedIn profile"

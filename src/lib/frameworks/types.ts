@@ -126,6 +126,17 @@ export interface FrameworkSeedRun {
 }
 
 /**
+ * Optional starting visualization. After the install seed run completes,
+ * the install hook generates this view via the `visualize` skill against
+ * the framework's seed run JSON. The `/today` SPA links to it through the
+ * per-framework "Visualize" link.
+ */
+export interface FrameworkDefaultVisualization {
+  view_id: string
+  intent: string
+}
+
+/**
  * The fully-parsed framework definition. Mirrors the YAML schema in
  * `configs/frameworks/<name>.yaml`. Required fields are validated at load
  * time — missing or malformed fields throw with file:line context.
@@ -154,6 +165,11 @@ export interface FrameworkDefinition {
   steps: FrameworkStepEntry[]
   output: FrameworkOutput
   seed_run?: FrameworkSeedRun
+  /**
+   * Optional starting visualization. The install hook generates this view
+   * after the seed run finishes; the SPA links to it from `/today`.
+   */
+  default_visualization?: FrameworkDefaultVisualization
 
   /** Path the definition was loaded from — useful for error messages. */
   _sourcePath?: string

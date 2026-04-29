@@ -75,3 +75,7 @@ output:
     - dashboard:
         when: "$has_provider:dashboard_local"
         route: "/frameworks/outreach-campaign-builder"
+
+default_visualization:
+  view_id: campaign-queue
+  intent: "kanban board of campaigns by stage (proposed, awaiting verification, launched, completed)"

@@ -17,12 +17,36 @@ import {
   readVisualizationMetadata,
   readVisualizationPage,
 } from '../../visualize/storage.js'
+import { loadAllFrameworks } from '../../frameworks/loader.js'
+import { listInstalledFrameworks } from '../../frameworks/registry.js'
 
 export const visualizeApiRoutes = new Hono()
 
 visualizeApiRoutes.get('/list', (c) => {
   const items = listVisualizations()
-  return c.json({ items, total: items.length })
+  // Per-framework default visualizations — surfaces both the saved view
+  // metadata (when generated) and the framework's declared default so the
+  // SPA can render a "Visualize" link per installed framework even before
+  // the seed-time generation has run.
+  const installed = new Set(listInstalledFrameworks())
+  const frameworks: Array<{
+    framework: string
+    view_id: string
+    intent: string
+    generated: boolean
+  }> = []
+  for (const f of loadAllFrameworks()) {
+    if (!f.default_visualization) continue
+    if (!installed.has(f.name)) continue
+    const generated = !!readVisualizationMetadata(f.default_visualization.view_id)
+    frameworks.push({
+      framework: f.name,
+      view_id: f.default_visualization.view_id,
+      intent: f.default_visualization.intent,
+      generated,
+    })
+  }
+  return c.json({ items, total: items.length, frameworks })
 })
 
 visualizeApiRoutes.get('/:viewId', (c) => {

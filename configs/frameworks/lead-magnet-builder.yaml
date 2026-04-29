@@ -63,3 +63,7 @@ output:
     - dashboard:
         when: "$has_provider:dashboard_local"
         route: "/frameworks/lead-magnet-builder"
+
+default_visualization:
+  view_id: lead-magnet-pipeline
+  intent: "grid of lead magnets by stage with asset preview"

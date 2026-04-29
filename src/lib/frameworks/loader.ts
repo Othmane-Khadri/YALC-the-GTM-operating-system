@@ -18,6 +18,7 @@ import yaml from 'js-yaml'
 import { homedir } from 'node:os'
 import { PKG_ROOT } from '../paths.js'
 import type {
+  FrameworkDefaultVisualization,
   FrameworkDefinition,
   FrameworkInput,
   FrameworkMode,
@@ -70,6 +71,7 @@ export function parseFrameworkYaml(sourcePath: string, raw: string): FrameworkDe
   const steps = parseSteps(sourcePath, r['steps'])
   const output = parseOutput(sourcePath, r['output'])
   const seed_run = parseSeedRun(sourcePath, r['seed_run'])
+  const default_visualization = parseDefaultVisualization(sourcePath, r['default_visualization'])
 
   if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(name)) {
     throw new FrameworkDefinitionError(
@@ -90,6 +92,7 @@ export function parseFrameworkYaml(sourcePath: string, raw: string): FrameworkDe
     steps,
     output,
     seed_run,
+    default_visualization,
     _sourcePath: sourcePath,
   }
 }
@@ -391,6 +394,30 @@ function parseSeedRun(sourcePath: string, raw: unknown): FrameworkSeedRun | unde
     out.override_inputs = r.override_inputs as Record<string, unknown>
   }
   return out
+}
+
+function parseDefaultVisualization(
+  sourcePath: string,
+  raw: unknown,
+): FrameworkDefaultVisualization | undefined {
+  if (raw == null) return undefined
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new FrameworkDefinitionError(sourcePath, '"default_visualization" must be a mapping')
+  }
+  const r = raw as Record<string, unknown>
+  if (typeof r.view_id !== 'string' || r.view_id.trim().length === 0) {
+    throw new FrameworkDefinitionError(
+      sourcePath,
+      '"default_visualization.view_id" must be a non-empty string',
+    )
+  }
+  if (typeof r.intent !== 'string' || r.intent.trim().length === 0) {
+    throw new FrameworkDefinitionError(
+      sourcePath,
+      '"default_visualization.intent" must be a non-empty string',
+    )
+  }
+  return { view_id: r.view_id, intent: r.intent }
 }
 
 /** Resolve the bundled-frameworks directory. Public for tests. */
