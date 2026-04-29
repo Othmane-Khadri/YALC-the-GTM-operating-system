@@ -5,18 +5,21 @@ import { homedir } from 'os'
 import { requireTTY } from '../../lib/cli/tty'
 
 // ---------------------------------------------------------------------------
-// Interactive wizard for creating markdown skills
+// LLM-assisted wizard for creating markdown skills (0.9.F).
+// ---------------------------------------------------------------------------
+//
+// Replaces the skeletal stub generator that 0.7.0 / 0.8.0 emitted. Flow:
+//   1. Collect four primitives — name, description, category, capability.
+//   2. Call the `reasoning` capability to draft a working body +
+//      output_schema + two example inputs.
+//   3. Show the result; user accepts (writes file) or types corrections
+//      that get appended into the next prompt.
 // ---------------------------------------------------------------------------
 
-interface InputDef {
-  name: string
-  description: string
-  required: boolean
-}
+const VALID_CATEGORIES = ['research', 'content', 'outreach', 'analysis', 'data', 'integration']
 
 export async function runSkillsCreate(): Promise<void> {
   requireTTY('skills:create')
-
   try {
     await runSkillsCreateInner()
   } catch (err) {
@@ -30,125 +33,83 @@ export async function runSkillsCreate(): Promise<void> {
 }
 
 async function runSkillsCreateInner(): Promise<void> {
-  console.log('\n-- Create a Markdown Skill --\n')
+  console.log('\n-- Create a Markdown Skill (LLM-drafted) --\n')
 
-  // 1. Name
   const name = await promptInput({
     message: 'Skill name (lowercase-with-dashes):',
-    validate: (val) => /^[a-z][a-z0-9-]*$/.test(val.trim())
-      ? true
-      : 'Must be lowercase alphanumeric with hyphens, starting with a letter.',
+    validate: (val) =>
+      /^[a-z][a-z0-9-]*$/.test(val.trim())
+        ? true
+        : 'Must be lowercase alphanumeric with hyphens, starting with a letter.',
   })
-
-  // 2. Description
   const description = await promptInput({
     message: 'Description:',
-    validate: (val) => val.trim().length > 0 ? true : 'Description is required.',
+    validate: (val) => (val.trim().length > 0 ? true : 'Description is required.'),
   })
-
-  // 3. Category
-  const categories = ['research', 'content', 'outreach', 'analysis', 'data', 'integration']
-  console.log(`\nCategories: ${categories.join(', ')}`)
+  console.log(`\nCategories: ${VALID_CATEGORIES.join(', ')}`)
   const category = await promptInput({
     message: 'Category:',
-    validate: (val) => categories.includes(val.trim())
-      ? true
-      : `Choose from: ${categories.join(', ')}`,
+    validate: (val) =>
+      VALID_CATEGORIES.includes(val.trim()) ? true : `Choose from: ${VALID_CATEGORIES.join(', ')}`,
+  })
+  const capability = await promptInput({
+    message: 'Capability the skill calls (e.g. reasoning, web-fetch, news-feed):',
+    validate: (val) => (val.trim().length > 0 ? true : 'Capability is required.'),
   })
 
-  // 4. Inputs
-  const inputs: InputDef[] = []
-  console.log('\nDefine input fields (leave name empty to finish):')
-  while (true) {
-    const inputName = (await promptInput({ message: '  Input name (empty to finish):' })).trim()
-    if (!inputName) break
-    const inputDesc = (await promptInput({ message: `  Description for "${inputName}":` })).trim()
-    const required = await promptConfirm({ message: `  Required?`, default: true })
-    inputs.push({ name: inputName, description: inputDesc || inputName, required })
-  }
+  const { runSkillDraft, renderSkillFile } = await import('../../lib/skills/llm-draft.js')
 
-  if (inputs.length === 0) {
-    console.error('At least one input is required.')
-    return
-  }
+  let corrections: string | undefined
+  for (let attempt = 0; attempt < 5; attempt++) {
+    console.log(`\n  Drafting skill via reasoning capability${corrections ? ' (with corrections)' : ''}…`)
+    let draft
+    try {
+      draft = await runSkillDraft({ name, description, category, capability, corrections })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`  ✗ Draft failed: ${msg}`)
+      const retry = await promptConfirm({ message: 'Retry?', default: true })
+      if (!retry) return
+      continue
+    }
 
-  // 5. Provider
-  console.log('\nAvailable providers: firecrawl, crustdata, fullenrich, unipile, notion, instantly, mock')
-  console.log('(Or any MCP provider you have installed)')
-  const provider = await promptInput({
-    message: 'Provider:',
-    validate: (val) => val.trim().length > 0 ? true : 'Provider is required.',
-  })
+    console.log('\n  -- Drafted skill --')
+    console.log(`  Inputs:        ${draft.inputs.map((i) => i.name).join(', ')}`)
+    console.log(`  Output schema: ${Object.keys(draft.output_schema).join(', ')}`)
+    console.log(`  Body preview:  ${draft.body.slice(0, 120)}${draft.body.length > 120 ? '…' : ''}`)
 
-  // 6. Capabilities
-  console.log('\nCapabilities: search, enrich, qualify, filter, export, custom')
-  const capInput = await promptInput({ message: 'Capabilities (comma-separated):' })
-  const capabilities = capInput
-    .split(',')
-    .map(c => c.trim())
-    .filter(Boolean)
+    const accept = await promptConfirm({ message: 'Accept this draft?', default: true })
+    if (accept) {
+      const skillsDir = join(homedir(), '.gtm-os', 'skills')
+      mkdirSync(skillsDir, { recursive: true })
+      const filePath = join(skillsDir, `${name}.md`)
+      if (existsSync(filePath)) {
+        const overwrite = await promptConfirm({
+          message: `\n${filePath} already exists. Overwrite?`,
+          default: false,
+        })
+        if (!overwrite) {
+          console.log('Aborted.')
+          return
+        }
+      }
+      const content = renderSkillFile({ name, description, category, capability, draft })
+      writeFileSync(filePath, content)
+      console.log(`\nSkill created: ${filePath}`)
+      console.log(`Run it: yalc-gtm skills:run md:${name} --input ...`)
+      return
+    }
 
-  // 7. Build the template
-  const inputsYaml = inputs
-    .map(inp => {
-      const lines = [`  - name: ${inp.name}`, `    description: ${inp.description}`]
-      if (!inp.required) lines.push(`    required: false`)
-      return lines.join('\n')
-    })
-    .join('\n')
-
-  const templateVars = inputs.map(inp => `{{${inp.name}}}`).join(', ')
-  const capArray = capabilities.length > 0 ? `[${capabilities.join(', ')}]` : '[custom]'
-
-  const content = `---
-name: ${name}
-description: ${description}
-category: ${category}
-inputs:
-${inputsYaml}
-provider: ${provider}
-capabilities: ${capArray}
-output: structured_json
----
-
-You are executing the "${name}" skill with these inputs: ${templateVars}
-
-${inputs.map(inp => `- **${inp.name}**: {{${inp.name}}}`).join('\n')}
-
-Analyze the inputs and return structured results as JSON.
-
-Return a JSON object with your findings:
-\`\`\`json
-{
-${inputs.map(inp => `  "${inp.name}_result": ""`).join(',\n')}
-}
-\`\`\`
-`
-
-  // 8. Save
-  const skillsDir = join(homedir(), '.gtm-os', 'skills')
-  mkdirSync(skillsDir, { recursive: true })
-  const filePath = join(skillsDir, `${name}.md`)
-
-  if (existsSync(filePath)) {
-    const overwrite = await promptConfirm({ message: `\n${filePath} already exists. Overwrite?`, default: false })
-    if (!overwrite) {
-      console.log('Aborted.')
+    corrections = (
+      await promptInput({
+        message: 'Type corrections to feed the next draft (empty to abort):',
+      })
+    ).trim()
+    if (!corrections) {
+      console.log('Aborted — no file written.')
       return
     }
   }
-
-  writeFileSync(filePath, content)
-  console.log(`\nSkill created: ${filePath}`)
-  console.log(`\nRun it:`)
-  const firstInput = inputs[0]
-  const moreInputs = inputs.length > 1 ? ' --input ...' : ''
-  if (firstInput) {
-    console.log(`  yalc-gtm skills:run md:${name} --input ${firstInput.name}=<value>${moreInputs}`)
-  } else {
-    console.log(`  yalc-gtm skills:run md:${name}`)
-  }
-  console.log(`Inspect schema:`)
-  console.log(`  yalc-gtm skills:info md:${name}`)
-  console.log(`\nEdit the prompt template in the file to customize the skill behavior.`)
+  console.error('  Hit max draft attempts. Aborting.')
+  process.exit(1)
 }
