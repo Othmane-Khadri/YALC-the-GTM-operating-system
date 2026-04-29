@@ -55,7 +55,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "prepublishOnly": "pnpm typecheck && pnpm test"
+    "build:web": "pnpm --dir web build",
+    "dev:web": "pnpm --dir web dev",
+    "prepublishOnly": "pnpm build:web && pnpm typecheck && pnpm test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
