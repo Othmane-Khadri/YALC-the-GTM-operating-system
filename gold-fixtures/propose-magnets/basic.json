@@ -1,0 +1,47 @@
+{
+  "input": {
+    "company_context": "Earleads — GTM engineering. Sells GTM agents to Series A-B founders.",
+    "target_persona": "VP RevOps at Series B SaaS"
+  },
+  "expected_output": {
+    "magnets": [
+      {
+        "id": "m1",
+        "title": "The 12-Step GTM Agent Audit Checklist",
+        "format": "checklist",
+        "hook": "Find every manual step in your outbound that an agent should already be doing.",
+        "attractiveness": 8.5,
+        "rationale": "Audit format pattern-matches RevOps brain"
+      },
+      {
+        "id": "m2",
+        "title": "GTM Agent ROI Calculator (Google Sheet)",
+        "format": "calculator",
+        "hook": "Plug in your SDR comp, contact volume, and pipeline goal — see the agent break-even.",
+        "attractiveness": 8.0,
+        "rationale": "RevOps loves spreadsheet tooling"
+      },
+      {
+        "id": "m3",
+        "title": "Swipe File: 30 GTM Agent Prompts We Ship to Clients",
+        "format": "swipe-file",
+        "hook": "Real prompts, real outputs, copy-paste into your stack.",
+        "attractiveness": 7.5
+      },
+      {
+        "id": "m4",
+        "title": "5-Day GTM Agent Bootcamp (Email Course)",
+        "format": "mini-course",
+        "hook": "One actionable lesson per day. Build your first agent by Friday.",
+        "attractiveness": 7.0
+      },
+      {
+        "id": "m5",
+        "title": "2026 GTM Agent Adoption Benchmark",
+        "format": "benchmark-report",
+        "hook": "Where do Series B SaaS teams actually use agents today? 200+ responses.",
+        "attractiveness": 7.8
+      }
+    ]
+  }
+}

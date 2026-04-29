@@ -1,0 +1,14 @@
+{
+  "input": {
+    "outline_html": "<h1>GTM Agent Audit Checklist</h1><p>Find every manual step in your outbound...</p>",
+    "filename": "gtm-agent-audit",
+    "format": "html",
+    "title": "GTM Agent Audit Checklist"
+  },
+  "expected_output": {
+    "rendered": true,
+    "path": "/Users/operator/.gtm-os/assets/gtm-agent-audit.html",
+    "format": "html",
+    "fallbackReason": null
+  }
+}

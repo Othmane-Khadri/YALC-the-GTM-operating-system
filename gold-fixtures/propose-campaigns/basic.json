@@ -1,0 +1,35 @@
+{
+  "input": {
+    "company_context": "Earleads — GTM engineering for B2B SaaS. ICP: Series A-B founders running outbound themselves.",
+    "hypothesis": "Founders care about cutting CAC by ditching SDR teams in favor of GTM agents.",
+    "channel": "linkedin"
+  },
+  "expected_output": {
+    "variants": [
+      {
+        "id": "v1",
+        "angle": "CAC-reduction first-person story",
+        "target_persona": "Series A founder",
+        "channel": "linkedin",
+        "hook": "We fired our 3-person SDR team and replaced them with 2 agents. Here's the math.",
+        "rationale": "Founder peer-to-peer narrative outperforms vendor pitch on LinkedIn"
+      },
+      {
+        "id": "v2",
+        "angle": "Cold reframe: SDR is a 1990s job",
+        "target_persona": "RevOps lead at Series B",
+        "channel": "linkedin",
+        "hook": "The SDR role was invented in 1995. It still hasn't been redesigned.",
+        "rationale": "Provocative framing that stops the scroll"
+      },
+      {
+        "id": "v3",
+        "angle": "Concrete tool stack walkthrough",
+        "target_persona": "Outbound-curious founder",
+        "channel": "linkedin",
+        "hook": "Our 4-tool outbound stack costs $500/mo and replaces $40k/quarter in SDR salary.",
+        "rationale": "Tool-stack transparency is a high-trust signal in our segment"
+      }
+    ]
+  }
+}
