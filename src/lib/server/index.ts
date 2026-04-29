@@ -18,6 +18,7 @@ import { brainRoutes } from './routes/brain'
 import { keysRoutes } from './routes/keys'
 import { skillsRoutes } from './routes/skills'
 import { gatesRoutes } from './routes/gates'
+import { visualizeApiRoutes, visualizePageRoutes } from './routes/visualize'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -82,6 +83,12 @@ export function createApp() {
   app.route('/api/keys', keysRoutes)
   app.route('/api/skills', skillsRoutes)
   app.route('/api/gates', gatesRoutes)
+  app.route('/api/visualize', visualizeApiRoutes)
+
+  // Generated visualization page — serves saved HTML from
+  // `~/.gtm-os/visualizations/<view_id>.html` with the right Content-Type.
+  // Mounted BEFORE the SPA fallback so the page route wins.
+  app.route('/visualize', visualizePageRoutes)
 
   // Framework dashboard routes.
   // DEPRECATED in 1.0.0 — installed framework runs surface in /today and
@@ -146,6 +153,7 @@ export function createApp() {
           if (
             p.startsWith('/api') ||
             p.startsWith('/frameworks') ||
+            p.startsWith('/visualize/') ||
             p === '/review' ||
             p === '/campaigns' ||
             p.startsWith('/campaigns/') ||
@@ -166,6 +174,7 @@ export function createApp() {
       if (
         path.startsWith('/api') ||
         path.startsWith('/frameworks') ||
+        path.startsWith('/visualize/') ||
         path === '/review' ||
         path === '/campaigns' ||
         path.startsWith('/campaigns/') ||
