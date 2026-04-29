@@ -1,0 +1,82 @@
+name: content-calendar-builder
+display_name: "Content Calendar Builder"
+description: >
+  Each Monday, mines news + LinkedIn trending posts in your niche, asks the
+  reasoning capability to propose 5 content ideas, drafts each one in your
+  captured voice, and presents the drafts for human approval before they
+  enter your content calendar. Replaces the previous Reddit-flavored
+  weekly-content-radar framework with a LinkedIn-only, voice-aligned
+  workflow.
+
+requires:
+  any_of_keys:
+    - ANTHROPIC_API_KEY
+
+recommended_when:
+  has_provider: unipile
+  not_has_active_framework: content-calendar-builder
+
+inputs:
+  - name: niche_keyword
+    description: "Niche keyword used for LinkedIn trending search (e.g. \"go-to-market engineering\")."
+    default: "$context.icp.category_keyword"
+  - name: news_query
+    description: "News search query for the same niche."
+    default: "$context.icp.category_keyword"
+  - name: account_id
+    description: "Unipile account id used for trending search."
+    default: "$context.sources.linkedin_account_id"
+  - name: trending_min_engagement
+    description: "Minimum likes+comments to consider a post 'trending' (default 50)."
+    default: 50
+  - name: idea_count
+    description: "Number of content ideas to draft per run."
+    default: 5
+
+mode: scheduled
+
+schedule:
+  cron: "0 9 * * 1"
+  timezone: "$context.company.timezone"
+
+steps:
+  - skill: detect-news
+    input:
+      query: "{{news_query}}"
+      lookback_days: 7
+  - skill: linkedin-trending-content
+    input:
+      account_id: "{{account_id}}"
+      keyword: "{{niche_keyword}}"
+      min_engagement: "{{trending_min_engagement}}"
+      limit: 25
+  - skill: propose-campaigns
+    input:
+      company_context: "$file:~/.gtm-os/company_context.yaml"
+      hypothesis: "Build {{idea_count}} content ideas seeded by the news + trending feeds above."
+      channel: "linkedin"
+  - skill: draft-content-post
+    input:
+      idea: "{{steps[2].output}}"
+      voice_md_content: "$file:~/.gtm-os/voice/tone-of-voice.md"
+      company_context: "$file:~/.gtm-os/company_context.yaml"
+      max_words: 220
+  - gate:
+      id: approve-drafts
+      prompt: "Approve the drafted posts before they enter the content calendar."
+      surface: ui-today
+      payload_from_step: 3
+
+output:
+  destination_choice:
+    - dashboard:
+        when: "$has_provider:dashboard_local"
+        route: "/frameworks/content-calendar-builder"
+    - notion:
+        when: "$has_provider:notion"
+        target_db: "$config.notion.parent_page"
+
+seed_run:
+  description: "On install, run once with a 14-day news lookback to seed the calendar."
+  override_inputs:
+    idea_count: 7
