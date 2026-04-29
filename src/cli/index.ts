@@ -2112,6 +2112,32 @@ program
   }))
 
 program
+  .command('framework:resume <name>')
+  .description('Resume a framework run that paused at a human-gate step')
+  .requiredOption('--from-gate <runId>', 'Run-id of the paused gate to resume')
+  .action(withDiagnostics(async (name: string, opts) => {
+    const { runFrameworkResume } = await import('./commands/framework.js')
+    const { FrameworkGatePauseError, FrameworkRunError, EXIT_CODE_AWAITING_GATE } =
+      await import('../lib/frameworks/runner.js')
+    try {
+      const result = await runFrameworkResume(name, { fromGate: opts.fromGate })
+      console.log(`  Resumed (${result.mode}). Wrote: ${result.path}`)
+      console.log(`  Rows:  ${result.rows}`)
+    } catch (err) {
+      if (err instanceof FrameworkGatePauseError) {
+        console.log(`  Run paused again at gate \`${err.gateId}\`. View: http://localhost:3847/today`)
+        console.log(`  Awaiting gate file: ${err.awaitingGatePath}`)
+        process.exit(EXIT_CODE_AWAITING_GATE)
+      }
+      if (err instanceof FrameworkRunError) {
+        console.error(`  Step ${err.step} (${err.stepSkill}) failed: ${err.message}`)
+        process.exit(1)
+      }
+      throw err
+    }
+  }))
+
+program
   .command('framework:status <name>')
   .description('Show status (last run, next run, output destination) for an installed framework')
   .action(withDiagnostics(async (name: string) => {

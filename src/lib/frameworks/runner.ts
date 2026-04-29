@@ -119,6 +119,12 @@ export interface AwaitingGateRecord {
   gate_id: string
   prompt: string
   payload: unknown
+  /**
+   * Index into `prior_step_outputs` whose value the gate's payload came
+   * from. Approve-with-edits writes the (possibly-edited) payload back into
+   * this slot so the resumed run sees the human's edits via `{{steps[N].output}}`.
+   */
+  payload_step_index: number | null
   prior_step_outputs: unknown[]
   inputs: Record<string, unknown>
   created_at: string
@@ -399,12 +405,13 @@ export async function runFramework(
     const stepEntry: FrameworkStepEntry = framework.steps[i]
     if (isGateStep(stepEntry)) {
       // Resolve the editable payload — defaults to the immediately-previous
-      // step's output, with `payload_from_step` allowing reach-back.
-      const fromStep =
-        stepEntry.gate.payload_from_step !== undefined
-          ? stepEntry.gate.payload_from_step
-          : Math.max(0, i - 1)
-      const payload = stepOutputs[fromStep] ?? null
+      // step's output, with `payload_from_step` allowing reach-back. When
+      // there is no previous step (i === 0 with no override) the payload
+      // is null and resume-with-edits is a no-op.
+      const hasPrev = i > 0
+      const explicit = stepEntry.gate.payload_from_step
+      const fromStep = explicit !== undefined ? explicit : hasPrev ? i - 1 : null
+      const payload = fromStep !== null ? stepOutputs[fromStep] ?? null : null
       const dir = runsDirFor(name)
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
       const awaitingPath = join(dir, `${runId}.awaiting-gate.json`)
@@ -415,6 +422,7 @@ export async function runFramework(
         gate_id: stepEntry.gate.id,
         prompt: stepEntry.gate.prompt,
         payload,
+        payload_step_index: fromStep,
         prior_step_outputs: stepOutputs,
         inputs: vars,
         created_at: ranAt,

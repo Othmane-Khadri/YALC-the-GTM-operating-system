@@ -410,6 +410,78 @@ export async function runFrameworkRun(name: string, opts: RunOpts = {}): Promise
   }
 }
 
+// ─── framework:resume ──────────────────────────────────────────────────────
+
+interface ResumeOpts {
+  fromGate: string
+}
+
+/**
+ * Resume a paused framework run.
+ *
+ * Reads the gate-approved.json (or gate-rejected.json) sibling of the
+ * awaiting-gate sentinel, then either:
+ *   - approved → continues execution from `step_index + 1` with payload
+ *     edits already baked into the prior step outputs.
+ *   - rejected → starts a fresh run from step 0 with `rejection_reason`
+ *     threaded into the runner's variable map.
+ *
+ * Used directly by the CLI and (in-process) by `/api/gates/<id>/approve`.
+ */
+export async function runFrameworkResume(
+  name: string,
+  opts: ResumeOpts,
+): Promise<{ path: string; rows: number; mode: 'approved' | 'rejected' }> {
+  const cfg = loadInstalledConfig(name)
+  if (!cfg) {
+    throw new Error(`Framework "${name}" is not installed`)
+  }
+  const runId = opts.fromGate
+  const { readGateState } = await import('../../lib/frameworks/gates.js')
+  const state = readGateState(name, runId)
+  if (state.kind === 'missing') {
+    throw new Error(
+      `No gate sentinel for run ${runId} on framework ${name}. ` +
+      `Approve or reject the gate first via /api/gates/${runId}/{approve,reject}.`,
+    )
+  }
+  if (state.kind === 'awaiting') {
+    throw new Error(
+      `Gate for run ${runId} on framework ${name} is still awaiting human input. ` +
+      `Approve or reject before resuming.`,
+    )
+  }
+  const { runFramework } = await import('../../lib/frameworks/runner.js')
+  const { clearAwaitingSentinel } = await import('../../lib/frameworks/gates.js')
+  if (state.kind === 'approved') {
+    const r = state.record
+    const { path, run } = await runFramework(name, {
+      resume: {
+        runId: r.run_id,
+        startAtStep: r.step_index + 1,
+        priorStepOutputs: r.prior_step_outputs,
+        ...(r.payload_step_index !== null && r.payload_step_index !== undefined
+          ? { payloadOverride: { stepIndex: r.payload_step_index, value: r.payload } }
+          : {}),
+      },
+    })
+    clearAwaitingSentinel(name, runId)
+    return { path, rows: run.rows.length, mode: 'approved' }
+  }
+  // rejected → restart from step 0 with rejection_reason in vars.
+  const r = state.record
+  const { path, run } = await runFramework(name, {
+    resume: {
+      runId: r.run_id,
+      startAtStep: 0,
+      priorStepOutputs: [],
+      rejectionReason: r.reason,
+    },
+  })
+  clearAwaitingSentinel(name, runId)
+  return { path, rows: run.rows.length, mode: 'rejected' }
+}
+
 // ─── framework:status ──────────────────────────────────────────────────────
 
 export async function runFrameworkStatus(name: string): Promise<void> {
