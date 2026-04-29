@@ -1,9 +1,9 @@
 /**
  * /today — daily feed of framework runs and pending human-gate items.
  *
- * Consumes /api/today/feed. Read-only in 0.9.0 (the awaiting-gate writer
- * lands in 0.9.E and an Approve button lands in 1.0.0; the structural
- * support is here today so the view "just works" once gates are populated).
+ * Consumes /api/today/feed. Approve / Reject for awaiting-gate items posts
+ * to /api/gates/<run-id>/{approve,reject}; the payload preview is editable
+ * (textarea over JSON) and on Approve the parsed object is sent as `edits`.
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -54,6 +54,12 @@ export function Today() {
   const [retryBusy, setRetryBusy] = useState<Record<string, boolean>>({})
   const [retryMessage, setRetryMessage] = useState<string | null>(null)
   const [retryError, setRetryError] = useState<string | null>(null)
+  // Per-gate state — keyed by run_id so concurrent gates don't clobber.
+  const [payloadDrafts, setPayloadDrafts] = useState<Record<string, string>>({})
+  const [rejectDrafts, setRejectDrafts] = useState<Record<string, string>>({})
+  const [gateBusy, setGateBusy] = useState<Record<string, boolean>>({})
+  const [gateMessage, setGateMessage] = useState<string | null>(null)
+  const [gateError, setGateError] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
     setLoadError(null)
@@ -83,6 +89,62 @@ export function Today() {
     }
   }
 
+  const handleApprove = async (item: GateItem) => {
+    const key = item.run_id
+    setGateBusy((prev) => ({ ...prev, [key]: true }))
+    setGateError(null)
+    setGateMessage(null)
+    try {
+      const draft = payloadDrafts[key]
+      let edits: unknown = undefined
+      if (typeof draft === 'string' && draft.trim().length > 0) {
+        try {
+          edits = JSON.parse(draft)
+        } catch {
+          throw new Error('Payload is not valid JSON. Fix it before approving.')
+        }
+      }
+      await api.post(`/api/gates/${encodeURIComponent(key)}/approve`, { edits })
+      setGateMessage(`Approved gate ${item.gate_id} on ${item.framework}.`)
+      await reload()
+    } catch (err) {
+      setGateError(`${item.framework}: ${describeError(err, 'Approve failed')}`)
+    } finally {
+      setGateBusy((prev) => ({ ...prev, [key]: false }))
+    }
+  }
+
+  const handleReject = async (item: GateItem) => {
+    const key = item.run_id
+    const reason = (rejectDrafts[key] ?? '').trim()
+    if (reason.length === 0) {
+      setGateError(`${item.framework}: rejection reason is required.`)
+      return
+    }
+    setGateBusy((prev) => ({ ...prev, [key]: true }))
+    setGateError(null)
+    setGateMessage(null)
+    try {
+      await api.post(`/api/gates/${encodeURIComponent(key)}/reject`, { reason })
+      setGateMessage(`Rejected gate ${item.gate_id} on ${item.framework}.`)
+      await reload()
+    } catch (err) {
+      setGateError(`${item.framework}: ${describeError(err, 'Reject failed')}`)
+    } finally {
+      setGateBusy((prev) => ({ ...prev, [key]: false }))
+    }
+  }
+
+  const draftFor = (item: GateItem): string => {
+    const key = item.run_id
+    if (key in payloadDrafts) return payloadDrafts[key]
+    try {
+      return JSON.stringify(item.payload, null, 2)
+    } catch {
+      return ''
+    }
+  }
+
   const items = data?.items ?? []
   const isEmpty = !loadError && data !== null && items.length === 0
 
@@ -103,6 +165,12 @@ export function Today() {
         {retryError && (
           <p className="text-sm text-destructive" data-testid="today-retry-error">{retryError}</p>
         )}
+        {gateMessage && (
+          <p className="text-sm" data-testid="today-gate-message">{gateMessage}</p>
+        )}
+        {gateError && (
+          <p className="text-sm text-destructive" data-testid="today-gate-error">{gateError}</p>
+        )}
         {loadError && <p className="text-sm text-destructive">{loadError}</p>}
         {isEmpty && (
           <p className="text-sm" data-testid="today-empty">
@@ -115,6 +183,7 @@ export function Today() {
           {items.map((item, i) => {
             if (item.type === 'awaiting_gate') {
               const key = `gate-${i}-${item.framework}`
+              const busy = !!gateBusy[item.run_id]
               return (
                 <Card key={key} data-testid={`today-gate-${item.framework}`}>
                   <CardHeader>
@@ -131,14 +200,53 @@ export function Today() {
                   <CardContent className="space-y-3">
                     <p className="text-sm">{item.prompt}</p>
                     <p className="text-xs text-muted-foreground">{formatTime(item.created_at)}</p>
-                    <Button
-                      size="sm"
-                      data-testid={`today-approve-${item.framework}`}
-                      disabled
-                      title="Approval lands in 1.0.0"
-                    >
-                      Approve gate
-                    </Button>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium" htmlFor={`payload-${item.run_id}`}>
+                        Payload (editable JSON — sent as `edits` on Approve)
+                      </label>
+                      <textarea
+                        id={`payload-${item.run_id}`}
+                        data-testid={`today-payload-${item.framework}`}
+                        className="w-full h-32 rounded-md border bg-background p-2 font-mono text-xs"
+                        value={draftFor(item)}
+                        onChange={(e) =>
+                          setPayloadDrafts((prev) => ({ ...prev, [item.run_id]: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium" htmlFor={`reason-${item.run_id}`}>
+                        Rejection reason (required to Reject)
+                      </label>
+                      <input
+                        id={`reason-${item.run_id}`}
+                        data-testid={`today-reason-${item.framework}`}
+                        className="w-full rounded-md border bg-background p-2 text-sm"
+                        value={rejectDrafts[item.run_id] ?? ''}
+                        onChange={(e) =>
+                          setRejectDrafts((prev) => ({ ...prev, [item.run_id]: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        data-testid={`today-approve-${item.framework}`}
+                        disabled={busy}
+                        onClick={() => handleApprove(item)}
+                      >
+                        {busy ? 'Working…' : 'Approve'}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid={`today-reject-${item.framework}`}
+                        disabled={busy}
+                        onClick={() => handleReject(item)}
+                      >
+                        Reject
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               )
