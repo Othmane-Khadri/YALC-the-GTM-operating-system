@@ -17,6 +17,7 @@ import { todayRoutes } from './routes/today'
 import { brainRoutes } from './routes/brain'
 import { keysRoutes } from './routes/keys'
 import { skillsRoutes } from './routes/skills'
+import { gatesRoutes } from './routes/gates'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -80,6 +81,7 @@ export function createApp() {
   app.route('/api/brain', brainRoutes)
   app.route('/api/keys', keysRoutes)
   app.route('/api/skills', skillsRoutes)
+  app.route('/api/gates', gatesRoutes)
 
   // Framework dashboard routes.
   // DEPRECATED in 1.0.0 — installed framework runs surface in /today and
