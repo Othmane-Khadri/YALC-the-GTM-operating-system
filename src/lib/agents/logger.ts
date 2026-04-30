@@ -1,7 +1,7 @@
 // ─── Agent Logger ────────────────────────────────────────────────────────────
 // Structured JSON logging for background agent runs.
 
-import { writeFileSync, mkdirSync, existsSync, readdirSync } from 'fs'
+import { writeFileSync, mkdirSync, existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import type { StepLog, AgentRunLog } from './types'
@@ -79,7 +79,6 @@ export class AgentLogger {
     if (files.length === 0) return null
 
     const lastFile = files[files.length - 1]
-    const { readFileSync } = require('fs')
     return JSON.parse(readFileSync(join(logDir, lastFile), 'utf-8'))
   }
 }

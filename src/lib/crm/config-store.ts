@@ -8,7 +8,7 @@
  * overwrites without explicit intent.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import yaml from 'js-yaml'
@@ -64,7 +64,6 @@ export function saveCrmConfig(config: CRMProviderConfig): string {
 export function listCrmConfigs(): string[] {
   if (!existsSync(CRM_CONFIG_DIR)) return []
 
-  const { readdirSync } = require('fs')
   return readdirSync(CRM_CONFIG_DIR)
     .filter((f: string) => f.endsWith('.yaml') || f.endsWith('.yml'))
     .map((f: string) => f.replace(/\.ya?ml$/, ''))
@@ -77,7 +76,6 @@ export function deleteCrmConfig(provider: string): boolean {
   const filePath = join(CRM_CONFIG_DIR, `${provider}.yaml`)
   if (!existsSync(filePath)) return false
 
-  const { unlinkSync } = require('fs')
   unlinkSync(filePath)
   return true
 }
