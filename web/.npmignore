@@ -1,0 +1,2 @@
+# Empty file: presence suppresses web/.gitignore's exclusions at npm-publish time,
+# letting the root files allowlist control what ships (web/dist included).
