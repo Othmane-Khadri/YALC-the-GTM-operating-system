@@ -16,7 +16,7 @@
  * Produces a populated `_preview/` folder via writeSynthesizedPreview().
  */
 
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { createHash } from 'node:crypto'
@@ -112,7 +112,6 @@ function readDocsFolder(folder: string): { content: string; files: string[] } {
   const visit = (dir: string) => {
     let entries: string[]
     try {
-      const { readdirSync } = require('node:fs') as typeof import('node:fs')
       entries = readdirSync(dir)
     } catch {
       return

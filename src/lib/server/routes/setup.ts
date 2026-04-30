@@ -18,7 +18,7 @@
  */
 
 import { Hono } from 'hono'
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
 import {
@@ -70,7 +70,6 @@ function collectSectionFiles(
       // Read top-level entries inside the section directory. We don't
       // recurse — the synthesis writer only emits one level (e.g.
       // `voice/tone-of-voice.md`, `voice/examples.md`).
-      const { readdirSync } = require('node:fs') as typeof import('node:fs')
       for (const entry of readdirSync(abs).sort()) {
         const sub = join(canonical, entry)
         const subAbs = previewPath(sub, tenant)

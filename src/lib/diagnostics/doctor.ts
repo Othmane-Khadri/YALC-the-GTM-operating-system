@@ -16,6 +16,8 @@ import yaml from 'js-yaml'
 import { GTM_OS_DIR } from '../paths'
 import { isClaudeCode } from '../env/claude-code'
 import { isProviderDisabled } from '../config/loader'
+import { listInstalledFrameworks } from '../frameworks/registry'
+import { RETIRED_FRAMEWORKS } from '../frameworks/retired'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -902,14 +904,6 @@ function suggestionForSection(section: string): string {
  */
 function retiredFrameworksLayer(): LayerResult | null {
   try {
-    // Lazy-require so the doctor module stays usable in environments
-    // where the framework registry hasn't been initialized yet.
-    const { listInstalledFrameworks } = require('../frameworks/registry') as {
-      listInstalledFrameworks: () => string[]
-    }
-    const { RETIRED_FRAMEWORKS } = require('../frameworks/retired') as {
-      RETIRED_FRAMEWORKS: Array<{ name: string; replacement: string; note?: string }>
-    }
     const installed = new Set(listInstalledFrameworks())
     const retiredHits = RETIRED_FRAMEWORKS.filter((r) => installed.has(r.name))
     if (retiredHits.length === 0) return null
