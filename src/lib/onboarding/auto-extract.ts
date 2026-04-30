@@ -68,6 +68,28 @@ export function deriveNameFromUrl(url: string): string | undefined {
   return titleCase(firstLabel)
 }
 
+/**
+ * Heuristic: does this string look like a brand name (vs a tagline, sentence,
+ * or marketing blurb)? Brands are short, don't contain function words, and
+ * rarely have more than 4 tokens. We use this to gate title-derived names
+ * so a title like "Your go-to-market operating system from Claude Code" —
+ * which has no separator and would otherwise leak through as the brand —
+ * gets rejected, letting the caller fall back to og:site_name / h1 / URL.
+ */
+export function looksLikeBrand(s: string): boolean {
+  if (!s) return false
+  const trimmed = s.trim()
+  if (trimmed.length === 0 || trimmed.length > 32) return false
+  if (trimmed.split(/\s+/).length > 4) return false
+  // Common tagline / sentence shapes — these phrases never appear in a real
+  // brand name. The check is whitespace-bounded so we don't false-positive
+  // legitimate brand names that happen to start with one of these letters.
+  const taglineMarkers =
+    /\b(operating system|platform|software|tool|solution|service|app|for|from|to|the|a|your|our|with|that|this|how|why|what|when|where|build|builds|building|grow|grows|growing|enables?|powered|driven)\b/i
+  if (taglineMarkers.test(trimmed)) return false
+  return true
+}
+
 /** Extract a company name from `<title>`, `<h1>`, or `og:site_name`. */
 export function extractCompanyName(content: string): string | undefined {
   if (!content) return undefined
@@ -87,23 +109,29 @@ export function extractCompanyName(content: string): string | undefined {
   if (titleTag?.[1]) {
     // Titles often look like "Brand — Tagline" or "Brand: Tagline" or
     // "Brand | Tagline". Prefer the first segment because that's almost
-    // always the brand. We accept the separator with or without a leading
-    // space (e.g. `Foo: bar` and `Foo : bar` both split). Falls back to
-    // the full title if there's no obvious separator.
+    // always the brand. Accept the candidate ONLY when it passes the brand
+    // sanity gate — otherwise we'd grab "Your go-to-market operating
+    // system" off a tagline-style title and pin it as the brand. When the
+    // gate fails we return undefined so the caller falls through to h1 /
+    // URL hostname.
     const raw = titleTag[1].trim()
     const segs = raw.split(/\s*[—–|·]\s+|\s*:\s+|\s-\s/)
-    if (segs.length > 1 && segs[0].trim()) return segs[0].trim()
-    return raw
+    const candidate = (segs.length > 1 && segs[0].trim()) ? segs[0].trim() : raw
+    if (looksLikeBrand(candidate)) return candidate
+    // Title looked like a tagline — keep walking the fallbacks.
   }
 
   // First H1 — works for markdown-converted pages too.
   const h1Md = content.match(/^#\s+(.+)$/m)
-  if (h1Md?.[1]) return h1Md[1].trim()
+  if (h1Md?.[1]) {
+    const c = h1Md[1].trim()
+    if (looksLikeBrand(c)) return c
+  }
 
   const h1Html = content.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)
   if (h1Html?.[1]) {
     const stripped = h1Html[1].replace(/<[^>]+>/g, '').trim()
-    if (stripped) return stripped
+    if (stripped && looksLikeBrand(stripped)) return stripped
   }
 
   return undefined
@@ -142,19 +170,42 @@ export function extractCompanyDescription(content: string): string | undefined {
   if (ogDescAlt?.[1]) return clamp(ogDescAlt[1].trim(), 600)
 
   // Fall back to the first 1-2 paragraphs of cleaned text. We collapse
-  // whitespace, drop heading markers, and pick the first run that's at
-  // least 80 chars (filters out nav strings).
+  // whitespace, drop heading markers, strip markdown link syntax, and pick
+  // paragraphs that look like genuine prose (not demo terminal output,
+  // numeric stat blocks, or link-cluster soup).
   const cleaned = content
     .replace(/<script[\s\S]*?<\/script>/gi, '')
     .replace(/<style[\s\S]*?<\/style>/gi, '')
     .replace(/<[^>]+>/g, '\n')
-    .replace(/^[#>\-*\s]+/gm, '')
+    // Strip leading markdown markers + horizontal whitespace per line.
+    // CRUCIAL: do NOT include `\s` in this class — `\s` matches newlines
+    // and would chew through paragraph separators, collapsing the doc.
+    .replace(/^[#>\-* \t]+/gm, '')
+    // Strip markdown link wrappers: `[text](url)` → `text`.
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/[\t ]+/g, ' ')
+
+  const looksLikeProse = (p: string): boolean => {
+    if (p.length < 80) return false
+    // Demo / terminal output: lines starting with "→" or "$" or "✓"
+    if (/^[→$✓✗»>]/.test(p)) return false
+    // Numeric stat soup: `Found 0 leads / Enriched 142/142 / 99% match`
+    const digitRatio = (p.match(/\d/g) ?? []).length / p.length
+    if (digitRatio > 0.15) return false
+    // Pure link cluster (more URL-shaped tokens than words)
+    const urlCount = (p.match(/https?:\/\//g) ?? []).length
+    if (urlCount >= 3) return false
+    // Slash-heavy paths or breadcrumbs
+    if ((p.match(/\//g) ?? []).length > 6) return false
+    // Must contain at least one verb-shaped token (rough sentence check)
+    if (!/\b(is|are|was|were|will|can|do|does|help|helps|build|builds|make|makes|provide|provides|let|lets|enable|enables|use|uses|run|runs|allow|allows|offer|offers|create|creates|deliver|delivers)\b/i.test(p)) return false
+    return true
+  }
 
   const paragraphs = cleaned
     .split(/\n{2,}/)
     .map((p) => p.replace(/\s+/g, ' ').trim())
-    .filter((p) => p.length >= 80)
+    .filter(looksLikeProse)
 
   if (paragraphs.length === 0) return undefined
   const joined = paragraphs.slice(0, 2).join(' ')
