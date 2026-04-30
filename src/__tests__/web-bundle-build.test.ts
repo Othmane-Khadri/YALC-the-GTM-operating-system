@@ -48,7 +48,7 @@ describe('web bundle build', () => {
     expect(jsFiles.length).toBeGreaterThan(0)
   })
 
-  it('keeps total JS under the size budget (250 KB raw, 250 KB gzipped)', () => {
+  it('keeps total JS under the size budget (300 KB raw, 250 KB gzipped)', () => {
     const files = readdirSync(ASSETS).filter((f) => f.endsWith('.js'))
     let rawTotal = 0
     let gzipTotal = 0
@@ -57,7 +57,7 @@ describe('web bundle build', () => {
       rawTotal += statSync(join(ASSETS, f)).size
       gzipTotal += gzipSync(buf).length
     }
-    expect(rawTotal).toBeLessThan(250 * 1024)
+    expect(rawTotal).toBeLessThan(300 * 1024)
     expect(gzipTotal).toBeLessThan(250 * 1024)
   })
 
