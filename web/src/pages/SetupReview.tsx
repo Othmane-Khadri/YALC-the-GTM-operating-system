@@ -331,11 +331,15 @@ export function SetupReview() {
     })
   }, [data])
 
-  // Commit gate: every non-discarded card must have been saved at least once.
+  // Commit gate: every non-discarded card must be free of unsaved edits.
+  // A user who opens /setup/review and is happy with the auto-captured
+  // content can commit immediately — they shouldn't be forced to click
+  // Save on every card just to satisfy the gate. Edits that ARE in
+  // progress still need to be saved (or discarded) before committing.
   const requiredSavedSet = useMemo(() => {
     return orderedSections
       .filter((s) => !states[s.canonical]?.discard)
-      .every((s) => states[s.canonical]?.saved === true)
+      .every((s) => states[s.canonical] && !states[s.canonical].dirty)
   }, [orderedSections, states])
 
   const handleEdit = (canonical: string, content: string) => {
@@ -542,7 +546,7 @@ export function SetupReview() {
 
         {!requiredSavedSet && data && orderedSections.length > 0 && (
           <p className="text-xs text-muted-foreground">
-            Save every section at least once (or mark it discard) to enable Save &amp; Commit.
+            Save your in-progress edits (or mark sections as discard) to enable Save &amp; Commit.
           </p>
         )}
       </div>
