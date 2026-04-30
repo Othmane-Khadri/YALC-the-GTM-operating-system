@@ -30,21 +30,44 @@ const FIELD_TO_AUTOCOMPLETE_TYPE: Record<string, string> = {
 
 async function autocompleteFilterFields(apiKey: string): Promise<Set<string>> {
   // Resolve the canonical field names Crustdata accepts. We probe the
-  // type registry (FREE call). The fetch is best-effort: a non-200 means
-  // we conservatively return an empty allowlist so the caller can throw
-  // an actionable error instead of forwarding an invalid filter.
-  const res = await fetch(`${BASE_URL}/screener/company/search/autocomplete/`, {
-    headers: {
-      'Authorization': `Token ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new ProviderApiError('crustdata', `autocomplete_filter failed: ${text}`, res.status)
+  // type registry (FREE call). The fetch is best-effort: a non-200 OR a
+  // non-JSON response means Crustdata's autocomplete endpoint is moving /
+  // unavailable — we fall back to the locally-known canonical names so a
+  // genuine search call can still proceed. The paid search endpoint will
+  // surface a clearer error if the filter is genuinely invalid.
+  let res: Response
+  try {
+    res = await fetch(`${BASE_URL}/screener/company/search/autocomplete/`, {
+      headers: {
+        'Authorization': `Token ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    })
+  } catch (err) {
+    console.warn(
+      `[crustdata] autocomplete_filter unreachable (${err instanceof Error ? err.message : 'fetch failed'}), falling back to locally-known canonical fields`,
+    )
+    return new Set(Object.values(FIELD_TO_AUTOCOMPLETE_TYPE))
   }
-  const data = (await res.json()) as { fields?: string[] } | string[]
+  if (!res.ok) {
+    console.warn(
+      `[crustdata] autocomplete_filter returned ${res.status}, falling back to locally-known canonical fields`,
+    )
+    return new Set(Object.values(FIELD_TO_AUTOCOMPLETE_TYPE))
+  }
+  let data: { fields?: string[] } | string[] | null
+  try {
+    data = (await res.json()) as { fields?: string[] } | string[]
+  } catch {
+    console.warn(
+      '[crustdata] autocomplete_filter returned non-JSON, falling back to locally-known canonical fields',
+    )
+    return new Set(Object.values(FIELD_TO_AUTOCOMPLETE_TYPE))
+  }
   const fields = Array.isArray(data) ? data : Array.isArray(data?.fields) ? data.fields : []
+  if (fields.length === 0) {
+    return new Set(Object.values(FIELD_TO_AUTOCOMPLETE_TYPE))
+  }
   return new Set(fields.map((f) => String(f)))
 }
 
