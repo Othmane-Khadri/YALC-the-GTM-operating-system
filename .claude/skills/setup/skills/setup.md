@@ -35,21 +35,27 @@ yalc-gtm start --non-interactive
 
 Exit code 0 expected. The command writes `~/.gtm-os/` (config, db, env template) and prints a banner. Do not parse the banner — just confirm exit 0.
 
-If the directory already existed, the command will preserve user-filled keys and only delta-merge new placeholder lines. That's fine — proceed without warning the user.
+When the template is written for the first time, the CLI auto-opens `~/.gtm-os/.env` in the user's default editor (TextEdit on macOS, the system default on Linux/Windows). The CLI also prints inline guidance: remove the leading `#`, paste the key value, save the file. **You do not need to repeat those instructions** — the CLI already showed them.
+
+If the directory already existed, the command will preserve user-filled keys and only delta-merge new placeholder lines. The auto-open does NOT fire on a delta-merge (only on a fresh template). That's fine — proceed without warning the user.
+
+For headless / CI contexts, pass `--no-open-env` to suppress the editor launch.
 
 ---
 
 ## Step 3 — Hand off the .env to the user
 
-Tell the user, verbatim or close to it:
+The CLI in Step 2 already opened the file in the user's editor and printed the inline guidance. Tell the user, verbatim or close to it:
 
-> I created `~/.gtm-os/.env` with placeholder lines for every supported provider. Open it in your editor — `open ~/.gtm-os/.env` will open it in your default app — uncomment and fill in the keys you want to use. The template lists every built-in provider plus common MCP keys.
->
-> Tell me **"keys done"** when you've saved the file and I'll continue.
+> I just opened `~/.gtm-os/.env` in your default editor. Remove the leading `#` from the lines you want to enable, paste your API key after the `=` sign, and save the file. Tell me **"keys done"** when you have saved it.
 
-Wait for the user to confirm. Do not progress until they say so.
+If the user reports the auto-open did not fire (e.g. headless terminal, container, SSH session), tell them to open the file manually:
 
-While waiting, do not read the file's contents back into chat — the user does not need to see their own keys, and you must not display them.
+> Run `open ~/.gtm-os/.env` (macOS) or `xdg-open ~/.gtm-os/.env` (Linux) — or just open `~/.gtm-os/.env` in your editor of choice.
+
+Wait for the user to confirm. Do not progress until they say "keys done".
+
+While waiting, do not read the file's contents back into chat — the user does not need to see their own keys, and you must not display them under any circumstance.
 
 ---
 
