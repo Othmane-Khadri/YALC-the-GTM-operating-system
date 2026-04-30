@@ -137,6 +137,12 @@ export interface StartOptions {
    */
   noAutoCommit?: boolean
   autoCommitThreshold?: number
+  /**
+   * 0.9.1: suppress the auto-open of `~/.gtm-os/.env` in the user's default
+   * editor after a fresh scaffold writes the template. Set this in CI / non-
+   * TTY contexts where launching the desktop editor is undesirable.
+   */
+  noOpenEnv?: boolean
 }
 
 export async function runStart(opts: StartOptions): Promise<void> {
@@ -269,6 +275,27 @@ export async function runStart(opts: StartOptions): Promise<void> {
     // any new placeholders that didn't exist in the previous version.
     const envOutcome = ensureEnvTemplate()
     printEnvOutcome(envOutcome)
+
+    // 0.9.1: when we just wrote a fresh template, hand the file off to the
+    // user's default editor so they can uncomment + paste keys in one pass.
+    // This is the primary onboarding flow for filling provider keys —
+    // `keys:connect <provider> --open` remains available for adding/rotating
+    // a single key after onboarding, but the bulk-edit-the-.env flow is
+    // dramatically faster when the user has multiple keys to enter.
+    if (envOutcome.mode === 'created' && !opts.noOpenEnv) {
+      const { openInEditor } = await import('../cli/open-browser.js')
+      const r = openInEditor(envOutcome.envPath)
+      console.log('')
+      console.log('  Opening ~/.gtm-os/.env in your default editor.')
+      console.log('  → Remove the leading "#" from the lines you want to enable')
+      console.log('  → Paste your API key value after the "=" sign')
+      console.log('  → Save the file')
+      console.log('  Tell your assistant "keys done" when you have saved the file.')
+      if (!r.launched) {
+        console.log('')
+        console.log(`  (Auto-open skipped — open ${envOutcome.envPath} manually.)`)
+      }
+    }
 
     await applyMigrations()
     console.log(

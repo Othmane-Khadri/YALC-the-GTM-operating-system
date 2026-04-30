@@ -1317,6 +1317,8 @@ Examples (recommended — flag-driven, zero prompts):
     'Threshold (0–1) for confidence-banded auto-commit. Defaults to 0.85.',
     (val) => Number.parseFloat(val),
   )
+  // 0.9.1: suppress the auto-open of ~/.gtm-os/.env after a fresh scaffold.
+  .option('--no-open-env', 'Skip auto-opening the .env template in the default editor')
   .action(withDiagnostics(async (opts) => {
     const { runStart } = await import('../lib/onboarding/start')
     await runStart({
@@ -1342,6 +1344,7 @@ Examples (recommended — flag-driven, zero prompts):
       reviewInChat: opts.reviewInChat ?? false,
       noAutoCommit: opts.autoCommit === false,
       autoCommitThreshold: opts.autoCommitThreshold,
+      noOpenEnv: opts.openEnv === false,
     })
   }))
 
