@@ -18,14 +18,17 @@ import yaml from 'js-yaml'
 import { homedir } from 'node:os'
 import { PKG_ROOT } from '../paths.js'
 import type {
+  FrameworkDefaultVisualization,
   FrameworkDefinition,
   FrameworkInput,
+  FrameworkMode,
   FrameworkOutput,
   FrameworkOutputOption,
   FrameworkRequires,
   FrameworkSchedule,
   FrameworkSeedRun,
-  FrameworkStep,
+  FrameworkStepEntry,
+  GateSurface,
   RecommendedWhenClauses,
 } from './types.js'
 
@@ -63,10 +66,12 @@ export function parseFrameworkYaml(sourcePath: string, raw: string): FrameworkDe
   const requires = parseRequires(sourcePath, r['requires'])
   const recommended_when = parseRecommendedWhen(sourcePath, r['recommended_when'])
   const inputs = parseInputs(sourcePath, r['inputs'])
-  const schedule = parseSchedule(sourcePath, r['schedule'])
+  const mode = parseMode(sourcePath, r['mode'])
+  const schedule = parseSchedule(sourcePath, r['schedule'], mode)
   const steps = parseSteps(sourcePath, r['steps'])
   const output = parseOutput(sourcePath, r['output'])
   const seed_run = parseSeedRun(sourcePath, r['seed_run'])
+  const default_visualization = parseDefaultVisualization(sourcePath, r['default_visualization'])
 
   if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(name)) {
     throw new FrameworkDefinitionError(
@@ -82,12 +87,29 @@ export function parseFrameworkYaml(sourcePath: string, raw: string): FrameworkDe
     requires,
     recommended_when,
     inputs,
+    mode,
     schedule,
     steps,
     output,
     seed_run,
+    default_visualization,
     _sourcePath: sourcePath,
   }
+}
+
+/**
+ * Parse the optional `mode` field. Defaults to `scheduled` for backward
+ * compatibility with 0.7.0 / 0.8.0 framework yamls that pre-date the field.
+ */
+function parseMode(sourcePath: string, raw: unknown): FrameworkMode {
+  if (raw === undefined || raw === null) return 'scheduled'
+  if (raw !== 'scheduled' && raw !== 'on-demand') {
+    throw new FrameworkDefinitionError(
+      sourcePath,
+      `"mode" must be "scheduled" or "on-demand" (got ${JSON.stringify(raw)})`,
+    )
+  }
+  return raw
 }
 
 function requireString(sourcePath: string, r: Record<string, unknown>, key: string): string {
@@ -201,8 +223,19 @@ function parseInputs(sourcePath: string, raw: unknown): FrameworkInput[] {
   })
 }
 
-function parseSchedule(sourcePath: string, raw: unknown): FrameworkSchedule {
-  if (raw == null || typeof raw !== 'object') {
+function parseSchedule(
+  sourcePath: string,
+  raw: unknown,
+  mode: FrameworkMode,
+): FrameworkSchedule {
+  // For `mode: on-demand`, the schedule block is optional — and a `cron`
+  // value, if present, is rejected. For `mode: scheduled` (the default), the
+  // legacy contract holds: a non-empty `schedule.cron` is required.
+  if (raw == null) {
+    if (mode === 'on-demand') return {}
+    throw new FrameworkDefinitionError(sourcePath, '"schedule" must be a mapping')
+  }
+  if (typeof raw !== 'object') {
     throw new FrameworkDefinitionError(sourcePath, '"schedule" must be a mapping')
   }
   const r = raw as Record<string, unknown>
@@ -214,9 +247,18 @@ function parseSchedule(sourcePath: string, raw: unknown): FrameworkSchedule {
         '"schedule.cron" must be a 5-field cron expression',
       )
     }
+    if (mode === 'on-demand') {
+      throw new FrameworkDefinitionError(
+        sourcePath,
+        'on-demand frameworks must not declare "schedule.cron"',
+      )
+    }
     out.cron = r.cron
-  } else {
-    throw new FrameworkDefinitionError(sourcePath, '"schedule.cron" is required')
+  } else if (mode === 'scheduled') {
+    throw new FrameworkDefinitionError(
+      sourcePath,
+      'scheduled frameworks must declare "schedule.cron"',
+    )
   }
   if (r.timezone !== undefined) {
     if (typeof r.timezone !== 'string') {
@@ -227,7 +269,7 @@ function parseSchedule(sourcePath: string, raw: unknown): FrameworkSchedule {
   return out
 }
 
-function parseSteps(sourcePath: string, raw: unknown): FrameworkStep[] {
+function parseSteps(sourcePath: string, raw: unknown): FrameworkStepEntry[] {
   if (!Array.isArray(raw) || raw.length === 0) {
     throw new FrameworkDefinitionError(sourcePath, '"steps" must be a non-empty list')
   }
@@ -236,6 +278,51 @@ function parseSteps(sourcePath: string, raw: unknown): FrameworkStep[] {
       throw new FrameworkDefinitionError(sourcePath, `steps[${i}] must be a mapping`)
     }
     const it = item as Record<string, unknown>
+    // Human-gate step — `{ gate: { id, prompt, surface, payload_from_step? } }`.
+    if ('gate' in it) {
+      const gateRaw = it.gate
+      if (!gateRaw || typeof gateRaw !== 'object' || Array.isArray(gateRaw)) {
+        throw new FrameworkDefinitionError(sourcePath, `steps[${i}].gate must be a mapping`)
+      }
+      const g = gateRaw as Record<string, unknown>
+      if (typeof g.id !== 'string' || g.id.length === 0) {
+        throw new FrameworkDefinitionError(sourcePath, `steps[${i}].gate.id is required`)
+      }
+      if (typeof g.prompt !== 'string' || g.prompt.length === 0) {
+        throw new FrameworkDefinitionError(sourcePath, `steps[${i}].gate.prompt is required`)
+      }
+      if (g.surface !== 'ui-today' && g.surface !== 'ui-modal') {
+        throw new FrameworkDefinitionError(
+          sourcePath,
+          `steps[${i}].gate.surface must be "ui-today" or "ui-modal"`,
+        )
+      }
+      let payloadFromStep: number | undefined
+      if (g.payload_from_step !== undefined) {
+        if (typeof g.payload_from_step !== 'number' || !Number.isInteger(g.payload_from_step) || g.payload_from_step < 0) {
+          throw new FrameworkDefinitionError(
+            sourcePath,
+            `steps[${i}].gate.payload_from_step must be a non-negative integer`,
+          )
+        }
+        if (g.payload_from_step >= i) {
+          throw new FrameworkDefinitionError(
+            sourcePath,
+            `steps[${i}].gate.payload_from_step must reference an earlier step`,
+          )
+        }
+        payloadFromStep = g.payload_from_step
+      }
+      return {
+        gate: {
+          id: g.id,
+          prompt: g.prompt,
+          surface: g.surface as GateSurface,
+          ...(payloadFromStep !== undefined ? { payload_from_step: payloadFromStep } : {}),
+        },
+      }
+    }
+    // Skill step — existing shape, unchanged.
     if (typeof it.skill !== 'string' || it.skill.length === 0) {
       throw new FrameworkDefinitionError(sourcePath, `steps[${i}].skill is required`)
     }
@@ -307,6 +394,30 @@ function parseSeedRun(sourcePath: string, raw: unknown): FrameworkSeedRun | unde
     out.override_inputs = r.override_inputs as Record<string, unknown>
   }
   return out
+}
+
+function parseDefaultVisualization(
+  sourcePath: string,
+  raw: unknown,
+): FrameworkDefaultVisualization | undefined {
+  if (raw == null) return undefined
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new FrameworkDefinitionError(sourcePath, '"default_visualization" must be a mapping')
+  }
+  const r = raw as Record<string, unknown>
+  if (typeof r.view_id !== 'string' || r.view_id.trim().length === 0) {
+    throw new FrameworkDefinitionError(
+      sourcePath,
+      '"default_visualization.view_id" must be a non-empty string',
+    )
+  }
+  if (typeof r.intent !== 'string' || r.intent.trim().length === 0) {
+    throw new FrameworkDefinitionError(
+      sourcePath,
+      '"default_visualization.intent" must be a non-empty string',
+    )
+  }
+  return { view_id: r.view_id, intent: r.intent }
 }
 
 /** Resolve the bundled-frameworks directory. Public for tests. */

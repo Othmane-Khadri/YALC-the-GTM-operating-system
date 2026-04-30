@@ -1,15 +1,15 @@
 ---
 name: connect-provider
-description: Walks the user through adding a new provider (key acquisition, install steps, capability registration, test query)
+description: Add a provider end-to-end — agnostic-first ("tell us about your provider"), with bundled knowledge as suggestions. Wraps `keys:connect`.
 category: integration
 capability: reasoning
 requires_capabilities: [reasoning]
 inputs:
   - name: provider_name
-    description: Name of the provider to install (e.g. pappers, hubspot, custom)
+    description: The provider slug (any string). The bundled knowledge base ships entries for ~10 providers as suggestions; anything else flows through the custom-provider path.
     required: true
   - name: knowledge_yaml_content
-    description: Provider knowledge yaml content for the resolved provider — injected by the orchestrator from `configs/providers/<id>.yaml` (or `~/.gtm-os/providers/_user/<id>.yaml` for custom providers). When empty the prompt falls back to a custom-provider walk-through.
+    description: Bundled knowledge yaml for the resolved provider (when one exists). When empty the prompt falls through to the agnostic / custom-provider walk-through.
     required: false
 output: structured_json
 output_schema:
@@ -27,9 +27,15 @@ output_schema:
   additionalProperties: false
 ---
 
-The user wants to install the `{{provider_name}}` provider. Use the
-knowledge yaml below (when present) to walk them through the install
-steps and return a structured status object an orchestrator can act on.
+The user wants to install the `{{provider_name}}` provider. The agnostic
+flow is the headline — start by treating the provider as "describe your
+own", and only switch to the schema-driven walk-through if a bundled
+knowledge yaml is present. Bundled knowledge ships for ~10 providers as
+suggestions; the user can pick from them but is not constrained to them.
+
+Whenever possible, prefer the SPA at `http://localhost:3847/keys/connect`
+(invoked via `yalc-gtm keys:connect [<provider>] --open`) — it lets the
+user paste keys without surfacing them in the chat transcript.
 
 **Provider knowledge yaml (from `configs/providers/{{provider_name}}.yaml`):**
 

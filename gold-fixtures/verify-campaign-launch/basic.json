@@ -1,0 +1,18 @@
+{
+  "input": {
+    "campaign_payload": {
+      "name": "Series A founder GTM agent test",
+      "channel": "linkedin",
+      "leads": [{ "provider_id": "li_1", "first_name": "Jane" }],
+      "sequence": [
+        { "kind": "connection", "delay_days": 0, "body": "Hi Jane, saw your post about SDR ROI." },
+        { "kind": "dm", "delay_days": 2, "body": "Following up — would love your take on this CAC math." }
+      ]
+    }
+  },
+  "expected_output": {
+    "ready": true,
+    "issues": [],
+    "summary": "All checks pass. 1 lead, 2-step LinkedIn sequence, no unresolved tokens."
+  }
+}

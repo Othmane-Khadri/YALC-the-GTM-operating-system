@@ -244,6 +244,58 @@ export function writeEnvTemplate(input: WriteEnvTemplateInput): WriteEnvTemplate
 }
 
 /**
+ * Update an existing `.env` file in-place with concrete `KEY=value` pairs.
+ *
+ *   1. Read the file.
+ *   2. For each line matching `^\s*#?\s*KEY\s*=`, if `KEY` is in `collected`
+ *      AND the value is non-empty, REPLACE the line with `KEY=<value>`
+ *      (drops any leading `# `). Replacement is in-place — no duplicates.
+ *   3. Any keys in the map that did not match an existing line get appended
+ *      at the bottom so freshly-set keys never go missing.
+ *
+ * Existing comments and blank lines are preserved verbatim. Used by the
+ * onboarding `runStart()` flow and the /api/keys/save endpoint.
+ */
+export function applyCollectedKeysToEnv(
+  envPath: string,
+  collected: Record<string, string>,
+): void {
+  let lines: string[] = []
+  if (existsSync(envPath)) {
+    lines = readFileSync(envPath, 'utf-8').split('\n')
+  }
+
+  const seen = new Set<string>()
+  const keyLineRe = /^(\s*)(#\s*)?([A-Z][A-Z0-9_]*)\s*=/
+
+  const out: string[] = lines.map((rawLine) => {
+    const match = rawLine.match(keyLineRe)
+    if (!match) return rawLine
+    const key = match[3]
+    const live = collected[key]
+    if (typeof live !== 'string' || live === '') return rawLine
+    seen.add(key)
+    return `${key}=${live}`
+  })
+
+  const missing = Object.entries(collected).filter(
+    ([k, v]) => !seen.has(k) && typeof v === 'string' && v !== '',
+  )
+  if (missing.length > 0) {
+    if (out.length > 0 && out[out.length - 1] !== '') out.push('')
+    for (const [k, v] of missing) {
+      out.push(`${k}=${v}`)
+    }
+  }
+
+  let next = out.join('\n')
+  if (!next.endsWith('\n')) next += '\n'
+  const dir = dirname(envPath)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  writeFileSync(envPath, next)
+}
+
+/**
  * Print the post-create instructions block. Stays in this file so all
  * template UX lives in one place.
  */

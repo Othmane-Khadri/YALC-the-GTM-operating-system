@@ -1,0 +1,22 @@
+{
+  "input": {
+    "account_id": "acct_abc123",
+    "keyword": "go-to-market engineering",
+    "min_engagement": 50,
+    "limit": 5
+  },
+  "expected_output": {
+    "posts": [
+      {
+        "post_id": "urn:li:share:trend-1",
+        "url": "https://linkedin.com/posts/op_trend-1",
+        "text_excerpt": "Why GTM engineering is the new ops...",
+        "engagement": { "likes": 280, "comments": 41, "total": 321 }
+      }
+    ],
+    "keyword": "go-to-market engineering",
+    "minEngagement": 50,
+    "limit": 5,
+    "accountId": "acct_abc123"
+  }
+}

@@ -1,0 +1,41 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Brand tokens are mirrored to CSS variables here so non-Tailwind
+ * consumers (legacy HTML pages, third-party widgets) can read the same
+ * palette. tailwind.config.ts is still the canonical pipeline for
+ * Tailwind classes.
+ */
+:root {
+  --brand-bg: #f8ede8;
+  --brand-fg: #1a1a1a;
+  --brand-primary: #c9506e;
+  --brand-primary-light: #e07a95;
+  --brand-card: #ffffff;
+  --brand-border: rgba(26, 26, 26, 0.12);
+  --brand-ring: #c9506e;
+  --brand-radius-md: 14px;
+  --brand-radius-lg: 16px;
+  --brand-radius-xl: 20px;
+  --brand-gradient: linear-gradient(135deg, #e07a95, #c9506e);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-heading;
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "input": {
+    "contacts": [
+      { "firstname": "Jane", "lastname": "Doe", "domain": "acme.com", "company_name": "Acme" }
+    ]
+  },
+  "expected_output": {
+    "results": [
+      { "firstname": "Jane", "lastname": "Doe", "email": "jane.doe@acme.com", "phone": "+1-555-0100", "linkedin_url": "https://www.linkedin.com/in/jane-doe/" }
+    ]
+  }
+}

@@ -18,6 +18,7 @@ import { SIGNUP_URLS } from '../constants.js'
 import { isClaudeCode } from '../env/claude-code.js'
 import { isChannelOptedOut } from '../config/loader.js'
 import {
+  applyCollectedKeysToEnv,
   envTemplateInstructions,
   writeEnvTemplate,
   type WriteEnvTemplateOutcome,
@@ -105,6 +106,43 @@ export interface StartOptions {
   regenerateLowConfidence?: boolean
   /** Threshold used by `regenerateLowConfidence`. Defaults to 0.6. */
   confidenceThreshold?: number
+  /**
+   * Suppress the auto-open of /setup/review in the user's default browser
+   * after a successful flag-driven capture. Set when `--no-open` is passed
+   * or when the caller wants to drive review headlessly.
+   */
+  noOpen?: boolean
+  /**
+   * Walk preview sections directly in the terminal at the end of capture
+   * (legacy chat-walk pattern). Mutually exclusive with the SPA review —
+   * when set, the browser is not launched.
+   */
+  reviewInChat?: boolean
+  /**
+   * Server URL the SPA is served from. Defaults to http://localhost:3847.
+   * Override for tests / non-default ports.
+   */
+  serverUrl?: string
+  /**
+   * Browser-open hook injected for tests. Production callers leave this
+   * unset and the helper resolves to `openBrowser()`.
+   */
+  openHook?: (url: string) => { attempted: boolean; launched: boolean }
+  /**
+   * 0.9.F: confidence-banded auto-commit controls. When `noAutoCommit`
+   * is true (CLI: `--no-auto-commit`), every section stays in the review
+   * queue; otherwise sections with confidence ≥ `autoCommitThreshold`
+   * (default 0.85, configurable via config.yaml) auto-commit and only
+   * low-confidence sections appear in `/setup/review`.
+   */
+  noAutoCommit?: boolean
+  autoCommitThreshold?: number
+  /**
+   * 0.9.1: suppress the auto-open of `~/.gtm-os/.env` in the user's default
+   * editor after a fresh scaffold writes the template. Set this in CI / non-
+   * TTY contexts where launching the desktop editor is undesirable.
+   */
+  noOpenEnv?: boolean
 }
 
 export async function runStart(opts: StartOptions): Promise<void> {
@@ -157,6 +195,7 @@ export async function runStart(opts: StartOptions): Promise<void> {
     }
     const result = commitPreview({ tenant: tenantCtx, discardSections })
     await refreshLiveIndex(tenantCtx)
+    await writeReviewCommittedSentinel(tenantCtx)
     console.log(`  ✓ Committed ${result.committed.length} path(s) to live`)
     if (result.discarded.length > 0) {
       console.log(`  ⊘ Left in preview (discarded): ${result.discarded.join(', ')}`)
@@ -236,6 +275,27 @@ export async function runStart(opts: StartOptions): Promise<void> {
     // any new placeholders that didn't exist in the previous version.
     const envOutcome = ensureEnvTemplate()
     printEnvOutcome(envOutcome)
+
+    // 0.9.1: when we just wrote a fresh template, hand the file off to the
+    // user's default editor so they can uncomment + paste keys in one pass.
+    // This is the primary onboarding flow for filling provider keys —
+    // `keys:connect <provider> --open` remains available for adding/rotating
+    // a single key after onboarding, but the bulk-edit-the-.env flow is
+    // dramatically faster when the user has multiple keys to enter.
+    if (envOutcome.mode === 'created' && !opts.noOpenEnv) {
+      const { openInEditor } = await import('../cli/open-browser.js')
+      const r = openInEditor(envOutcome.envPath)
+      console.log('')
+      console.log('  Opening ~/.gtm-os/.env in your default editor.')
+      console.log('  → Remove the leading "#" from the lines you want to enable')
+      console.log('  → Paste your API key value after the "=" sign')
+      console.log('  → Save the file')
+      console.log('  Tell your assistant "keys done" when you have saved the file.')
+      if (!r.launched) {
+        console.log('')
+        console.log(`  (Auto-open skipped — open ${envOutcome.envPath} manually.)`)
+      }
+    }
 
     await applyMigrations()
     console.log(
@@ -516,6 +576,36 @@ export async function runStart(opts: StartOptions): Promise<void> {
     console.log(
       `\n  Captured + synthesized in ${elapsedSec}s. Preview ready at ~/.gtm-os/_preview/`,
     )
+
+    // 0.9.F: confidence-banded auto-commit. High-confidence sections
+    // move straight to live; everything else stays in `_preview/` for
+    // explicit review. Failures are non-fatal — the user can always
+    // commit manually via the SPA.
+    try {
+      const { applyAutoCommit, resolveEffectiveThreshold } = await import('./auto-commit.js')
+      const threshold = resolveEffectiveThreshold({
+        threshold: opts.autoCommitThreshold,
+        noAutoCommit: opts.noAutoCommit,
+      })
+      const ac = await applyAutoCommit({ tenantId }, {
+        threshold: opts.autoCommitThreshold,
+        noAutoCommit: opts.noAutoCommit,
+      })
+      if (ac.committed.length > 0) {
+        console.log(
+          `  ✓ Auto-committed ${ac.committed.length} high-confidence section(s) ` +
+            `(threshold ${threshold.toFixed(2)}): ${ac.committed.join(', ')}`,
+        )
+      }
+      if (ac.queued.length > 0) {
+        console.log(
+          `  ⊘ Queued ${ac.queued.length} section(s) for /setup/review: ${ac.queued.join(', ')}`,
+        )
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn(`  ! Auto-commit pass skipped: ${msg}`)
+    }
     if (elapsedMs > 120_000) {
       console.warn(
         '  ⚠ Capture took longer than expected. Synthesis may be slow due to model load —',
@@ -524,9 +614,39 @@ export async function runStart(opts: StartOptions): Promise<void> {
         '    re-run with `yalc-gtm start --regenerate <section>` if any section is missing.',
       )
     }
-    console.log(
-      `  Review then run: yalc-gtm start --commit-preview`,
-    )
+    // Hand off to the SPA review surface (0.9.B). Three modes:
+    //   1. --review-in-chat → terminal-driven section walk, then return.
+    //   2. default → auto-open the SPA at /setup/review and return.
+    //   3. --no-open → just print the URL.
+    // Browser-open failures fall back to the printed URL silently.
+    const reviewUrl = `${opts.serverUrl ?? 'http://localhost:3847'}/setup/review`
+
+    if (opts.reviewInChat) {
+      await runChatReviewWalk({ tenantId })
+      return
+    }
+
+    let openResult: { attempted: boolean; launched: boolean } = {
+      attempted: false,
+      launched: false,
+    }
+    if (!opts.noOpen) {
+      if (opts.openHook) {
+        openResult = opts.openHook(reviewUrl)
+      } else {
+        const { openBrowser } = await import('../cli/open-browser.js')
+        const r = openBrowser(reviewUrl)
+        openResult = { attempted: r.attempted, launched: r.launched }
+      }
+    }
+
+    if (openResult.launched) {
+      console.log(`  Opening ${reviewUrl} in your browser…`)
+    } else {
+      console.log(`  Open ${reviewUrl} to review and commit.`)
+    }
+    console.log('  CLI alternative: yalc-gtm start --commit-preview (or --review-in-chat).')
+    return
   }
 
   const { runOnboarding } = await import('../context/onboarding.js')
@@ -636,56 +756,6 @@ function printEnvOutcome(outcome: WriteEnvTemplateOutcome): void {
     )
   }
   // 'unchanged' is silent — the file is already up-to-date.
-}
-
-/**
- * Update the template `.env` in-place with concrete `KEY=value` pairs the
- * user supplied during interactive prompts. Algorithm:
- *
- *   1. Read existing file.
- *   2. For each line matching `^\s*#?\s*KEY\s*=`, if `KEY` is in the
- *      collectedKeys map AND the value is non-empty, replace the line with
- *      `KEY=<value>` (drops any leading `# `).
- *   3. Any keys in the map that did not match an existing line get appended
- *      at the bottom (so freshly-set keys never go missing).
- *
- * Existing comments and blank lines are preserved verbatim.
- */
-function applyCollectedKeysToEnv(
-  envPath: string,
-  collected: Record<string, string>,
-): void {
-  let lines: string[] = []
-  if (existsSync(envPath)) {
-    lines = readFileSync(envPath, 'utf-8').split('\n')
-  }
-
-  const seen = new Set<string>()
-  const keyLineRe = /^(\s*)(#\s*)?([A-Z][A-Z0-9_]*)\s*=/
-
-  const out: string[] = lines.map((rawLine) => {
-    const match = rawLine.match(keyLineRe)
-    if (!match) return rawLine
-    const key = match[3]
-    const live = collected[key]
-    if (typeof live !== 'string' || live === '') return rawLine
-    seen.add(key)
-    return `${key}=${live}`
-  })
-
-  const missing = Object.entries(collected).filter(
-    ([k, v]) => !seen.has(k) && typeof v === 'string' && v !== '',
-  )
-  if (missing.length > 0) {
-    if (out.length > 0 && out[out.length - 1] !== '') out.push('')
-    for (const [k, v] of missing) {
-      out.push(`${k}=${v}`)
-    }
-  }
-
-  let next = out.join('\n')
-  if (!next.endsWith('\n')) next += '\n'
-  writeFileSync(envPath, next)
 }
 
 /**
@@ -989,6 +1059,53 @@ function printReadinessReport(
  * sections require an Anthropic key — without one, we emit the same
  * "needs an LLM" handoff used elsewhere in the CLI.
  */
+/**
+ * Public wrapper around `runRegenerateSection` for the API surface (0.9.B).
+ *
+ * Throws on validation errors (unknown section, missing preview, missing key)
+ * instead of setting `process.exitCode`, so HTTP handlers can map to a 4xx.
+ * Returns the list of files synthesis wrote.
+ */
+export async function regeneratePreviewSection(args: {
+  tenantId: string
+  section: string
+  hint?: string
+}): Promise<{ section: string; written: string[] }> {
+  const tenant = { tenantId: args.tenantId }
+  const { previewExists, previewPath } = await import('./preview.js')
+  const { ALL_SECTION_IDS, writeSynthesizedPreview } = await import('./synthesis.js')
+
+  if (!previewExists(tenant)) {
+    throw new Error('No preview to regenerate. Run capture first.')
+  }
+  if (!ALL_SECTION_IDS.includes(args.section as (typeof ALL_SECTION_IDS)[number])) {
+    throw new Error(
+      `Unknown section "${args.section}". Valid: ${ALL_SECTION_IDS.join(', ')}`,
+    )
+  }
+  const ctxPath = previewPath('company_context.yaml', tenant)
+  if (!existsSync(ctxPath)) {
+    throw new Error(`Missing ${ctxPath}. Re-run start with capture flags first.`)
+  }
+  const yamlMod = (await import('js-yaml')).default
+  const ctx = yamlMod.load(readFileSync(ctxPath, 'utf-8')) as
+    | import('../framework/context-types.js').CompanyContext
+    | null
+  if (!ctx) throw new Error('Could not parse company_context.yaml.')
+
+  const inCC = isClaudeCode()
+  if (!process.env.ANTHROPIC_API_KEY && !inCC) {
+    throw new Error('--regenerate needs an Anthropic key (or run inside Claude Code).')
+  }
+  const result = await writeSynthesizedPreview({
+    context: ctx,
+    tenant,
+    only: [args.section as (typeof ALL_SECTION_IDS)[number]],
+    hint: args.hint,
+  })
+  return { section: args.section, written: result.written }
+}
+
 async function runRegenerateSection(args: {
   tenantId: string
   section: string
@@ -1117,4 +1234,70 @@ async function runRegenerateLowConfidence(args: {
       hint: args.hint,
     })
   }
+}
+
+// ─── 0.9.B: SPA handoff helpers ──────────────────────────────────────────────
+
+/**
+ * Write `<liveRoot>/_handoffs/setup/review.committed` so non-interactive
+ * harnesses (Claude Code, CI) can detect that commit completed without
+ * polling the preview directory. Best-effort.
+ *
+ * Async because the preview helpers ship as ESM and we can't `require()`
+ * them. Callers can fire-and-forget — failures never propagate.
+ */
+export async function writeReviewCommittedSentinel(tenant: {
+  tenantId: string
+}): Promise<void> {
+  try {
+    const { liveRoot } = await import('./preview.js')
+    const dir = join(liveRoot(tenant), '_handoffs', 'setup')
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+    writeFileSync(
+      join(dir, 'review.committed'),
+      JSON.stringify({ at: new Date().toISOString(), tenant: tenant.tenantId }) + '\n',
+    )
+  } catch {
+    // Sentinel is advisory — never propagate.
+  }
+}
+
+/**
+ * Legacy-style chat-walk: enumerate every preview section, print a short
+ * summary, and prompt for approve/regenerate/drop. Used only when
+ * `--review-in-chat` is passed (no browser available, CI).
+ *
+ * The full per-section walk lives in the synthesis prompts; here we just
+ * emit one summary line per section then immediately commit. Callers who
+ * want fine-grained control should run `yalc-gtm start --regenerate
+ * <section>` and `--commit-preview --discard <section>` directly.
+ */
+async function runChatReviewWalk(args: { tenantId: string }): Promise<void> {
+  const tenant = { tenantId: args.tenantId }
+  const { previewExists, previewPath, SECTION_NAMES, SECTION_PATHS, commitPreview, refreshLiveIndex } =
+    await import('./preview.js')
+
+  if (!previewExists(tenant)) {
+    console.error('  No preview to review.')
+    process.exitCode = 1
+    return
+  }
+
+  console.log('\n  Preview sections:')
+  for (const id of SECTION_NAMES) {
+    for (const canonical of SECTION_PATHS[id]) {
+      const abs = previewPath(canonical, tenant)
+      if (!existsSync(abs)) continue
+      console.log(`    - ${id} (${canonical})`)
+    }
+  }
+  console.log(
+    '\n  Review-in-chat mode: committing preview as-is. Re-run with --discard <section>',
+  )
+  console.log('  to drop sections, or --regenerate <section> to redo synthesis.\n')
+
+  const result = commitPreview({ tenant })
+  await refreshLiveIndex(tenant)
+  await writeReviewCommittedSentinel(tenant)
+  console.log(`  ✓ Committed ${result.committed.length} path(s) to live`)
 }

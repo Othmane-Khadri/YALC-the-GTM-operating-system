@@ -31,9 +31,10 @@ import type { DashboardRun } from './output/dashboard-adapter.js'
 import { appendRun as notionAppendRun } from './output/notion-adapter.js'
 import { getSkillRegistryReady } from '../skills/registry.js'
 import { loadMarkdownSkill } from '../skills/markdown-loader.js'
-import { resolveSkillAlias } from '../skills/aliases.js'
+import { resolveSkillAlias, noteRetiredSkill } from '../skills/aliases.js'
 import { getRegistryReady } from '../providers/registry.js'
-import type { FrameworkStep } from './types.js'
+import type { FrameworkStep, FrameworkStepEntry } from './types.js'
+import { isGateStep } from './types.js'
 import type { Skill, SkillContext } from '../skills/types.js'
 
 /** Resolve the runs directory at call time so HOME-overrides in tests apply. */
@@ -41,9 +42,31 @@ function runsDirFor(name: string): string {
   return join(homedir(), '.gtm-os', 'agents', `${name}.runs`)
 }
 
+/** Process exit code emitted when a run paused at a human-gate step. */
+export const EXIT_CODE_AWAITING_GATE = 30
+
 export interface FrameworkRunOptions {
   /** Use `seed_run.override_inputs` from the framework yaml when present. */
   seed?: boolean
+  /**
+   * Resume a previously-paused run from a gate.
+   *
+   * The runner re-creates `stepOutputs` from `priorStepOutputs`, applies
+   * any `payloadOverride` to the slot referenced by the gate, optionally
+   * threads `rejectionReason` into the run context, and continues from
+   * `startAtStep`. Used by `framework:resume`.
+   */
+  resume?: {
+    runId: string
+    /** Step index to resume at. For approve, this is the step AFTER the gate. */
+    startAtStep: number
+    /** Outputs of every step that ran before the gate, in execution order. */
+    priorStepOutputs: unknown[]
+    /** Optional edits applied to a specific prior step's output before resume. */
+    payloadOverride?: { stepIndex: number; value: unknown }
+    /** When set, exposed via `vars.rejection_reason` on a retry. */
+    rejectionReason?: string
+  }
 }
 
 export class FrameworkRunError extends Error {
@@ -57,6 +80,54 @@ export class FrameworkRunError extends Error {
     this.stepSkill = stepSkill
     this.partialPath = partialPath
   }
+}
+
+/**
+ * Thrown when execution reaches a gate step. The CLI catches this and
+ * exits with `EXIT_CODE_AWAITING_GATE` after surfacing the file path.
+ */
+export class FrameworkGatePauseError extends Error {
+  readonly framework: string
+  readonly runId: string
+  readonly stepIndex: number
+  readonly gateId: string
+  readonly awaitingGatePath: string
+  constructor(args: {
+    framework: string
+    runId: string
+    stepIndex: number
+    gateId: string
+    awaitingGatePath: string
+  }) {
+    super(
+      `Run paused at gate "${args.gateId}" (framework=${args.framework}, run=${args.runId}, step=${args.stepIndex}).`,
+    )
+    this.name = 'FrameworkGatePauseError'
+    this.framework = args.framework
+    this.runId = args.runId
+    this.stepIndex = args.stepIndex
+    this.gateId = args.gateId
+    this.awaitingGatePath = args.awaitingGatePath
+  }
+}
+
+/** Shape of the awaiting-gate sentinel persisted on disk. */
+export interface AwaitingGateRecord {
+  run_id: string
+  framework: string
+  step_index: number
+  gate_id: string
+  prompt: string
+  payload: unknown
+  /**
+   * Index into `prior_step_outputs` whose value the gate's payload came
+   * from. Approve-with-edits writes the (possibly-edited) payload back into
+   * this slot so the resumed run sees the human's edits via `{{steps[N].output}}`.
+   */
+  payload_step_index: number | null
+  prior_step_outputs: unknown[]
+  inputs: Record<string, unknown>
+  created_at: string
 }
 
 /** Render the cumulative output of a finished run as a flat row list. */
@@ -238,6 +309,10 @@ async function resolveStepSkill(skillId: string): Promise<Skill | null> {
       return result.skill
     }
   }
+  // Retired skills (Reddit-only frameworks from 0.7.0/0.8.0) emit a
+  // one-shot WARN and resolve to null so the runner surfaces a helpful
+  // error pointing at the replacement archetype.
+  if (noteRetiredSkill(skillId)) return null
   // Last resort: walk the alias table. This is what keeps user-authored
   // YAMLs that still reference renamed skills working without edits.
   const aliased = resolveSkillAlias(skillId)
@@ -302,6 +377,9 @@ export async function runFramework(
   if (opts.seed && framework.seed_run?.override_inputs) {
     Object.assign(vars, framework.seed_run.override_inputs)
   }
+  if (opts.resume?.rejectionReason) {
+    vars.rejection_reason = opts.resume.rejectionReason
+  }
 
   const providers = await getRegistryReady()
   const context: SkillContext = {
@@ -311,11 +389,58 @@ export async function runFramework(
     userId: 'framework-runner',
   }
 
-  const stepOutputs: unknown[] = []
+  // Restore any prior step outputs first so {{steps[N].output}} references
+  // continue to resolve correctly after a resume. Apply the optional payload
+  // override (the human's edits) to the referenced slot.
+  const stepOutputs: unknown[] = opts.resume ? [...opts.resume.priorStepOutputs] : []
+  if (opts.resume?.payloadOverride) {
+    const { stepIndex, value } = opts.resume.payloadOverride
+    if (stepIndex >= 0 && stepIndex < stepOutputs.length) {
+      stepOutputs[stepIndex] = value
+    }
+  }
+  const startAt = opts.resume ? opts.resume.startAtStep : 0
   const ranAt = new Date().toISOString()
+  // Run ID: a resume reuses the original ID so the awaiting-gate / approved
+  // / rejected sentinels share lineage. New runs use the run timestamp.
+  const runId = opts.resume?.runId ?? ranAt.replace(/[:.]/g, '-')
 
-  for (let i = 0; i < framework.steps.length; i++) {
-    const step: FrameworkStep = framework.steps[i]
+  for (let i = startAt; i < framework.steps.length; i++) {
+    const stepEntry: FrameworkStepEntry = framework.steps[i]
+    if (isGateStep(stepEntry)) {
+      // Resolve the editable payload — defaults to the immediately-previous
+      // step's output, with `payload_from_step` allowing reach-back. When
+      // there is no previous step (i === 0 with no override) the payload
+      // is null and resume-with-edits is a no-op.
+      const hasPrev = i > 0
+      const explicit = stepEntry.gate.payload_from_step
+      const fromStep = explicit !== undefined ? explicit : hasPrev ? i - 1 : null
+      const payload = fromStep !== null ? stepOutputs[fromStep] ?? null : null
+      const dir = runsDirFor(name)
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+      const awaitingPath = join(dir, `${runId}.awaiting-gate.json`)
+      const record: AwaitingGateRecord = {
+        run_id: runId,
+        framework: name,
+        step_index: i,
+        gate_id: stepEntry.gate.id,
+        prompt: stepEntry.gate.prompt,
+        payload,
+        payload_step_index: fromStep,
+        prior_step_outputs: stepOutputs,
+        inputs: vars,
+        created_at: ranAt,
+      }
+      writeFileSync(awaitingPath, JSON.stringify(record, null, 2) + '\n', 'utf-8')
+      throw new FrameworkGatePauseError({
+        framework: name,
+        runId,
+        stepIndex: i,
+        gateId: stepEntry.gate.id,
+        awaitingGatePath: awaitingPath,
+      })
+    }
+    const step: FrameworkStep = stepEntry
     const skill = await resolveStepSkill(step.skill)
     if (!skill) {
       const partial: DashboardRun & { error: { step: number; message: string } } = {

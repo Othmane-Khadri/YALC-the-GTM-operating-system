@@ -1443,6 +1443,24 @@ Examples (recommended — flag-driven, zero prompts):
   .option('--discard-preview', 'Delete the _preview/ folder entirely (no new capture)')
   .option('--force-overwrite-preview', 'Proceed past the uncommitted-preview block')
   .option('--force-synthesis', 'Run synthesis even if captured inputs are below the minimum content bar')
+  // 0.9.B: review handoff controls. By default we auto-open the SPA at
+  // /setup/review at the end of capture. --no-open suppresses the launch;
+  // --review-in-chat falls back to the legacy CLI section walk.
+  .option('--no-open', 'Suppress browser auto-open at the end of capture')
+  .option('--review-in-chat', 'Walk preview sections in the terminal instead of the SPA')
+  // 0.9.F: confidence-banded auto-commit. High-confidence sections move
+  // straight to live; low-confidence ones queue at /setup/review.
+  .option(
+    '--no-auto-commit',
+    'Force every preview section into the /setup/review queue regardless of confidence.',
+  )
+  .option(
+    '--auto-commit-threshold <value>',
+    'Threshold (0–1) for confidence-banded auto-commit. Defaults to 0.85.',
+    (val) => Number.parseFloat(val),
+  )
+  // 0.9.1: suppress the auto-open of ~/.gtm-os/.env after a fresh scaffold.
+  .option('--no-open-env', 'Skip auto-opening the .env template in the default editor')
   .action(withDiagnostics(async (opts) => {
     const { runStart } = await import('../lib/onboarding/start')
     await runStart({
@@ -1464,6 +1482,11 @@ Examples (recommended — flag-driven, zero prompts):
       discardPreview: opts.discardPreview ?? false,
       forceOverwritePreview: opts.forceOverwritePreview ?? false,
       forceSynthesis: opts.forceSynthesis ?? false,
+      noOpen: opts.open === false,
+      reviewInChat: opts.reviewInChat ?? false,
+      noAutoCommit: opts.autoCommit === false,
+      autoCommitThreshold: opts.autoCommitThreshold,
+      noOpenEnv: opts.openEnv === false,
     })
   }))
 
@@ -2214,6 +2237,7 @@ program
   .option('--auto-confirm', 'Accept defaults for every input')
   .option('--destination <dest>', 'Output destination (notion or dashboard)')
   .option('--notion-parent <id>', 'Notion parent page ID (required if --destination notion)')
+  .option('--open', 'Open the framework dashboard in the browser after install')
   .action(withDiagnostics(async (name: string, opts) => {
     const { runFrameworkInstall } = await import('./commands/framework.js')
     await runFrameworkInstall(name, {
@@ -2221,15 +2245,54 @@ program
       destination: opts.destination,
       notionParent: opts.notionParent,
     })
+    if (opts.open) {
+      const { openBrowser } = await import('../lib/cli/open-browser.js')
+      const url = `http://localhost:3847/frameworks/${name}`
+      const r = openBrowser(url)
+      console.log(r.launched ? `  Opening ${url}…` : `  Open ${url} to view the dashboard.`)
+    }
   }))
 
 program
   .command('framework:run <name>')
   .description('Run an installed framework now (off-schedule)')
   .option('--seed', "Use seed_run.override_inputs from the framework definition")
+  .option('--open', 'Open the framework dashboard in the browser after the run')
   .action(withDiagnostics(async (name: string, opts) => {
     const { runFrameworkRun } = await import('./commands/framework.js')
     await runFrameworkRun(name, { seed: !!opts.seed })
+    if (opts.open) {
+      const { openBrowser } = await import('../lib/cli/open-browser.js')
+      const url = `http://localhost:3847/frameworks/${name}`
+      const r = openBrowser(url)
+      console.log(r.launched ? `  Opening ${url}…` : `  Open ${url} to view the dashboard.`)
+    }
+  }))
+
+program
+  .command('framework:resume <name>')
+  .description('Resume a framework run that paused at a human-gate step')
+  .requiredOption('--from-gate <runId>', 'Run-id of the paused gate to resume')
+  .action(withDiagnostics(async (name: string, opts) => {
+    const { runFrameworkResume } = await import('./commands/framework.js')
+    const { FrameworkGatePauseError, FrameworkRunError, EXIT_CODE_AWAITING_GATE } =
+      await import('../lib/frameworks/runner.js')
+    try {
+      const result = await runFrameworkResume(name, { fromGate: opts.fromGate })
+      console.log(`  Resumed (${result.mode}). Wrote: ${result.path}`)
+      console.log(`  Rows:  ${result.rows}`)
+    } catch (err) {
+      if (err instanceof FrameworkGatePauseError) {
+        console.log(`  Run paused again at gate \`${err.gateId}\`. View: http://localhost:3847/today`)
+        console.log(`  Awaiting gate file: ${err.awaitingGatePath}`)
+        process.exit(EXIT_CODE_AWAITING_GATE)
+      }
+      if (err instanceof FrameworkRunError) {
+        console.error(`  Step ${err.step} (${err.stepSkill}) failed: ${err.message}`)
+        process.exit(1)
+      }
+      throw err
+    }
   }))
 
 program
@@ -2596,10 +2659,47 @@ function levenshtein(a: string, b: string): number {
   return dp[m][n]
 }
 
+// ─── keys:connect ──────────────────────────────────────────────────────────
+//
+// Primary surface: open the SPA's /keys/connect form, wait for the user to
+// paste their key, then exit when the sentinel appears at
+// ~/.gtm-os/_handoffs/keys/<provider>.ready. Reuses openBrowser() for the
+// platform launch and the same sentinel pattern the 0.8.E connect-provider
+// CLI established.
+program
+  .command('keys:connect [provider]')
+  .description(
+    'Open the /keys/connect form for a provider (or agnostic mode) and wait for the sentinel.',
+  )
+  .option('--open', 'Open the form in the default browser', false)
+  .option('--no-open', 'Do not auto-open the browser')
+  .option('--timeout <ms>', 'Sentinel-poll timeout in ms', `${30 * 60 * 1000}`)
+  .action(withDiagnostics(async (provider: string | undefined, options: { open?: boolean; timeout?: string }) => {
+    const { runKeysConnect } = await import('./commands/keys-connect')
+    const timeoutMs = options.timeout ? Number(options.timeout) : undefined
+    const result = await runKeysConnect(provider, {
+      open: options.open !== false,
+      timeoutMs: Number.isFinite(timeoutMs) ? timeoutMs : undefined,
+    })
+    if (result.status === 'timeout') {
+      console.error(`Timed out waiting for ${result.url}`)
+    } else if (result.status === 'failed') {
+      console.warn(`Sentinel ${result.sentinelPath} reports a failed health check.`)
+    } else {
+      console.log(`Configured. Sentinel: ${result.sentinelPath}`)
+    }
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
 // ─── connect-provider ──────────────────────────────────────────────────────
+//
+// Preserved as a thin wrapper around `keys:connect` so existing scripts and
+// docs from 0.8.E keep working. The headline UX is now the agnostic flow —
+// "tell us about your provider" — and the bundled knowledge yamls are
+// suggestions, not the menu.
 program
   .command('connect-provider <name>')
-  .description('Walk through adding a provider (key, capability registration, test)')
+  .description('Add a provider end-to-end (legacy alias — wraps keys:connect).')
   .action(withDiagnostics(async (name: string) => {
     const { runConnectProvider } = await import('./commands/connect-provider')
     const result = await runConnectProvider(name)
@@ -3166,6 +3266,35 @@ program
       console.log('\n── Structured Data ──')
       console.log(JSON.stringify(finding.structuredData, null, 2))
     }
+  }))
+
+// ─── visualize ─────────────────────────────────────────────────────────────
+//
+// Generate a tailored interactive HTML page from local JSON data + an intent
+// string. Persists to `~/.gtm-os/visualizations/<view_id>.html` plus a
+// sidecar metadata JSON. Re-running with the same view_id overwrites both.
+program
+  .command('visualize <viewId>')
+  .description('Generate a tailored interactive page from local data + intent.')
+  .option(
+    '--data <glob>',
+    'Path or glob for one or more JSON files (repeat for multiple sources)',
+    (val: string, prev: string[] | undefined) => (prev ? [...prev, val] : [val]),
+    [] as string[],
+  )
+  .option('--intent <text>', 'One-line description of what the page should show')
+  .option('--open', 'Open the generated page in the default browser', false)
+  .option('--port <number>', 'Server port for the printed URL', '3847')
+  .action(withDiagnostics(async (viewId: string, options: { data?: string[]; intent?: string; open?: boolean; port?: string }) => {
+    const { runVisualizeCli } = await import('./commands/visualize')
+    const port = Number(options.port ?? '3847')
+    const result = await runVisualizeCli(viewId, {
+      data: options.data ?? [],
+      intent: options.intent ?? '',
+      open: !!options.open,
+      port: Number.isFinite(port) ? port : 3847,
+    })
+    if (result.exitCode !== 0) process.exit(result.exitCode)
   }))
 
 program.parse()

@@ -1,0 +1,23 @@
+{
+  "input": {
+    "account_id": "acct_abc123",
+    "competitor_url": "https://www.linkedin.com/company/clay-com/",
+    "limit": 5
+  },
+  "expected_output": {
+    "posts": [
+      {
+        "post_id": "urn:li:share:1001",
+        "url": "https://linkedin.com/posts/clay-com_post",
+        "posted_at": "2026-04-25T14:30:00Z",
+        "text_excerpt": "Three patterns we've seen in inbound this week...",
+        "engagement": { "likes": 312, "comments": 41 },
+        "angle": "founder-narrative"
+      }
+    ],
+    "accountId": "acct_abc123",
+    "competitorUrl": "https://www.linkedin.com/company/clay-com/",
+    "userId": "clay-com",
+    "limit": 5
+  }
+}

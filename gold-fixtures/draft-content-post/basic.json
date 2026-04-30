@@ -1,0 +1,17 @@
+{
+  "input": {
+    "idea": "Why most GTM teams misuse intent data",
+    "voice_md_content": "Tone: direct, no jargon, no em-dashes. Sentences under 14 words when possible. Open with a contrarian observation.",
+    "company_context": "Earleads — GTM engineering for B2B SaaS.",
+    "max_words": 220
+  },
+  "expected_output": {
+    "draft": {
+      "hook": "Most GTM teams treat intent data like a list of leads. It is not.",
+      "body": "Intent data is a clock, not a list. When a buyer hits five high-intent surfaces in three days, you have hours to react. By next week, the window is gone. Most teams skip the timing layer and run intent like any other source. They route a hot lead into a 14-day nurture and watch it cool. Then they blame the data. The fix is small. Score on recency, not just topic. Auto-route the freshest signals to a human within an hour. Treat dormant signals as a re-engagement pool, not a primary list. Intent data works. Most teams just run it on the wrong clock.",
+      "cta": "Tell me how your team handles signal recency in the comments.",
+      "word_count": 116,
+      "idea": "Why most GTM teams misuse intent data"
+    }
+  }
+}

@@ -19,8 +19,11 @@ const _testCfg: any = {
 export default defineConfig({
   test: _testCfg,
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
+    alias: [
+      // The web SPA's tests live under web/src/__tests__/*.tsx and use the
+      // `@/` alias rooted at web/src. Match that prefix first so it wins
+      // over the root `@/` mapping which targets src/.
+      { find: /^@\/(.*)$/, replacement: path.resolve(__dirname, './web/src/$1') },
+    ],
   },
 })

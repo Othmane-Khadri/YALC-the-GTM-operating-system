@@ -1,0 +1,20 @@
+{
+  "input": {
+    "account_id": "acct_test",
+    "campaign_name": "Q2 Series A founders",
+    "leads": [{ "provider_id": "li_1", "message": "Hi Jane, saw your post on SDR ROI." }],
+    "sequence": [
+      { "kind": "connection", "delay_days": 0, "body": "Hi {firstname}" },
+      { "kind": "dm", "delay_days": 2, "body": "Following up on our connection." }
+    ]
+  },
+  "expected_output": {
+    "campaignId": "linkedin-acct_test-q2-series-a-founders-1714405200000",
+    "status": "started",
+    "leadsAttempted": 1,
+    "leadsSucceeded": 1,
+    "failures": [],
+    "sequenceLength": 2,
+    "accountId": "acct_test"
+  }
+}

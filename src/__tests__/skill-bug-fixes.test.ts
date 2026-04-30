@@ -127,14 +127,16 @@ describe('D1.4 — list-recent-linkedin-posts requires account_id', () => {
     expect(required).toContain('account_id')
   })
 
-  it('weekly-engagement-harvest framework yaml passes account_id to both LinkedIn steps', () => {
+  it('competitor-audience-mining framework yaml threads account_id through every LinkedIn step', () => {
     const yaml = readFileSync(
-      join(PKG_ROOT, 'configs', 'frameworks', 'weekly-engagement-harvest.yaml'),
+      join(PKG_ROOT, 'configs', 'frameworks', 'competitor-audience-mining.yaml'),
       'utf-8',
     )
-    expect(yaml).toMatch(/account_id:\s*"\{\{linkedin_account_id\}\}"/)
-    expect(yaml).toMatch(/linkedin_account_id/)
-    // And it sources from $context (with a doctor WARN when missing).
+    // The competitor-audience-mining archetype replaces weekly-engagement-harvest
+    // — it must thread `account_id` through both LinkedIn steps and pull the
+    // default from `$context.sources.linkedin_account_id`.
+    const accountIdLines = yaml.match(/account_id:\s*"\{\{account_id\}\}"/g) ?? []
+    expect(accountIdLines.length).toBeGreaterThanOrEqual(2)
     expect(yaml).toMatch(/\$context\.sources\.linkedin_account_id/)
   })
 })

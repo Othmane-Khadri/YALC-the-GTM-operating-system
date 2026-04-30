@@ -1,0 +1,45 @@
+{
+  "input": {
+    "magnet": {
+      "id": "m1",
+      "title": "The 12-Step GTM Agent Audit Checklist",
+      "format": "checklist",
+      "hook": "Find every manual step in your outbound that an agent should already be doing."
+    },
+    "company_context": "Earleads — GTM engineering for B2B SaaS.",
+    "target_persona": "VP RevOps at Series B SaaS"
+  },
+  "expected_output": {
+    "outline": {
+      "title": "The 12-Step GTM Agent Audit Checklist",
+      "subtitle": "Find every manual step in your outbound that an agent should already be doing.",
+      "sections": [
+        {
+          "heading": "Section 1: Audit Setup",
+          "bullets": [
+            "Map your current outbound workflow end-to-end",
+            "List every tool that touches a lead",
+            "Tag each step manual / semi-automated / fully automated"
+          ]
+        },
+        {
+          "heading": "Section 2: Lead Sourcing",
+          "bullets": [
+            "Are sourcing queries hand-typed or templated?",
+            "How often do queries get refreshed?",
+            "Who owns the ICP filter logic?"
+          ]
+        },
+        {
+          "heading": "Section 3: Enrichment",
+          "bullets": [
+            "Spot-check enrichment hit rate over the last 30 days",
+            "Identify enrichment fields nobody actually uses",
+            "Calculate $/usable-lead"
+          ]
+        }
+      ],
+      "cta": "Book a 15-minute strategy call to walk through your audit results"
+    }
+  }
+}

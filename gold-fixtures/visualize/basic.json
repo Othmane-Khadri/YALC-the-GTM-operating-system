@@ -1,0 +1,16 @@
+{
+  "input": {
+    "data_paths": "/Users/op/.gtm-os/agents/outreach-campaign-builder.runs/2026-04-29T09-00-00-000Z.json",
+    "intent": "kanban board of campaigns by stage (proposed, awaiting verification, launched, completed)",
+    "view_id": "campaign-queue",
+    "data_shape": "[{\"id\":\"camp-1\",\"name\":\"Series A SaaS CTOs\",\"stage\":\"awaiting verification\",\"hypothesis\":\"Series A CTOs care about LLM compliance\",\"created_at\":\"2026-04-28T08:00:00Z\"}]",
+    "brand_tokens": "{\"colors\":{\"primary\":\"#C9506E\",\"accent\":\"#E07A95\",\"background\":\"#F8EDE8\",\"foreground\":\"#1a1a1a\",\"card\":\"#FFFFFF\"},\"fonts\":{\"body\":\"'Inter', system-ui, sans-serif\",\"heading\":\"'Outfit', system-ui, sans-serif\",\"webfontUrl\":\"https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@400;500;600&display=swap\"}}",
+    "ui_ux_directives": "palette: yalc rose (primary #C9506E + accent #E07A95 over warm paper #F8EDE8). pairing: Outfit headings + Inter body. spacing: 24px between columns, 16px between cards. hover: 4px lift + soft shadow. animation: 150ms ease-out on hover. focus: 2px solid --ring."
+  },
+  "expected_output": {
+    "view_id": "campaign-queue",
+    "html": "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><title>Campaign queue</title><link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@400;500;600&display=swap\"><script src=\"https://cdn.tailwindcss.com\"></script><style>:root{--primary:#C9506E;--accent:#E07A95;--background:#F8EDE8;--foreground:#1a1a1a;--card:#FFFFFF}body{font-family:'Inter',system-ui,sans-serif;background:var(--background);color:var(--foreground)}h1,h2,h3,.font-heading{font-family:'Outfit',system-ui,sans-serif}.kanban-col{background:var(--card);border-radius:14px}.card{background:var(--card);border:1px solid rgba(26,26,26,0.12);transition:transform 150ms ease-out,box-shadow 150ms ease-out}.card:hover{transform:translateY(-4px);box-shadow:0 8px 24px rgba(201,80,110,0.08)}</style></head><body class=\"min-h-screen p-8\"><h1 class=\"font-heading text-3xl font-bold mb-6\" style=\"color:var(--primary)\">Campaign queue</h1><div class=\"grid grid-cols-4 gap-6\" id=\"board\"><div class=\"kanban-col p-4\"><h2 class=\"font-heading text-sm font-semibold mb-3\">Proposed</h2></div><div class=\"kanban-col p-4\"><h2 class=\"font-heading text-sm font-semibold mb-3\">Awaiting verification</h2><div class=\"card p-3 rounded-lg\"><p class=\"font-medium\">Series A SaaS CTOs</p><p class=\"text-sm\" style=\"color:var(--accent)\">camp-1</p></div></div><div class=\"kanban-col p-4\"><h2 class=\"font-heading text-sm font-semibold mb-3\">Launched</h2></div><div class=\"kanban-col p-4\"><h2 class=\"font-heading text-sm font-semibold mb-3\">Completed</h2></div></div><script>document.querySelectorAll('.card').forEach(c=>c.addEventListener('click',()=>console.log('click',c)))</script></body></html>",
+    "idiom": "kanban",
+    "summary": "Kanban board of 1 campaign across 4 stages."
+  }
+}

@@ -1,6 +1,6 @@
 {
   "name": "yalc-gtm-os",
-  "version": "0.8.0",
+  "version": "0.9.1",
   "private": false,
   "type": "module",
   "license": "MIT",
@@ -39,6 +39,8 @@
     "gold-fixtures",
     "scripts",
     "templates",
+    "web/dist",
+    "web/brand/tokens.json",
     ".claude/**/*.md",
     "docs/mcp.md",
     "data/intelligence/README.md",
@@ -55,7 +57,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "prepublishOnly": "pnpm typecheck && pnpm test"
+    "build:web": "pnpm --dir web build",
+    "dev:web": "pnpm --dir web dev",
+    "prepublishOnly": "pnpm build:web && pnpm typecheck && pnpm test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

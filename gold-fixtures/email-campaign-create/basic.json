@@ -1,0 +1,16 @@
+{
+  "input": {
+    "campaign_name": "Q2 Series A founders",
+    "leads": [{ "email": "jane@acme.com", "first_name": "Jane" }],
+    "sequence": [
+      { "subject": "{firstname}, quick question", "body": "Hi {firstname}, saw your...", "delay_days": 0 }
+    ]
+  },
+  "expected_output": {
+    "campaignId": "camp_abc123",
+    "status": "started",
+    "leadsAttempted": 1,
+    "leadsAdded": 1,
+    "sequenceLength": 1
+  }
+}

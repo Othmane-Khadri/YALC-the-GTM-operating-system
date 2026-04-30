@@ -39,7 +39,8 @@ output:
     const f = parseFrameworkYaml('/x/my-framework.yaml', yaml)
     expect(f.name).toBe('my-framework')
     expect(f.requires.providers).toEqual(['firecrawl'])
-    expect(f.steps[0].skill).toBe('scrape-something')
+    const first = f.steps[0]
+    expect('skill' in first ? first.skill : null).toBe('scrape-something')
   })
 
   it('throws with file path on invalid yaml', () => {
@@ -134,15 +135,15 @@ output: { destination_choice: [{ dashboard: { route: "/x" } }] }
 })
 
 describe('loadAllFrameworks', () => {
-  it('finds the 6 bundled frameworks', () => {
+  it('finds the 4 bundled archetypes (0.9.F catalog)', () => {
     const all = loadAllFrameworks()
     const names = all.map((f) => f.name).sort()
-    expect(names).toContain('daily-competitor-monitoring')
-    expect(names).toContain('weekly-engagement-harvest')
-    expect(names).toContain('daily-icp-signal-detection')
-    expect(names).toContain('inbound-reply-triage')
-    expect(names).toContain('weekly-content-radar')
-    expect(names).toContain('daily-funded-companies')
+    expect(names).toEqual([
+      'competitor-audience-mining',
+      'content-calendar-builder',
+      'lead-magnet-builder',
+      'outreach-campaign-builder',
+    ])
   })
 
   it('every bundled framework has a valid steps and output block', () => {
@@ -150,7 +151,12 @@ describe('loadAllFrameworks', () => {
     for (const f of all) {
       expect(f.steps.length).toBeGreaterThan(0)
       expect(f.output.destination_choice.length).toBeGreaterThan(0)
-      expect(f.schedule.cron).toMatch(/^\S+ \S+ \S+ \S+ \S+$/)
+      // Scheduled frameworks must declare cron; on-demand frameworks must NOT.
+      if (f.mode === 'scheduled') {
+        expect(f.schedule.cron).toMatch(/^\S+ \S+ \S+ \S+ \S+$/)
+      } else {
+        expect(f.schedule.cron).toBeUndefined()
+      }
     }
   })
 
@@ -159,7 +165,7 @@ describe('loadAllFrameworks', () => {
     const userDir = join(userBase, '.gtm-os', 'frameworks')
     mkdirSync(userDir, { recursive: true })
     const overrideYaml = `
-name: daily-competitor-monitoring
+name: competitor-audience-mining
 display_name: User Override
 description: Overridden by user
 inputs: []
@@ -167,7 +173,7 @@ schedule: { cron: "0 9 * * *" }
 steps: [{ skill: stub }]
 output: { destination_choice: [{ dashboard: { route: "/x" } }] }
 `
-    writeFileSync(join(userDir, 'daily-competitor-monitoring.yaml'), overrideYaml, 'utf-8')
+    writeFileSync(join(userDir, 'competitor-audience-mining.yaml'), overrideYaml, 'utf-8')
 
     const oldHome = process.env.HOME
     process.env.HOME = userBase
@@ -176,7 +182,7 @@ output: { destination_choice: [{ dashboard: { route: "/x" } }] }
       // path under vitest, but the fresh `loadAllFrameworks()` reads the dir
       // each time, so pulling a fresh list is enough.
       const all = loadAllFrameworks()
-      const f = all.find((x) => x.name === 'daily-competitor-monitoring')
+      const f = all.find((x) => x.name === 'competitor-audience-mining')
       // We can't reliably override HOME for the loader without rebuilding the
       // module — but the bundled-only path is the contract this test guards.
       expect(f).toBeDefined()

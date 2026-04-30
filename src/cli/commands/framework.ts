@@ -45,11 +45,20 @@ import { cronToAgentSchedule } from '../../lib/frameworks/cron-conversion.js'
 import { getRegistryReady } from '../../lib/providers/registry.js'
 import type {
   FrameworkDefinition,
+  FrameworkStep,
   InstalledFrameworkConfig,
   FrameworkOutputDestination,
 } from '../../lib/frameworks/types.js'
+import { isGateStep } from '../../lib/frameworks/types.js'
 
-const AGENTS_DIR = join(homedir(), '.gtm-os', 'agents')
+/**
+ * Resolve the agents/ directory at call time so HOME pivots in tests are
+ * honoured. (Prior to 0.9.E this was a top-level constant frozen at import
+ * time, which broke install tests that pivot HOME mid-suite.)
+ */
+function agentsDir(): string {
+  return join(homedir(), '.gtm-os', 'agents')
+}
 
 /**
  * Hardcoded fallback values for `$context.icp.*` paths that may legitimately
@@ -89,7 +98,8 @@ function resolveDefault(value: unknown): unknown {
 }
 
 function ensureAgentsDir() {
-  if (!existsSync(AGENTS_DIR)) mkdirSync(AGENTS_DIR, { recursive: true })
+  const dir = agentsDir()
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 }
 
 /** Render a single recommendation row for the printed list. */
@@ -102,16 +112,28 @@ function fmtRec(name: string, displayName: string, description: string, dest: st
 export async function runFrameworkList(): Promise<void> {
   const all = loadAllFrameworks()
   const installed = new Set(listInstalledFrameworks())
+  const { RETIRED_FRAMEWORKS } = await import('../../lib/frameworks/retired.js')
 
-  if (all.length === 0) {
+  // Surface retired frameworks the user still has installed locally so they
+  // see a migration breadcrumb next to their healthy installs.
+  const retiredInstalled = RETIRED_FRAMEWORKS.filter((r) => installed.has(r.name))
+
+  if (all.length === 0 && retiredInstalled.length === 0) {
     console.log('No frameworks found.')
     return
   }
-  console.log(`\nFrameworks (${all.length} bundled, ${installed.size} installed):\n`)
+  console.log(
+    `\nFrameworks (${all.length} bundled, ${installed.size} installed, ${retiredInstalled.length} retired):\n`,
+  )
   for (const f of all) {
     const status = installed.has(f.name) ? 'INSTALLED' : 'available'
     console.log(`  ${f.name.padEnd(34)} ${status.padEnd(10)} ${f.display_name}`)
     console.log(`     ${f.description}`)
+  }
+  for (const r of retiredInstalled) {
+    const status = `retired (replaced by ${r.replacement})`
+    console.log(`  ${r.name.padEnd(34)} ${status}`)
+    if (r.note) console.log(`     ${r.note}`)
   }
   console.log()
 }
@@ -251,18 +273,30 @@ async function collectInputs(
   return out
 }
 
-/** Write the agent yaml that the existing runner picks up via launchd. */
+/**
+ * Write the agent yaml that the existing runner picks up via launchd.
+ *
+ * On-demand frameworks (`mode: on-demand`) are intentionally NOT written —
+ * launchd would have nothing to schedule, and `framework:run <name>` is the
+ * only sanctioned trigger. The caller checks `mode` and skips this when so.
+ *
+ * Gate steps are dropped from the launchd-readable step list — they're
+ * runtime-only pauses and the agent runner doesn't know how to wait for
+ * a human. The framework runner re-reads the original yaml and handles
+ * gates there.
+ */
 function writeAgentYaml(framework: FrameworkDefinition, cfg: InstalledFrameworkConfig): string {
   ensureAgentsDir()
   if (!framework.schedule.cron) {
     throw new Error(`Framework "${framework.name}" has no schedule.cron — cannot install`)
   }
   const schedule = cronToAgentSchedule(framework.schedule.cron)
+  const skillSteps = framework.steps.filter((s): s is FrameworkStep => !isGateStep(s))
   const agent = {
     id: framework.name,
     name: framework.display_name,
     description: framework.description,
-    steps: framework.steps.map((s) => ({
+    steps: skillSteps.map((s) => ({
       skillId: s.skill,
       input: { ...(s.input ?? {}), ...cfg.inputs },
       continueOnError: true,
@@ -277,7 +311,7 @@ function writeAgentYaml(framework: FrameworkDefinition, cfg: InstalledFrameworkC
 }
 
 /** Stub seed run — produces an empty DashboardRun so the route always 200s. */
-function runSeed(framework: FrameworkDefinition, inputs: Record<string, unknown>): void {
+function runSeed(framework: FrameworkDefinition, inputs: Record<string, unknown>): string {
   const run: DashboardRun = {
     title: `${framework.display_name} — initial state`,
     summary:
@@ -287,7 +321,38 @@ function runSeed(framework: FrameworkDefinition, inputs: Record<string, unknown>
     ranAt: new Date().toISOString(),
     meta: { inputs, seed: true },
   }
-  writeRun(framework.name, run)
+  return writeRun(framework.name, run)
+}
+
+/**
+ * After the seed run lands, generate the framework's `default_visualization`
+ * (when declared). Uses the seed run JSON as the data source so the saved
+ * page reflects the framework's real shape from the first install. Failures
+ * are best-effort — they print a WARN and the install still completes.
+ */
+async function generateDefaultVisualization(
+  framework: FrameworkDefinition,
+  seedRunPath: string,
+): Promise<{ url: string; idiom: string } | null> {
+  if (!framework.default_visualization) return null
+  try {
+    const { runVisualize } = await import('../../lib/visualize/runner.js')
+    const result = await runVisualize({
+      view_id: framework.default_visualization.view_id,
+      intent: framework.default_visualization.intent,
+      data_paths: [seedRunPath],
+    })
+    return {
+      url: `http://localhost:3847/visualize/${encodeURIComponent(result.view_id)}`,
+      idiom: result.idiom,
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[framework:install] Default visualization skipped: ${err instanceof Error ? err.message : String(err)}`,
+    )
+    return null
+  }
 }
 
 export async function runFrameworkInstall(name: string, opts: InstallOpts): Promise<void> {
@@ -333,17 +398,29 @@ export async function runFrameworkInstall(name: string, opts: InstallOpts): Prom
     inputs,
   }
   saveInstalledConfig(cfg)
-  const yamlPath = writeAgentYaml(framework, cfg)
-  runSeed(framework, inputs)
+  // On-demand frameworks skip the launchd agent yaml — they only run via
+  // `framework:run`. Scheduled frameworks (the default) keep the legacy
+  // 0.7.0 / 0.8.0 install plumbing.
+  const isOnDemand = framework.mode === 'on-demand'
+  const yamlPath = isOnDemand ? null : writeAgentYaml(framework, cfg)
+  const seedRunPath = runSeed(framework, inputs)
+  const visualization = await generateDefaultVisualization(framework, seedRunPath)
 
   console.log(`\nInstalled ${framework.name}.`)
-  console.log(`  Agent yaml: ${yamlPath}`)
+  if (yamlPath) console.log(`  Agent yaml: ${yamlPath}`)
   if (dest.destination === 'dashboard') {
     console.log(`  Output:     http://localhost:3847/frameworks/${framework.name}`)
   } else {
     console.log(`  Output:     Notion (parent: ${dest.notionParent})`)
   }
-  console.log(`  Schedule:   ${framework.schedule.cron}${framework.schedule.timezone ? ` (${framework.schedule.timezone})` : ''}`)
+  if (isOnDemand) {
+    console.log(`  Schedule:   on-demand (run with: yalc-gtm framework:run ${framework.name})`)
+  } else {
+    console.log(`  Schedule:   ${framework.schedule.cron}${framework.schedule.timezone ? ` (${framework.schedule.timezone})` : ''}`)
+  }
+  if (visualization) {
+    console.log(`  Visualize:  ${visualization.url} (${visualization.idiom})`)
+  }
   console.log(`  Logs:       yalc-gtm framework:logs ${framework.name}`)
   console.log()
 }
@@ -367,12 +444,18 @@ export async function runFrameworkRun(name: string, opts: RunOpts = {}): Promise
   }
   void framework
   console.log(`\nRunning ${name} now…`)
-  const { runFramework, FrameworkRunError } = await import('../../lib/frameworks/runner.js')
+  const { runFramework, FrameworkRunError, FrameworkGatePauseError, EXIT_CODE_AWAITING_GATE } =
+    await import('../../lib/frameworks/runner.js')
   try {
     const { path, run } = await runFramework(name, { seed: !!opts.seed })
     console.log(`  Wrote: ${path}`)
     console.log(`  Rows:  ${run.rows.length}\n`)
   } catch (err) {
+    if (err instanceof FrameworkGatePauseError) {
+      console.log(`  Run paused at gate \`${err.gateId}\`. View: http://localhost:3847/today`)
+      console.log(`  Awaiting gate file: ${err.awaitingGatePath}`)
+      process.exit(EXIT_CODE_AWAITING_GATE)
+    }
     if (err instanceof FrameworkRunError) {
       console.error(`  Step ${err.step} (${err.stepSkill}) failed: ${err.message}`)
       if (err.partialPath) console.error(`  Partial output: ${err.partialPath}`)
@@ -380,6 +463,78 @@ export async function runFrameworkRun(name: string, opts: RunOpts = {}): Promise
     }
     throw err
   }
+}
+
+// ─── framework:resume ──────────────────────────────────────────────────────
+
+interface ResumeOpts {
+  fromGate: string
+}
+
+/**
+ * Resume a paused framework run.
+ *
+ * Reads the gate-approved.json (or gate-rejected.json) sibling of the
+ * awaiting-gate sentinel, then either:
+ *   - approved → continues execution from `step_index + 1` with payload
+ *     edits already baked into the prior step outputs.
+ *   - rejected → starts a fresh run from step 0 with `rejection_reason`
+ *     threaded into the runner's variable map.
+ *
+ * Used directly by the CLI and (in-process) by `/api/gates/<id>/approve`.
+ */
+export async function runFrameworkResume(
+  name: string,
+  opts: ResumeOpts,
+): Promise<{ path: string; rows: number; mode: 'approved' | 'rejected' }> {
+  const cfg = loadInstalledConfig(name)
+  if (!cfg) {
+    throw new Error(`Framework "${name}" is not installed`)
+  }
+  const runId = opts.fromGate
+  const { readGateState } = await import('../../lib/frameworks/gates.js')
+  const state = readGateState(name, runId)
+  if (state.kind === 'missing') {
+    throw new Error(
+      `No gate sentinel for run ${runId} on framework ${name}. ` +
+      `Approve or reject the gate first via /api/gates/${runId}/{approve,reject}.`,
+    )
+  }
+  if (state.kind === 'awaiting') {
+    throw new Error(
+      `Gate for run ${runId} on framework ${name} is still awaiting human input. ` +
+      `Approve or reject before resuming.`,
+    )
+  }
+  const { runFramework } = await import('../../lib/frameworks/runner.js')
+  const { clearAwaitingSentinel } = await import('../../lib/frameworks/gates.js')
+  if (state.kind === 'approved') {
+    const r = state.record
+    const { path, run } = await runFramework(name, {
+      resume: {
+        runId: r.run_id,
+        startAtStep: r.step_index + 1,
+        priorStepOutputs: r.prior_step_outputs,
+        ...(r.payload_step_index !== null && r.payload_step_index !== undefined
+          ? { payloadOverride: { stepIndex: r.payload_step_index, value: r.payload } }
+          : {}),
+      },
+    })
+    clearAwaitingSentinel(name, runId)
+    return { path, rows: run.rows.length, mode: 'approved' }
+  }
+  // rejected → restart from step 0 with rejection_reason in vars.
+  const r = state.record
+  const { path, run } = await runFramework(name, {
+    resume: {
+      runId: r.run_id,
+      startAtStep: 0,
+      priorStepOutputs: [],
+      rejectionReason: r.reason,
+    },
+  })
+  clearAwaitingSentinel(name, runId)
+  return { path, rows: run.rows.length, mode: 'rejected' }
 }
 
 // ─── framework:status ──────────────────────────────────────────────────────

@@ -35,21 +35,27 @@ yalc-gtm start --non-interactive
 
 Exit code 0 expected. The command writes `~/.gtm-os/` (config, db, env template) and prints a banner. Do not parse the banner — just confirm exit 0.
 
-If the directory already existed, the command will preserve user-filled keys and only delta-merge new placeholder lines. That's fine — proceed without warning the user.
+When the template is written for the first time, the CLI auto-opens `~/.gtm-os/.env` in the user's default editor (TextEdit on macOS, the system default on Linux/Windows). The CLI also prints inline guidance: remove the leading `#`, paste the key value, save the file. **You do not need to repeat those instructions** — the CLI already showed them.
+
+If the directory already existed, the command will preserve user-filled keys and only delta-merge new placeholder lines. The auto-open does NOT fire on a delta-merge (only on a fresh template). That's fine — proceed without warning the user.
+
+For headless / CI contexts, pass `--no-open-env` to suppress the editor launch.
 
 ---
 
 ## Step 3 — Hand off the .env to the user
 
-Tell the user, verbatim or close to it:
+The CLI in Step 2 already opened the file in the user's editor and printed the inline guidance. Tell the user, verbatim or close to it:
 
-> I created `~/.gtm-os/.env` with placeholder lines for every supported provider. Open it in your editor — `open ~/.gtm-os/.env` will open it in your default app — uncomment and fill in the keys you want to use. The template lists every built-in provider plus common MCP keys.
->
-> Tell me **"keys done"** when you've saved the file and I'll continue.
+> I just opened `~/.gtm-os/.env` in your default editor. Remove the leading `#` from the lines you want to enable, paste your API key after the `=` sign, and save the file. Tell me **"keys done"** when you have saved it.
 
-Wait for the user to confirm. Do not progress until they say so.
+If the user reports the auto-open did not fire (e.g. headless terminal, container, SSH session), tell them to open the file manually:
 
-While waiting, do not read the file's contents back into chat — the user does not need to see their own keys, and you must not display them.
+> Run `open ~/.gtm-os/.env` (macOS) or `xdg-open ~/.gtm-os/.env` (Linux) — or just open `~/.gtm-os/.env` in your editor of choice.
+
+Wait for the user to confirm. Do not progress until they say "keys done".
+
+While waiting, do not read the file's contents back into chat — the user does not need to see their own keys, and you must not display them under any circumstance.
 
 ---
 
@@ -96,39 +102,35 @@ Re-run the command with the extra flag(s). Do **not** pass `--force-synthesis` u
 
 ---
 
-## Step 6 — Walk the user through preview files
+## Step 6 — Hand off to the SPA review surface
 
-The capture wrote draft files into `~/.gtm-os/_preview/`. List the directory:
+Capture finished by auto-opening `http://localhost:3847/setup/review` in the user's browser. The page lists every draft section as an editable card with a confidence badge — the user edits inline, saves per section, then clicks **Save & Commit** to promote everything to live.
+
+Tell the user, verbatim or close to it:
+
+> I've opened **http://localhost:3847/setup/review** in your browser. Edit each section as needed, hit **Save** on each card you change, then click **Save & Commit** to promote the preview to live. When you're done, tell me **"committed"** and I'll continue with doctor + framework recommendations.
+
+Wait for the user to confirm "committed". Do not progress until they say so.
+
+If the browser didn't open (headless box, CI, container) the CLI prints the URL — the user can copy it. If they have no browser at all, they can rerun with `--review-in-chat` for a terminal-driven walk that commits immediately:
 ```bash
-ls ~/.gtm-os/_preview/
+yalc-gtm start --non-interactive --website "<website>" --review-in-chat
 ```
 
-For each file in turn (in this order: `company_context.yaml`, `framework.yaml`, `voice.md`, `icp.yaml`, `positioning.md`, `qualification_rules.md`, `campaign_templates.yaml`, `search_queries.txt`, `config.yaml`):
-
-1. Read the file.
-2. Summarize what it contains in 2–4 sentences of plain English. Do **not** dump the YAML or markdown verbatim into chat unless the user asks. Highlight the company name, ICP description, voice cues, etc., as relevant to that section.
-3. Ask: "Does this look right? **(a) approve  (b) regenerate  (c) drop this section**"
-
-Track the user's answer per section. If they say:
-- **approve** — note as accepted; continue.
-- **regenerate** — run `yalc-gtm start --non-interactive --regenerate <section>` and re-summarize.
-- **drop** — note this section name for the `--discard` flag in Step 7.
-
-Do not move on to Step 7 until every preview file has been reviewed.
+While waiting, do not read the preview files back into chat — the user is editing them in the browser and re-reading is just noise.
 
 ---
 
-## Step 7 — Commit the preview to live
+## Step 7 — Confirm commit
 
-Build the commit command. If the user dropped any sections, include them with `--discard`:
+When the user says "committed", verify the sentinel:
 ```bash
-yalc-gtm start --non-interactive --commit-preview \
-  [--discard <section1> --discard <section2> ...]
+test -f ~/.gtm-os/_handoffs/setup/review.committed && echo OK
 ```
 
-Exit 0 expected. The command moves approved files from `_preview/` to live (`~/.gtm-os/`). Anything dropped stays only in `_preview/` (not committed).
+The SPA's commit handler writes that file as soon as `/api/setup/commit` succeeds. If the file is missing the user may have closed the tab without clicking **Save & Commit** — gently ask them to revisit the page.
 
-Confirm to the user: "Committed N sections. Setup is now live at `~/.gtm-os/`."
+Confirm to the user: "Setup is now live at `~/.gtm-os/`. Running doctor next."
 
 ---
 
