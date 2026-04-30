@@ -616,14 +616,44 @@ export async function runStart(opts: StartOptions): Promise<void> {
     }
     // Hand off to the SPA review surface (0.9.B). Three modes:
     //   1. --review-in-chat → terminal-driven section walk, then return.
-    //   2. default → auto-open the SPA at /setup/review and return.
-    //   3. --no-open → just print the URL.
+    //   2. default → auto-spawn the dashboard server, auto-open the SPA at
+    //      /setup/review, and return. The spawned server is detached so it
+    //      survives this CLI exit until the user kills it.
+    //   3. --no-open → just print the URL (server is NOT spawned; user
+    //      presumably already has one running or wants to drive headlessly).
     // Browser-open failures fall back to the printed URL silently.
-    const reviewUrl = `${opts.serverUrl ?? 'http://localhost:3847'}/setup/review`
+    const port = 3847
+    const reviewUrl = `${opts.serverUrl ?? `http://localhost:${port}`}/setup/review`
 
     if (opts.reviewInChat) {
       await runChatReviewWalk({ tenantId })
       return
+    }
+
+    // 0.9.2: auto-spawn the dashboard server if the port isn't already in
+    // use. Without this, the browser opens to a non-existent server.
+    let spawnedPid: number | null = null
+    if (!opts.noOpen) {
+      const inUse = await isPortListening(port).catch(() => false)
+      if (!inUse) {
+        spawnedPid = await spawnDashboardServer(port)
+        if (spawnedPid) {
+          console.log(
+            `  Started review server on :${port} (pid: ${spawnedPid}). Stop later with: kill ${spawnedPid}`,
+          )
+          // Wait up to 10s for the server to start listening so the
+          // browser-open below doesn't race against an empty port.
+          for (let i = 0; i < 20; i++) {
+            if (await isPortListening(port).catch(() => false)) break
+            await new Promise((r) => setTimeout(r, 500))
+          }
+        } else {
+          console.log(
+            `  Could not auto-spawn the review server. In another terminal run:`,
+          )
+          console.log(`    yalc-gtm campaign:dashboard --port ${port}`)
+        }
+      }
     }
 
     let openResult: { attempted: boolean; launched: boolean } = {
@@ -1300,4 +1330,57 @@ async function runChatReviewWalk(args: { tenantId: string }): Promise<void> {
   await refreshLiveIndex(tenant)
   await writeReviewCommittedSentinel(tenant)
   console.log(`  ✓ Committed ${result.committed.length} path(s) to live`)
+}
+
+/**
+ * 0.9.2: detect whether something is already listening on the given port.
+ * Used by the post-capture handoff to decide whether to spawn the dashboard
+ * server. Best-effort — a transient AF_INET6 vs AF_INET mismatch could
+ * report false negative; the worst case is a duplicate spawn which the
+ * user can kill.
+ */
+async function isPortListening(port: number, host = '127.0.0.1'): Promise<boolean> {
+  const { createConnection } = await import('node:net')
+  return new Promise((resolve) => {
+    const socket = createConnection({ port, host })
+    let settled = false
+    const done = (result: boolean) => {
+      if (settled) return
+      settled = true
+      socket.destroy()
+      resolve(result)
+    }
+    socket.once('connect', () => done(true))
+    socket.once('error', () => done(false))
+    setTimeout(() => done(false), 1000)
+  })
+}
+
+/**
+ * 0.9.2: spawn the dashboard server as a detached child process so it
+ * survives this CLI's exit. Uses the same node binary + the same CLI
+ * entry point we're already running, so it works inside sandboxed installs
+ * where `yalc-gtm` may not be on the PATH of the spawned shell.
+ *
+ * Returns the spawned PID on success, or null on failure.
+ */
+async function spawnDashboardServer(port: number): Promise<number | null> {
+  try {
+    const { spawn } = await import('node:child_process')
+    const cliEntry = process.argv[1]
+    if (!cliEntry) return null
+    const child = spawn(
+      process.execPath,
+      [cliEntry, 'campaign:dashboard', '--port', String(port)],
+      {
+        detached: true,
+        stdio: 'ignore',
+        env: process.env,
+      },
+    )
+    if (typeof child.unref === 'function') child.unref()
+    return child.pid ?? null
+  } catch {
+    return null
+  }
 }
