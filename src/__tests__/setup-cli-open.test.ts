@@ -82,6 +82,109 @@ describe('openBrowser helper', () => {
   })
 })
 
+describe('openInEditor helper (0.9.1 .env handoff)', () => {
+  it('respects noOpen by skipping spawn entirely', async () => {
+    const { openInEditor } = await import('../lib/cli/open-browser')
+    const spawner = vi.fn()
+    const r = openInEditor('/tmp/sandbox/.gtm-os/.env', {
+      noOpen: true,
+      spawner: spawner as unknown as typeof import('node:child_process').spawn,
+    })
+    expect(r.attempted).toBe(false)
+    expect(r.launched).toBe(false)
+    expect(spawner).not.toHaveBeenCalled()
+  })
+
+  it('opens the file path with the platform default editor on darwin', async () => {
+    const { openInEditor } = await import('../lib/cli/open-browser')
+    const spawner = vi.fn(() => ({ unref: () => {} }))
+    const r = openInEditor('/tmp/sandbox/.gtm-os/.env', {
+      platform: 'darwin',
+      spawner: spawner as unknown as typeof import('node:child_process').spawn,
+    })
+    expect(r.attempted).toBe(true)
+    expect(r.launched).toBe(true)
+    expect(r.command).toBe('open')
+    const call = spawner.mock.calls[0] as unknown as [string, string[], unknown]
+    expect(call[0]).toBe('open')
+    expect(call[1]).toEqual(['/tmp/sandbox/.gtm-os/.env'])
+  })
+
+  it('uses xdg-open on linux', async () => {
+    const { openInEditor } = await import('../lib/cli/open-browser')
+    const spawner = vi.fn(() => ({ unref: () => {} }))
+    const r = openInEditor('/home/user/.gtm-os/.env', {
+      platform: 'linux',
+      spawner: spawner as unknown as typeof import('node:child_process').spawn,
+    })
+    expect(r.command).toBe('xdg-open')
+    const call = spawner.mock.calls[0] as unknown as [string, string[], unknown]
+    expect(call[0]).toBe('xdg-open')
+    expect(call[1]).toEqual(['/home/user/.gtm-os/.env'])
+  })
+
+  it('reports a non-launched result when spawn throws', async () => {
+    const { openInEditor } = await import('../lib/cli/open-browser')
+    const spawner = vi.fn(() => {
+      throw new Error('ENOENT: no editor configured')
+    })
+    const r = openInEditor('/tmp/.gtm-os/.env', {
+      platform: 'linux',
+      spawner: spawner as unknown as typeof import('node:child_process').spawn,
+    })
+    expect(r.attempted).toBe(true)
+    expect(r.launched).toBe(false)
+    expect(r.reason).toMatch(/ENOENT/)
+  })
+})
+
+describe('runStart scaffold .env auto-open (0.9.1)', () => {
+  it('auto-opens the .env when the template was just created', async () => {
+    const { runStart } = await import('../lib/onboarding/start')
+    // Spy on the openInEditor module before runStart imports it.
+    const opened: string[] = []
+    vi.doMock('../lib/cli/open-browser.js', async () => {
+      const actual = await vi.importActual<typeof import('../lib/cli/open-browser')>(
+        '../lib/cli/open-browser',
+      )
+      return {
+        ...actual,
+        openInEditor: (path: string) => {
+          opened.push(path)
+          return { attempted: true, launched: true, command: 'open' }
+        },
+      }
+    })
+    vi.resetModules()
+    const { runStart: runStartFresh } = await import('../lib/onboarding/start')
+    await runStartFresh({ tenantId: 'default', nonInteractive: true })
+    expect(opened.length).toBe(1)
+    expect(opened[0]).toContain('.gtm-os/.env')
+    vi.doUnmock('../lib/cli/open-browser.js')
+  })
+
+  it('--no-open-env suppresses the auto-open even on a fresh template', async () => {
+    const opened: string[] = []
+    vi.doMock('../lib/cli/open-browser.js', async () => {
+      const actual = await vi.importActual<typeof import('../lib/cli/open-browser')>(
+        '../lib/cli/open-browser',
+      )
+      return {
+        ...actual,
+        openInEditor: (path: string) => {
+          opened.push(path)
+          return { attempted: true, launched: true, command: 'open' }
+        },
+      }
+    })
+    vi.resetModules()
+    const { runStart } = await import('../lib/onboarding/start')
+    await runStart({ tenantId: 'default', nonInteractive: true, noOpenEnv: true })
+    expect(opened.length).toBe(0)
+    vi.doUnmock('../lib/cli/open-browser.js')
+  })
+})
+
 describe('runStart auto-open hook', () => {
   it('--review-in-chat commits without invoking the browser hook', async () => {
     seedMinimalPreview()

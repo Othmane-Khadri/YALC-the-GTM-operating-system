@@ -73,3 +73,57 @@ export function openBrowser(
     }
   }
 }
+
+/**
+ * Cross-platform file-open helper for the post-scaffold .env handoff.
+ *
+ * After `start --non-interactive` lays down the template `.env`, the user
+ * needs to fill in their keys. Rather than walking them per-provider through
+ * the safe-key SPA flow (which is one form per provider, slow when the user
+ * has many keys), we open the file in their default editor so they can
+ * uncomment + paste in one pass.
+ *
+ * Same best-effort discipline as openBrowser: failures fall through to a
+ * printed file path so the user can open it manually.
+ */
+export function openInEditor(
+  filePath: string,
+  options: OpenBrowserOptions = {},
+): OpenBrowserResult {
+  if (options.noOpen) {
+    return { attempted: false, launched: false, command: null, reason: 'no-open flag' }
+  }
+  const platform = options.platform ?? process.platform
+  const spawner = options.spawner ?? spawn
+
+  let command: string
+  let args: string[]
+  if (platform === 'darwin') {
+    command = 'open'
+    args = [filePath]
+  } else if (platform === 'win32') {
+    command = 'cmd'
+    args = ['/c', 'start', '""', filePath]
+  } else {
+    command = 'xdg-open'
+    args = [filePath]
+  }
+
+  try {
+    const child = spawner(command, args, {
+      stdio: 'ignore',
+      detached: true,
+    })
+    if (child && typeof (child as { unref?: () => void }).unref === 'function') {
+      ;(child as { unref?: () => void }).unref?.()
+    }
+    return { attempted: true, launched: true, command }
+  } catch (err) {
+    return {
+      attempted: true,
+      launched: false,
+      command,
+      reason: err instanceof Error ? err.message : 'spawn failed',
+    }
+  }
+}
