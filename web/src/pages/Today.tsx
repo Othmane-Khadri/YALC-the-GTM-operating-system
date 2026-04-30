@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 import { describeError, eyebrowClass } from '@/lib/feedback'
+import { StructuredValue, tryParseJson } from '@/lib/render'
 
 interface RunItem {
   type: 'run'
@@ -56,6 +57,7 @@ export function Today() {
   const [retryError, setRetryError] = useState<string | null>(null)
   // Per-gate state — keyed by run_id so concurrent gates don't clobber.
   const [payloadDrafts, setPayloadDrafts] = useState<Record<string, string>>({})
+  const [payloadEditing, setPayloadEditing] = useState<Record<string, boolean>>({})
   const [rejectDrafts, setRejectDrafts] = useState<Record<string, string>>({})
   const [gateBusy, setGateBusy] = useState<Record<string, boolean>>({})
   const [gateMessage, setGateMessage] = useState<string | null>(null)
@@ -145,6 +147,24 @@ export function Today() {
     }
   }
 
+  // Render the JSON draft as a structured tree. The draft is the source of
+  // truth (so edits round-trip through the textarea), but the user reads
+  // it through the structured view by default.
+  function PayloadPreview({ draft }: { draft: string }): JSX.Element {
+    if (!draft.trim()) {
+      return <p className="text-muted-foreground italic text-sm">No payload attached to this gate.</p>
+    }
+    const parsed = tryParseJson(draft)
+    if (!parsed.ok) {
+      return (
+        <p className="text-destructive text-xs">
+          Could not parse payload: {parsed.error}. Switch to "Edit raw JSON" to fix.
+        </p>
+      )
+    }
+    return <StructuredValue value={parsed.value} />
+  }
+
   const items = data?.items ?? []
   const isEmpty = !loadError && data !== null && items.length === 0
 
@@ -200,19 +220,43 @@ export function Today() {
                   <CardContent className="space-y-3">
                     <p className="text-sm">{item.prompt}</p>
                     <p className="text-xs text-muted-foreground">{formatTime(item.created_at)}</p>
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium" htmlFor={`payload-${item.run_id}`}>
-                        Payload (editable JSON — sent as `edits` on Approve)
-                      </label>
-                      <textarea
-                        id={`payload-${item.run_id}`}
-                        data-testid={`today-payload-${item.framework}`}
-                        className="w-full h-32 rounded-md border bg-background p-2 font-mono text-xs"
-                        value={draftFor(item)}
-                        onChange={(e) =>
-                          setPayloadDrafts((prev) => ({ ...prev, [item.run_id]: e.target.value }))
-                        }
-                      />
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Payload (Approve sends this back as your edits)
+                        </label>
+                        <button
+                          type="button"
+                          data-testid={`today-payload-mode-${item.framework}`}
+                          className="text-xs px-2 py-1 rounded text-muted-foreground hover:text-foreground"
+                          onClick={() =>
+                            setPayloadEditing((prev) => ({
+                              ...prev,
+                              [item.run_id]: !prev[item.run_id],
+                            }))
+                          }
+                        >
+                          {payloadEditing[item.run_id] ? 'Reading view' : 'Edit raw JSON'}
+                        </button>
+                      </div>
+                      {payloadEditing[item.run_id] ? (
+                        <textarea
+                          id={`payload-${item.run_id}`}
+                          data-testid={`today-payload-${item.framework}`}
+                          className="w-full h-48 rounded-md border bg-background p-2 font-mono text-xs"
+                          value={draftFor(item)}
+                          onChange={(e) =>
+                            setPayloadDrafts((prev) => ({ ...prev, [item.run_id]: e.target.value }))
+                          }
+                        />
+                      ) : (
+                        <div
+                          data-testid={`today-payload-pretty-${item.framework}`}
+                          className="rounded-md border border-border bg-background/40 p-3 max-h-72 overflow-y-auto"
+                        >
+                          <PayloadPreview draft={draftFor(item)} />
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-medium" htmlFor={`reason-${item.run_id}`}>

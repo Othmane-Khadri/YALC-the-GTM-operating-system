@@ -16,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { api, ApiError } from '@/lib/api'
+import { MarkdownView, StructuredValue, tryParseYaml } from '@/lib/render'
 
 type SectionId =
   | 'company_context'
@@ -74,6 +75,46 @@ interface CardState {
   error: string | null
   /** True while a network call is in flight on this card. */
   busy: boolean
+  /** True when the user has flipped this card into raw-edit mode. */
+  editing: boolean
+}
+
+/**
+ * Render a preview file in human-readable form. YAML files get parsed and
+ * shown as nested labeled sections; markdown files get rendered as styled
+ * prose; everything else falls back to a clean monospace pre-block.
+ */
+function PrettySectionContent({
+  canonical,
+  content,
+}: {
+  canonical: string
+  content: string
+}): JSX.Element {
+  const trimmed = content.trim()
+  if (!trimmed) {
+    return <p className="text-muted-foreground italic text-sm">empty section</p>
+  }
+  if (canonical.endsWith('.yaml') || canonical.endsWith('.yml')) {
+    const parsed = tryParseYaml(content)
+    if (parsed.ok) {
+      return <StructuredValue value={parsed.value} />
+    }
+    return (
+      <pre className="font-mono text-xs whitespace-pre-wrap text-muted-foreground">
+        {`Couldn't parse YAML (${parsed.error}). Raw content:\n\n${content}`}
+      </pre>
+    )
+  }
+  if (canonical.endsWith('.md') || canonical.endsWith('.markdown')) {
+    return <MarkdownView content={content} />
+  }
+  // Plain text: search_queries.txt etc — show one line per item.
+  return (
+    <pre className="font-mono text-xs whitespace-pre-wrap leading-relaxed">
+      {content}
+    </pre>
+  )
 }
 
 function bucketForConfidence(score: number): 'high' | 'medium' | 'low' {
@@ -114,6 +155,7 @@ interface SectionCardProps {
   onSave: (canonical: string) => void
   onRegenerate: (id: SectionId) => void
   onToggleDiscard: (canonical: string) => void
+  onSetEditing: (canonical: string, editing: boolean) => void
 }
 
 export function SectionCard({
@@ -123,6 +165,7 @@ export function SectionCard({
   onSave,
   onRegenerate,
   onToggleDiscard,
+  onSetEditing,
 }: SectionCardProps) {
   const conf = section.confidence
   const bucket = conf == null ? null : bucketForConfidence(conf)
@@ -151,19 +194,46 @@ export function SectionCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        <textarea
-          data-testid={`setup-textarea-${section.canonical}`}
-          className="w-full min-h-[200px] rounded-md border border-border bg-background p-3 font-mono text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-          value={state.content}
-          spellCheck={false}
-          onChange={(e) => onEdit(section.canonical, e.target.value)}
-        />
+        <div className="flex items-center gap-1 text-xs">
+          <button
+            type="button"
+            data-testid={`setup-mode-pretty-${section.canonical}`}
+            className={`px-2 py-1 rounded ${state.editing ? 'text-muted-foreground hover:text-foreground' : 'bg-foreground/10 font-medium'}`}
+            onClick={() => onSetEditing(section.canonical, false)}
+          >
+            Reading view
+          </button>
+          <button
+            type="button"
+            data-testid={`setup-mode-edit-${section.canonical}`}
+            className={`px-2 py-1 rounded ${state.editing ? 'bg-foreground/10 font-medium' : 'text-muted-foreground hover:text-foreground'}`}
+            onClick={() => onSetEditing(section.canonical, true)}
+          >
+            Edit raw
+          </button>
+        </div>
+        {state.editing ? (
+          <textarea
+            data-testid={`setup-textarea-${section.canonical}`}
+            className="w-full min-h-[240px] rounded-md border border-border bg-background p-3 font-mono text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            value={state.content}
+            spellCheck={false}
+            onChange={(e) => onEdit(section.canonical, e.target.value)}
+          />
+        ) : (
+          <div
+            data-testid={`setup-pretty-${section.canonical}`}
+            className="rounded-md border border-border bg-background/40 p-4 max-h-[420px] overflow-y-auto"
+          >
+            <PrettySectionContent canonical={section.canonical} content={state.content} />
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <Button
             data-testid={`setup-save-${section.canonical}`}
             size="sm"
             variant="default"
-            disabled={state.busy || state.discard}
+            disabled={state.busy || state.discard || !state.dirty}
             onClick={() => onSave(section.canonical)}
           >
             {state.dirty ? 'Save changes' : state.saved ? 'Saved' : 'Save'}
@@ -226,6 +296,7 @@ export function SetupReview() {
               discard: prior?.discard ?? false,
               error: null,
               busy: false,
+              editing: prior?.editing ?? false,
             }
           }
         }
@@ -344,6 +415,13 @@ export function SetupReview() {
     }))
   }
 
+  const handleSetEditing = (canonical: string, editing: boolean) => {
+    setStates((prev) => ({
+      ...prev,
+      [canonical]: { ...prev[canonical], editing },
+    }))
+  }
+
   const handleCommit = async () => {
     setCommitting(true)
     setCommitError(null)
@@ -457,6 +535,7 @@ export function SetupReview() {
               onSave={handleSave}
               onRegenerate={handleRegenerate}
               onToggleDiscard={handleToggleDiscard}
+              onSetEditing={handleSetEditing}
             />
           ))}
         </div>
