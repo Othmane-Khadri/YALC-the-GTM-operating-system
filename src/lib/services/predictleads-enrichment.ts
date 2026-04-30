@@ -48,29 +48,102 @@ export interface JsonApiItem {
   attributes?: Record<string, unknown>
 }
 
+interface JsonApiRelationshipRef {
+  data?: { id?: string; type?: string } | { id?: string; type?: string }[] | null
+}
+
+interface JsonApiItemFull extends JsonApiItem {
+  relationships?: Record<string, JsonApiRelationshipRef>
+}
+
 /**
  * Normalize a JSON:API list response into SignalInput rows.
  *
- * PredictLeads returns `{ data: [{ id, type, attributes: {...} }, ...] }`.
- * Some endpoints return `{ data: {...} }` for a single resource.
+ * PredictLeads returns `{ data: [{ id, type, attributes, relationships }], included: [{...}] }`.
+ * For single resources the response is `{ data: {...}, included: [...] }`.
  *
- * The eventDate field is picked from common attribute names: first_seen_at,
- * found_at, published_at, announced_at, refreshed_at — whichever appears
- * first in the attributes object.
+ * Relationships are resolved against the top-level `included` array so the
+ * normalized payload carries the resolved entity's attributes (e.g. for a
+ * similar_company row, `similar_company.domain` shows up as `similar_company`
+ * on the payload; for a technology_detection, the technology name shows up
+ * as `technology`).
+ *
+ * eventDate is picked from common attribute names: first_seen_at, found_at,
+ * published_at, announced_at, refreshed_at.
  */
 export function normalizeListResponse(raw: unknown): SignalInput[] {
-  const body = raw as { data?: JsonApiItem | JsonApiItem[] }
+  const body = raw as {
+    data?: JsonApiItemFull | JsonApiItemFull[]
+    included?: JsonApiItemFull[]
+  }
   if (!body || !body.data) return []
   const items = Array.isArray(body.data) ? body.data : [body.data]
+  const includedMap = buildIncludedMap(body.included)
+
   return items.map((item) => {
     const attrs = item.attributes ?? {}
     const eventDate = pickEventDate(attrs)
+    const resolvedRels = resolveRelationships(item.relationships, includedMap)
     return {
       signalId: item.id ?? null,
-      payload: { id: item.id, type: item.type, ...attrs },
+      payload: { id: item.id, type: item.type, ...attrs, ...resolvedRels },
       eventDate,
     }
   })
+}
+
+function buildIncludedMap(included: JsonApiItemFull[] | undefined): Map<string, JsonApiItemFull> {
+  const map = new Map<string, JsonApiItemFull>()
+  if (!Array.isArray(included)) return map
+  for (const item of included) {
+    if (item.id && item.type) map.set(`${item.type}:${item.id}`, item)
+  }
+  return map
+}
+
+/**
+ * For each relationship, look up the referenced item(s) in `included` and
+ * promote useful attributes onto the payload under the relationship key.
+ *
+ * Single ref: `{ key }: { domain, name, ... }` (just the attributes)
+ * Multi ref:  `{ key }: [{ ... }, ...]`
+ *
+ * Special cases for terse display:
+ *   - similar_company → flat string of the target domain (or company_name)
+ *   - technology      → flat string of the technology name
+ */
+function resolveRelationships(
+  rels: Record<string, JsonApiRelationshipRef> | undefined,
+  included: Map<string, JsonApiItemFull>,
+): Record<string, unknown> {
+  if (!rels) return {}
+  const out: Record<string, unknown> = {}
+  for (const [key, ref] of Object.entries(rels)) {
+    const data = ref?.data
+    if (!data) continue
+    if (Array.isArray(data)) {
+      const resolved = data
+        .map((d) => (d.id && d.type ? included.get(`${d.type}:${d.id}`) : undefined))
+        .filter((x): x is JsonApiItemFull => Boolean(x))
+        .map((x) => x.attributes ?? {})
+      if (resolved.length > 0) out[key] = resolved
+    } else {
+      if (!data.id || !data.type) continue
+      const item = included.get(`${data.type}:${data.id}`)
+      if (!item) continue
+      const attrs = item.attributes ?? {}
+      // Terse string for display-friendly cases
+      if (key === 'similar_company' && typeof attrs.domain === 'string') {
+        out[key] = attrs.domain
+        out.similar_company_name = attrs.company_name
+      } else if (key === 'technology' && typeof attrs.name === 'string') {
+        out[key] = attrs.name
+      } else {
+        out[key] = attrs
+      }
+    }
+  }
+  return out
 }
 
 const EVENT_DATE_KEYS = [
