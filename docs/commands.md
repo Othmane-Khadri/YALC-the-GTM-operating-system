@@ -51,6 +51,20 @@ End-to-end validation: find → enrich → qualify → review.
 yalc-gtm test-run --count 10
 ```
 
+### `update`
+Pull the latest YALC release without breaking your config.
+
+```bash
+yalc-gtm update
+```
+
+### `migrate`
+Migrate a pre-0.6.0 setup — extracts company context from the legacy `framework.yaml` into its own file.
+
+```bash
+yalc-gtm migrate
+```
+
 ---
 
 ## Campaigns
@@ -110,6 +124,22 @@ Cross-campaign monthly report with intelligence synthesis.
 yalc-gtm campaign:monthly-report
 ```
 
+### `campaign:create-sequence`
+Execute a multi-channel sequence (LinkedIn + email) defined in YAML.
+
+```bash
+yalc-gtm campaign:create-sequence --sequence ./sequence.yaml --leads ./leads.csv
+yalc-gtm campaign:create-sequence --sequence ./sequence.yaml --linkedin-account acc-123 --dry-run
+```
+
+### `campaign:dashboard`
+Open the visual campaign dashboard in your browser.
+
+```bash
+yalc-gtm campaign:dashboard
+yalc-gtm campaign:dashboard --port 4000
+```
+
 ---
 
 ## Leads & Qualification
@@ -142,6 +172,38 @@ Import leads from CSV, JSON, or Notion into GTM-OS.
 yalc-gtm leads:import --source csv --input data/leads/new-leads.csv
 ```
 
+### `leads:find-linkedin`
+Resolve LinkedIn profile URLs from a CSV of names and emails.
+
+```bash
+yalc-gtm leads:find-linkedin --input ./leads.csv --output ./leads-with-linkedin.csv
+yalc-gtm leads:find-linkedin --input ./leads.csv --dry-run
+```
+
+### `leads:dedup`
+Deduplicate a result set against active campaigns, CRM contacts, replied leads, and the global blocklist.
+
+```bash
+yalc-gtm leads:dedup --result-set rs-abc123
+yalc-gtm leads:dedup --result-set rs-abc123 --strategy fuzzy --slack-confirm
+```
+
+### `leads:export`
+Export a result set to CSV, JSON, Google Sheets, a webhook, or directly into Lemlist / Apollo / Woodpecker.
+
+```bash
+yalc-gtm leads:export --result-set rs-abc123 --destination csv --output ./out.csv
+yalc-gtm leads:export --result-set rs-abc123 --destination lemlist
+yalc-gtm leads:export --result-set rs-abc123 --destination webhook --url https://hooks.example.com/leads
+```
+
+### `leads:suppress`
+Load a suppression list from an external CSV so those leads are excluded from future runs.
+
+```bash
+yalc-gtm leads:suppress --file ./do-not-contact.csv
+```
+
 ---
 
 ## LinkedIn
@@ -151,6 +213,14 @@ Reply to comments on your LinkedIn posts. Requires Unipile.
 
 ```bash
 yalc-gtm linkedin:answer-comments --url "https://linkedin.com/feed/update/urn:li:activity:123456" --dry-run
+```
+
+### `linkedin:reply-to-comments`
+Send threaded replies under LinkedIn comments (never top-level). Supports template rotation and keyword filtering.
+
+```bash
+yalc-gtm linkedin:reply-to-comments --url "https://linkedin.com/feed/update/urn:li:activity:123456" --template "Thanks {{name}}!"
+yalc-gtm linkedin:reply-to-comments --url <url> --templates "Reply A" "Reply B" --include-keywords pricing demo --max 50
 ```
 
 ---
@@ -188,6 +258,20 @@ yalc-gtm email:send --campaign-name "Q2 Outbound" --source ./leads.csv --sequenc
 | `--from <accountId>` | Email sending account id (provider-specific). |
 | `--dry-run` | Preview without sending. |
 
+### `email:status`
+Check Instantly campaign analytics (sent, opens, replies).
+
+```bash
+yalc-gtm email:status
+```
+
+### `email:accounts`
+List the Instantly sending accounts connected to your workspace.
+
+```bash
+yalc-gtm email:accounts
+```
+
 ---
 
 ## Providers
@@ -221,6 +305,22 @@ Delete an MCP provider config from `~/.gtm-os/mcp/`. The provider stops loading 
 
 ```bash
 yalc-gtm provider:remove brevo
+```
+
+### `keys:connect`
+Open the local `/keys/connect` form for a provider (or agnostic mode) and wait for the sentinel handshake. The canonical way to wire up an API key.
+
+```bash
+yalc-gtm keys:connect crustdata
+yalc-gtm keys:connect unipile --open
+yalc-gtm keys:connect             # Agnostic mode (pick provider in the UI)
+```
+
+### `connect-provider`
+Legacy alias that wraps `keys:connect` and also performs an end-to-end provider verification.
+
+```bash
+yalc-gtm connect-provider crustdata
 ```
 
 ---
@@ -320,6 +420,30 @@ Show detailed information about a skill.
 yalc-gtm skills:info qualify-leads
 ```
 
+### `skills:run`
+Execute an installed skill with the given inputs.
+
+```bash
+yalc-gtm skills:run qualify-leads --input company=acme.com --input role="VP Eng"
+yalc-gtm skills:run qualify-leads --input-file inputs.json --output result.json
+```
+
+### `skills:create`
+Scaffold a new skill interactively (Markdown by default, TypeScript optional).
+
+```bash
+yalc-gtm skills:create
+yalc-gtm skills:create --format typescript
+yalc-gtm skills:create --non-interactive   # Fail instead of prompting
+```
+
+### `skills:validate`
+Validate a Markdown skill file's manifest without registering it.
+
+```bash
+yalc-gtm skills:validate ./my-skill/SKILL.md
+```
+
 ---
 
 ## Memory & Context (Multi-Tenant)
@@ -356,6 +480,13 @@ yalc-gtm memory:dream --tenant acme
 yalc-gtm memory:dream --incremental
 ```
 
+### `memory:index`
+Rebuild the `MEMORY.md`-style pointer index for the tenant.
+
+```bash
+yalc-gtm memory:index --tenant acme
+```
+
 ### `context:sync`
 Run context adapters to sync external data into memory.
 
@@ -379,4 +510,277 @@ Review and provide feedback on qualification results. Feeds the intelligence sto
 
 ```bash
 yalc-gtm results:review --result-set rs-abc123
+```
+
+---
+
+## Research & Personalization
+
+### `research`
+AI research agent — answer any question about a company, person, or topic with cited evidence.
+
+```bash
+yalc-gtm research --target-type company --target acme.com --question "What's their pricing model?"
+yalc-gtm research --target-type person --target "Jane Doe @ Acme"
+yalc-gtm research --target-type topic --question "How are SaaS firms pricing AI features in 2026?" --max-sources 8
+```
+
+### `competitive-intel`
+Scrape, enrich, analyze, and write a competitor profile.
+
+```bash
+yalc-gtm competitive-intel --url https://competitor.com
+yalc-gtm competitive-intel --url https://competitor.com --enrich
+```
+
+### `personalize`
+Auto-personalize an outreach message for a single lead using LinkedIn, Firecrawl, Crustdata, and your intelligence store.
+
+```bash
+yalc-gtm personalize --first-name Jane --last-name Doe --company acme.com --template ./template.md
+```
+
+---
+
+## Signals (PredictLeads)
+
+### `signals:fetch`
+Pull PredictLeads signals for a single company domain (jobs, funding, tech, news, similar).
+
+```bash
+yalc-gtm signals:fetch --domain acme.com
+yalc-gtm signals:fetch --domain acme.com --types jobs,funding --no-cache
+yalc-gtm signals:fetch --domain acme.com --ttl-days 14
+```
+
+### `signals:enrich`
+Pull signals for every unique domain in a result set.
+
+```bash
+yalc-gtm signals:enrich --result-set rs-abc123
+yalc-gtm signals:enrich --result-set rs-abc123 --types jobs,news --ttl-days 7
+```
+
+### `signals:show`
+Read cached signals for a domain from local SQLite — does not hit the API.
+
+```bash
+yalc-gtm signals:show --domain acme.com
+yalc-gtm signals:show --domain acme.com --type jobs --limit 50
+```
+
+### `signals:list`
+List every signal watch with its last-checked timestamp.
+
+```bash
+yalc-gtm signals:list
+```
+
+### `signals:similar`
+Fetch lookalike companies for a domain (account discovery).
+
+```bash
+yalc-gtm signals:similar --domain acme.com --limit 25
+```
+
+### `signals:watch`
+Add companies or people to the signal watch list.
+
+```bash
+yalc-gtm signals:watch --domains acme.com,beta.io
+yalc-gtm signals:watch --domains acme.com --types job-change,funding --force
+```
+
+### `signals:detect`
+Run signal detection now against the watch list.
+
+```bash
+yalc-gtm signals:detect
+yalc-gtm signals:detect --type funding --company acme.com
+```
+
+### `signals:triggers`
+Manage trigger configurations — what should happen when a signal fires (Slack ping, enrich, qualify, kick off a campaign, write to intelligence).
+
+```bash
+yalc-gtm signals:triggers list
+yalc-gtm signals:triggers set --signal funding --action slack --channel "#gtm-alerts" --template "{{company}} just raised"
+yalc-gtm signals:triggers set --signal hiring-surge --action campaign --campaign-id camp-123
+```
+
+---
+
+## Frameworks (Playbooks)
+
+Frameworks are installable, schedulable GTM playbooks (e.g. "Outbound SaaS US v1"). They run on a cron, write to Notion or the dashboard, and can pause for human review.
+
+### `framework:list`
+List every bundled and installed framework.
+
+```bash
+yalc-gtm framework:list
+```
+
+### `framework:recommend`
+Claude recommends frameworks based on your configured providers and captured context.
+
+```bash
+yalc-gtm framework:recommend
+```
+
+### `framework:install`
+Install a framework — pick output destination, schedule, and seed run.
+
+```bash
+yalc-gtm framework:install outbound-saas-us
+yalc-gtm framework:install outbound-saas-us --destination notion --notion-parent <pageId> --auto-confirm
+```
+
+### `framework:run`
+Run an installed framework now (off-schedule).
+
+```bash
+yalc-gtm framework:run outbound-saas-us
+yalc-gtm framework:run outbound-saas-us --seed --open
+```
+
+### `framework:status`
+Show last run, next scheduled run, and output destination for an installed framework.
+
+```bash
+yalc-gtm framework:status outbound-saas-us
+```
+
+### `framework:logs`
+Show the most recent run for an installed framework.
+
+```bash
+yalc-gtm framework:logs outbound-saas-us
+```
+
+### `framework:resume`
+Resume a framework run that paused at a human-gate step.
+
+```bash
+yalc-gtm framework:resume outbound-saas-us --from-gate run-abc123
+```
+
+### `framework:disable`
+Pause scheduled runs for an installed framework. Config is preserved.
+
+```bash
+yalc-gtm framework:disable outbound-saas-us
+```
+
+### `framework:remove`
+Remove an installed framework — deletes config, agent yaml, and run history.
+
+```bash
+yalc-gtm framework:remove outbound-saas-us
+```
+
+---
+
+## CRM Sync
+
+### `crm:setup`
+Interactive wizard to wire up a CRM (HubSpot, Salesforce, Pipedrive) via MCP and confirm field mappings.
+
+```bash
+yalc-gtm crm:setup
+yalc-gtm crm:setup --non-interactive   # Auto-accept all suggested mappings
+```
+
+### `crm:import`
+Import contacts and companies from your CRM into local SQLite.
+
+```bash
+yalc-gtm crm:import
+yalc-gtm crm:import --dry-run
+```
+
+### `crm:push`
+Push enriched leads from a result set up to the CRM.
+
+```bash
+yalc-gtm crm:push --result-set rs-abc123
+yalc-gtm crm:push --result-set rs-abc123 --dry-run
+```
+
+### `crm:sync`
+Bidirectional sync between GTM-OS and the CRM.
+
+```bash
+yalc-gtm crm:sync
+yalc-gtm crm:sync --direction push
+yalc-gtm crm:sync --direction pull --dry-run
+```
+
+### `crm:status`
+Show the current CRM mapping and the last successful sync time.
+
+```bash
+yalc-gtm crm:status
+```
+
+### `crm:verify`
+Detect schema drift — compares your saved mapping against live MCP tools and flags any breakage.
+
+```bash
+yalc-gtm crm:verify
+```
+
+---
+
+## Pipelines
+
+Pipelines are declarative YAML workflows that chain multiple commands together with checkpoints.
+
+### `pipeline:create`
+Create a new pipeline YAML from a template.
+
+```bash
+yalc-gtm pipeline:create --name nightly-icp-refresh
+yalc-gtm pipeline:create --name nightly-icp-refresh --output ./pipelines/icp.yaml
+```
+
+### `pipeline:list`
+List available pipelines from `~/.gtm-os/pipelines/` and `configs/pipelines/`.
+
+```bash
+yalc-gtm pipeline:list
+```
+
+### `pipeline:run`
+Execute a declarative YAML pipeline.
+
+```bash
+yalc-gtm pipeline:run --pipeline nightly-icp-refresh
+yalc-gtm pipeline:run --pipeline nightly-icp-refresh --dry-run
+```
+
+### `pipeline:resume`
+Resume a failed or interrupted pipeline from its last checkpoint.
+
+```bash
+yalc-gtm pipeline:resume --run-id run-abc123
+```
+
+### `pipeline:status`
+Show the current state of a running, failed, or completed pipeline.
+
+```bash
+yalc-gtm pipeline:status --run-id run-abc123
+```
+
+---
+
+## Visualization
+
+### `visualize`
+Generate a tailored interactive HTML page from local JSON data plus an intent prompt — useful for ad-hoc dashboards, weekly reports, and prospect-facing roadmaps.
+
+```bash
+yalc-gtm visualize campaign-overview --data './data/campaigns/*.json'
+yalc-gtm visualize qualification-summary --data ./out/qualified.json --data ./out/unqualified.json
 ```
