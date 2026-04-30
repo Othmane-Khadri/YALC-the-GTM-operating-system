@@ -84,12 +84,13 @@ describe('SetupReview structural render', () => {
               dirty: false,
               discard: false,
               error: null,
-              busy: false,
+              busy: false, editing: false,
             }}
             onEdit={() => {}}
             onSave={() => {}}
             onRegenerate={() => {}}
             onToggleDiscard={() => {}}
+            onSetEditing={() => {}}
           />
         ))}
       </>,
@@ -123,11 +124,12 @@ describe('SetupReview structural render', () => {
             has_metadata_anchors: false,
           },
         }}
-        state={{ content: 'a: 1\n', saved: false, dirty: false, discard: false, error: null, busy: false }}
+        state={{ content: 'a: 1\n', saved: false, dirty: false, discard: false, error: null, busy: false, editing: false }}
         onEdit={() => {}}
         onSave={() => {}}
         onRegenerate={() => {}}
         onToggleDiscard={() => {}}
+            onSetEditing={() => {}}
       />,
     )
     expect(html).toContain('input_chars=321')
