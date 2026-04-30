@@ -260,6 +260,124 @@ export function extractAudienceHangouts(body: string): {
   return { subreddits: norm(subRaw), target_communities: norm(commRaw) }
 }
 
+/**
+ * Walk the LLM-emitted ICP / positioning / voice bodies and pull the
+ * structured fields back out so they can be merged into company_context.
+ *
+ * Without this, company_context.yaml stays frozen at its pre-synthesis
+ * skeleton (empty pain_points / competitors / segments_freeform / voice
+ * description). Frameworks that consume `$context.icp.*` then operate on
+ * empty inputs even though synthesis populated icp/segments.yaml.
+ *
+ * Returns whatever could be parsed; missing fields fall through to the
+ * existing context values when the caller merges.
+ */
+export function extractStructuredFields(opts: {
+  icpBody?: string
+  positioningBody?: string
+  voiceBody?: string
+}): {
+  pain_points: string[]
+  competitors: string[]
+  segments_freeform: string
+  subreddits: string[]
+  target_communities: string[]
+  voice_summary: string
+} {
+  const out = {
+    pain_points: [] as string[],
+    competitors: [] as string[],
+    segments_freeform: '',
+    subreddits: [] as string[],
+    target_communities: [] as string[],
+    voice_summary: '',
+  }
+
+  // ICP YAML — pulls pain_points, competitors, segments freeform summary
+  // and audience hangouts.
+  if (opts.icpBody) {
+    let icp: unknown
+    try {
+      icp = yaml.load(opts.icpBody)
+    } catch {
+      // ignore parse errors; rely on partial extraction
+    }
+    if (icp && typeof icp === 'object') {
+      const root = icp as Record<string, unknown>
+      const segments = root.segments
+      const stringList = (xs: unknown): string[] =>
+        Array.isArray(xs)
+          ? xs.map((x) => (typeof x === 'string' ? x.trim() : '')).filter(Boolean)
+          : []
+      // pain_points and competitors may live at root level or per-segment.
+      const collect = (key: string): string[] => {
+        const top = stringList(root[key])
+        if (top.length) return top
+        if (Array.isArray(segments)) {
+          const seen = new Set<string>()
+          for (const seg of segments) {
+            if (seg && typeof seg === 'object') {
+              for (const v of stringList((seg as Record<string, unknown>)[key])) seen.add(v)
+            }
+          }
+          return Array.from(seen)
+        }
+        return []
+      }
+      out.pain_points = collect('pain_points')
+      out.competitors = collect('competitors')
+      // segments_freeform: prefer an explicit string, otherwise stitch
+      // together segment names + descriptions for a human-readable summary.
+      const explicit = root.segments_freeform ?? root.summary
+      if (typeof explicit === 'string' && explicit.trim()) {
+        out.segments_freeform = explicit.trim()
+      } else if (Array.isArray(segments)) {
+        const lines: string[] = []
+        for (const seg of segments) {
+          if (seg && typeof seg === 'object') {
+            const s = seg as Record<string, unknown>
+            const name = typeof s.name === 'string' ? s.name : null
+            const desc = typeof s.description === 'string' ? s.description : null
+            if (name && desc) lines.push(`${name}: ${desc}`)
+            else if (name) lines.push(name)
+          }
+        }
+        if (lines.length) out.segments_freeform = lines.join('\n')
+      }
+      const hangouts = extractAudienceHangouts(opts.icpBody)
+      out.subreddits = hangouts.subreddits
+      out.target_communities = hangouts.target_communities
+    }
+  }
+
+  // Positioning markdown — back-fill competitors when the ICP body didn't
+  // emit them but the one-pager did. We pick up `## Competitors` and the
+  // `---BATTLECARD: <slug>---` separators (slug is the competitor name).
+  if (opts.positioningBody && out.competitors.length === 0) {
+    const battlecards = Array.from(
+      opts.positioningBody.matchAll(/^---BATTLECARD:\s*([a-zA-Z0-9_-]+)\s*---\s*$/gm),
+    )
+      .map((m) => m[1].trim().replace(/[-_]+/g, ' '))
+      .filter(Boolean)
+    if (battlecards.length) {
+      out.competitors = Array.from(new Set(battlecards))
+    }
+  }
+
+  // Voice summary — first paragraph of the tone-of-voice body.
+  if (opts.voiceBody) {
+    const para = opts.voiceBody
+      .split(/\n{2,}/)
+      .map((p) => p.replace(/^#+\s*/gm, '').replace(/\s+/g, ' ').trim())
+      .find((p) => p.length >= 40)
+    if (para) {
+      out.voice_summary = para.length > 600 ? para.slice(0, 600).trim() + '…' : para
+    }
+  }
+
+  return out
+}
+
 function writePositioningSection(body: string, tenant?: TenantContext): string[] {
   ensurePreviewDir('positioning/one-pager.md', tenant)
   const written: string[] = []
@@ -341,6 +459,9 @@ export async function writeSynthesizedPreview(opts: SynthesisOptions): Promise<S
   // updates only the affected entries and leaves everything else intact.
   const sectionMetaUpdates: Record<string, PreviewSectionMeta> = {}
   let anyLlmDriven = false
+  // Capture LLM bodies so the post-loop pass can back-write structured
+  // fields into company_context.yaml (Bug 1 fix). Indexed by section id.
+  const sectionBodies: Partial<Record<SectionId, string>> = {}
 
   for (const section of sections) {
     const result = await bodyForSection(section, promptInput)
@@ -348,6 +469,7 @@ export async function writeSynthesizedPreview(opts: SynthesisOptions): Promise<S
 
     const writer = SECTION_WRITERS[section]
     written.push(...writer(result.body, opts.tenant))
+    sectionBodies[section] = result.body
     if (section === 'icp') {
       const hangouts = extractAudienceHangouts(result.body)
       opts.context.icp.subreddits = hangouts.subreddits
@@ -366,6 +488,38 @@ export async function writeSynthesizedPreview(opts: SynthesisOptions): Promise<S
     sectionMetaUpdates[section] = {
       confidence: computeConfidence(signals),
       confidence_signals: signals,
+    }
+  }
+
+  // Back-write structured fields from the LLM outputs into the captured
+  // company_context.yaml so downstream framework runs see synthesized
+  // pain_points / competitors / segments_freeform / voice description
+  // instead of the empty pre-synthesis skeleton (Bug 1).
+  if (sectionBodies.icp || sectionBodies.positioning || sectionBodies.voice) {
+    try {
+      const enriched = extractStructuredFields({
+        icpBody: sectionBodies.icp,
+        positioningBody: sectionBodies.positioning,
+        voiceBody: sectionBodies.voice,
+      })
+      if (enriched.pain_points.length) opts.context.icp.pain_points = enriched.pain_points
+      if (enriched.competitors.length) opts.context.icp.competitors = enriched.competitors
+      if (enriched.segments_freeform) opts.context.icp.segments_freeform = enriched.segments_freeform
+      if (enriched.subreddits.length) opts.context.icp.subreddits = enriched.subreddits
+      if (enriched.target_communities.length)
+        opts.context.icp.target_communities = enriched.target_communities
+      if (enriched.voice_summary) opts.context.voice.description = enriched.voice_summary
+      opts.context.meta.last_updated_at = new Date().toISOString()
+      ensurePreviewDir('company_context.yaml', opts.tenant)
+      writeFileSync(
+        previewPath('company_context.yaml', opts.tenant),
+        yaml.dump(opts.context),
+      )
+      // company_context wasn't in the synthesis section list so it has no
+      // entry in `written` yet — add it so the SPA picks it up as updated.
+      if (!written.includes('company_context.yaml')) written.push('company_context.yaml')
+    } catch {
+      // Back-write is best-effort; never block the synthesis result on it.
     }
   }
 
