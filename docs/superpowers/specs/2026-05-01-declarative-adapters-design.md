@@ -261,34 +261,37 @@ The provider-builder skill must NEVER write a key value into a manifest, NEVER p
 
 **Migration guide.** A one-pager in `docs/providers.md` covers: spotting deprecated providers via `yalc-gtm doctor`, installing the declarative replacement, and overriding behaviour locally.
 
-## 7. yalc-providers community repo
+## 7. Community providers (in-repo)
 
-A separate public repo, `yalc-providers`, hosts community manifests under `manifests/<capability>/<provider>.yaml`.
+Community manifests live inside the YALC repo under `providers/manifests/<capability>/<provider>.yaml`. Single repo for engine + manifests — contributors PR to the same place and use the same issue tracker.
 
-**Repo structure:**
+**Layout:**
 
 ```
-yalc-providers/
+providers/
   manifests/
     icp-company-search/
       apollo.yaml
-      pappers.yaml
     people-enrich/
       peopledatalabs.yaml
-  schemas/
-    manifest-v1.json
-  .github/
-    PULL_REQUEST_TEMPLATE.md
+    crm-contact-upsert/
+      hubspot.yaml
+    email-campaign-create/
+      brevo.yaml
   scripts/
-    validate.mjs    # CI: ajv-validates every manifest against schemas/manifest-v1.json
+    validate.mjs   # ajv-validates every manifest against the canonical schema at src/lib/providers/declarative/schema.json
+    smoke.mjs      # wraps `yalc-gtm adapters:smoke <path>`
   README.md
+  CONTRIBUTING.md
 ```
 
-**PR template** asks the contributor to: confirm the smoke test passed locally, paste the smoke output (with credentials redacted), declare any rate-limit gotchas, and tick a checkbox confirming no secrets are inlined.
+`.github/workflows/providers-validate.yml` runs `validate.mjs` on PRs touching `providers/**` or the schema.
 
-**Curation rules (light).** Two maintainers. Merge requires (a) CI green (schema validation), (b) one maintainer sign-off, (c) a smoke-test reply in the PR. One canonical manifest per (capability, provider) lives on `main`; variants live on branches.
+**PR checklist** (auto-loaded from `.github/PULL_REQUEST_TEMPLATE.md`): confirm the smoke test passed locally, paste the smoke output (credentials redacted), declare any rate-limit gotchas, and tick a checkbox confirming no secrets are inlined.
 
-**Installing.** CLI: `yalc-gtm provider:install icp-company-search/apollo` fetches the YAML from `main`, writes it to `~/.gtm-os/adapters/`, and prompts to add to `config.yaml` priority. Manual: download the YAML, drop it in, restart YALC.
+**Curation rules (light).** Merge requires (a) CI green (schema validation), (b) one maintainer sign-off, (c) a smoke-test reply in the PR. One canonical manifest per (capability, provider) lives on `main`; variants live on branches.
+
+**Installing.** CLI: `yalc-gtm provider:install icp-company-search/apollo` fetches the YAML from `main`, writes it to `~/.gtm-os/adapters/`, and prompts to add to `config.yaml` priority. Manual: download the YAML from the raw GitHub URL and drop it in.
 
 ## 8. Test plan
 

@@ -1,6 +1,6 @@
 /**
  * `yalc-gtm provider:install <capability>/<provider>` — fetch a community
- * manifest from the yalc-providers repo (or a custom source), validate it
+ * manifest from the bundled providers/ directory (or a custom source), validate it
  * via `compileManifest`, write it under `~/.gtm-os/adapters/`, and
  * optionally amend the user's `~/.gtm-os/config.yaml` so the new
  * provider takes priority.
@@ -66,7 +66,7 @@ export interface ProviderInstallResult {
 }
 
 const DEFAULT_PROVIDERS_SOURCE =
-  'https://raw.githubusercontent.com/Othmane-Khadri/yalc-providers/main/manifests'
+  'https://raw.githubusercontent.com/Othmane-Khadri/YALC-the-GTM-operating-system/main/providers/manifests'
 
 const ARG_PATTERN = /^([a-z][a-z0-9-]*)\/([a-z][a-z0-9-]*)$/i
 
@@ -75,7 +75,7 @@ const ARG_PATTERN = /^([a-z][a-z0-9-]*)\/([a-z][a-z0-9-]*)$/i
  *   1. `--source <url>` (used verbatim — caller controls the path)
  *   2. `YALC_PROVIDERS_SOURCE` env var (treated as a base; we append
  *      `/<capability>/<provider>.yaml`)
- *   3. The hard-coded yalc-providers raw URL
+ *   3. The hard-coded YALC main-repo raw URL pointing at providers/manifests/
  */
 function resolveSourceUrl(
   capability: string,

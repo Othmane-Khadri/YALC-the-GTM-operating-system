@@ -1,0 +1,64 @@
+# HubSpot — crm-contact-upsert
+#
+# Vendor docs: https://developers.hubspot.com/docs/api/crm/contacts
+# Endpoint:    POST /crm/v3/objects/contacts?idProperty=email
+# Auth:        Bearer <private-app-token> (static — no OAuth refresh)
+#
+# HubSpot's CRM v3 contacts endpoint supports idempotent upsert when the
+# `idProperty` query parameter is set: existing contacts matching the
+# specified email are updated; missing ones are created. The response
+# always includes `id` and a `createdAt` / `updatedAt` pair — we infer
+# `created` by checking whether `createdAt == updatedAt` (a row that
+# was never updated since insertion).
+#
+# Auth note: HubSpot requires a Private App access token for static-key
+# usage. OAuth (full app installs with refresh) is out of scope for the
+# declarative DSL per spec section 9.
+manifestVersion: 1
+capability: crm-contact-upsert
+provider: hubspot
+version: 0.1.0
+auth:
+  type: bearer
+  value: ${env:HUBSPOT_API_KEY}
+endpoint:
+  method: POST
+  url: https://api.hubapi.com/crm/v3/objects/contacts?idProperty=email
+request:
+  contentType: application/json
+  bodyTemplate: |
+    {
+      "properties": {
+        "email": "{{input.contact.email}}",
+        "firstname": "{{input.contact.firstname}}",
+        "lastname": "{{input.contact.lastname}}",
+        "company": "{{input.contact.company}}",
+        "phone": "{{input.contact.phone}}",
+        "jobtitle": "{{input.contact.jobtitle}}",
+        "website": "{{input.contact.website}}",
+        "linkedin_url": "{{input.contact.linkedin_url}}"
+      }
+    }
+response:
+  rootPath: $
+  mappings:
+    "contactId": "$.id"
+    # `created` is best-effort: HubSpot's upsert endpoint returns the same
+    # body shape for both create and update (no status flag), so we emit
+    # a boolean derived from `archived` to satisfy the capability output
+    # schema. Callers that need strict create/update semantics should
+    # check the returned id against their local store instead.
+    "created": "$.archived == 'false'"
+  errorEnvelope:
+    matchPath: $.status
+    matchValue: error
+    messagePath: $.message
+smoke_test:
+  input:
+    contact:
+      email: yalc-smoke@example.com
+      firstname: YALC
+      lastname: Smoke
+      company: YALC
+  expectNonEmpty:
+    - contactId

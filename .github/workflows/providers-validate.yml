@@ -1,0 +1,27 @@
+name: providers-validate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'providers/**'
+      - 'src/lib/providers/declarative/schema.json'
+      - '.github/workflows/providers-validate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'providers/**'
+      - 'src/lib/providers/declarative/schema.json'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install ajv + yaml
+        run: npm install --no-save --no-audit --no-fund --silent ajv js-yaml
+      - name: Validate manifests
+        run: node providers/scripts/validate.mjs

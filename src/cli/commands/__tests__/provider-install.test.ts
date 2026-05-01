@@ -3,7 +3,7 @@
  *
  * The install handler:
  *   1. Resolves a remote URL on the configured providers source
- *      (default: yalc-providers main branch on GitHub raw).
+ *      (default: YALC main repo providers/manifests/ tree on GitHub raw).
  *   2. Fetches the YAML manifest via the injected fetch impl.
  *   3. Validates it through `compileManifest` (full schema check; no
  *      live HTTP smoke).
@@ -104,13 +104,13 @@ describe('provider:install', () => {
 
     expect(result.exitCode).toBe(0)
     expect(fetched).toEqual([
-      'https://raw.githubusercontent.com/Othmane-Khadri/yalc-providers/main/manifests/icp-company-search/apollo.yaml',
+      'https://raw.githubusercontent.com/Othmane-Khadri/YALC-the-GTM-operating-system/main/providers/manifests/icp-company-search/apollo.yaml',
     ])
   })
 
   it('writes the manifest to <adaptersDir>/<capability>-<provider>.yaml', async () => {
     const url =
-      'https://raw.githubusercontent.com/Othmane-Khadri/yalc-providers/main/manifests/icp-company-search/apollo.yaml'
+      'https://raw.githubusercontent.com/Othmane-Khadri/YALC-the-GTM-operating-system/main/providers/manifests/icp-company-search/apollo.yaml'
     const result = await runProviderInstall('icp-company-search/apollo', {
       adaptersDir,
       configPath,
@@ -152,7 +152,7 @@ describe('provider:install', () => {
 
   it('refuses to overwrite an existing manifest without --force', async () => {
     const url =
-      'https://raw.githubusercontent.com/Othmane-Khadri/yalc-providers/main/manifests/icp-company-search/apollo.yaml'
+      'https://raw.githubusercontent.com/Othmane-Khadri/YALC-the-GTM-operating-system/main/providers/manifests/icp-company-search/apollo.yaml'
     const target = join(adaptersDir, 'icp-company-search-apollo.yaml')
     writeFileSync(target, '# pre-existing\n', 'utf-8')
 
@@ -171,7 +171,7 @@ describe('provider:install', () => {
 
   it('overwrites when --force is set', async () => {
     const url =
-      'https://raw.githubusercontent.com/Othmane-Khadri/yalc-providers/main/manifests/icp-company-search/apollo.yaml'
+      'https://raw.githubusercontent.com/Othmane-Khadri/YALC-the-GTM-operating-system/main/providers/manifests/icp-company-search/apollo.yaml'
     const target = join(adaptersDir, 'icp-company-search-apollo.yaml')
     writeFileSync(target, '# pre-existing\n', 'utf-8')
 
@@ -189,7 +189,7 @@ describe('provider:install', () => {
 
   it('exits non-zero with a useful message on schema validation failure', async () => {
     const url =
-      'https://raw.githubusercontent.com/Othmane-Khadri/yalc-providers/main/manifests/icp-company-search/apollo.yaml'
+      'https://raw.githubusercontent.com/Othmane-Khadri/YALC-the-GTM-operating-system/main/providers/manifests/icp-company-search/apollo.yaml'
     const result = await runProviderInstall('icp-company-search/apollo', {
       adaptersDir,
       configPath,
@@ -234,7 +234,7 @@ describe('provider:install', () => {
       'utf-8',
     )
     const url =
-      'https://raw.githubusercontent.com/Othmane-Khadri/yalc-providers/main/manifests/icp-company-search/apollo.yaml'
+      'https://raw.githubusercontent.com/Othmane-Khadri/YALC-the-GTM-operating-system/main/providers/manifests/icp-company-search/apollo.yaml'
     const result = await runProviderInstall('icp-company-search/apollo', {
       adaptersDir,
       configPath,
@@ -251,7 +251,7 @@ describe('provider:install', () => {
   it('creates capabilities section when missing and asked to update priority', async () => {
     writeFileSync(configPath, `notion:\n  campaigns_ds: ''\n`, 'utf-8')
     const url =
-      'https://raw.githubusercontent.com/Othmane-Khadri/yalc-providers/main/manifests/icp-company-search/apollo.yaml'
+      'https://raw.githubusercontent.com/Othmane-Khadri/YALC-the-GTM-operating-system/main/providers/manifests/icp-company-search/apollo.yaml'
     const result = await runProviderInstall('icp-company-search/apollo', {
       adaptersDir,
       configPath,
@@ -273,7 +273,7 @@ describe('provider:install', () => {
       'utf-8',
     )
     const url =
-      'https://raw.githubusercontent.com/Othmane-Khadri/yalc-providers/main/manifests/icp-company-search/apollo.yaml'
+      'https://raw.githubusercontent.com/Othmane-Khadri/YALC-the-GTM-operating-system/main/providers/manifests/icp-company-search/apollo.yaml'
     const result = await runProviderInstall('icp-company-search/apollo', {
       adaptersDir,
       configPath,
@@ -318,7 +318,7 @@ describe('provider:install', () => {
 
   it('e2e: install + adapters:list shows the installed provider', async () => {
     const url =
-      'https://raw.githubusercontent.com/Othmane-Khadri/yalc-providers/main/manifests/icp-company-search/apollo.yaml'
+      'https://raw.githubusercontent.com/Othmane-Khadri/YALC-the-GTM-operating-system/main/providers/manifests/icp-company-search/apollo.yaml'
     const installResult = await runProviderInstall('icp-company-search/apollo', {
       adaptersDir,
       configPath,

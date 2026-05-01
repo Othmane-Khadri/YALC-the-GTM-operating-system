@@ -225,5 +225,5 @@ This matches the user's standing rule on never displaying secrets in chat.
 ## Out of scope
 
 - Migrating an existing TS adapter to a manifest (separate workstream).
-- The `provider:install` CLI for fetching community manifests from the `yalc-providers` repo (separate workstream).
+- The `provider:install` CLI for fetching community manifests from the bundled `providers/manifests/` directory (separate workstream).
 - Editing `src/lib/providers/declarative/` itself (compiler / loader / schema). Manifests are data; if the runtime is wrong, that's a different fix.
