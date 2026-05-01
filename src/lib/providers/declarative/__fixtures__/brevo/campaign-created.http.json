@@ -1,0 +1,10 @@
+{
+  "status": 201,
+  "body": {
+    "id": 4242,
+    "status": "draft",
+    "name": "YALC smoke campaign",
+    "subject": "Hello from YALC",
+    "type": "classic"
+  }
+}

@@ -222,6 +222,10 @@ When talking to Claude Code, reference these locations directly:
 
 ## Providers
 
+YALC ships providers in two forms: **built-in TypeScript adapters** (compiled into the package) and **bundled declarative manifests** (YAML under `configs/adapters/`). Both surface through the same capability registry. Run `yalc-gtm adapters:list` for the live view.
+
+### Built-in TypeScript adapters
+
 | Provider | Capabilities | Env Var |
 |----------|-------------|---------|
 | **Unipile** | LinkedIn search, connections, DMs, scraping | `UNIPILE_API_KEY`, `UNIPILE_DSN` |
@@ -232,6 +236,16 @@ When talking to Claude Code, reference these locations directly:
 | **Instantly** | Cold email sending, sequence management | `INSTANTLY_API_KEY` |
 | **Anthropic** | AI planning, qualification, personalization (optional inside Claude Code) | `ANTHROPIC_API_KEY` |
 | **Voyage** | Embeddings (memory) | `VOYAGE_API_KEY` |
+
+### Bundled declarative adapters
+
+| Capability | Provider | Env Var | Manifest |
+|---|---|---|---|
+| `people-enrich` | peopledatalabs | `PEOPLEDATALABS_API_KEY` | `configs/adapters/people-enrich-peopledatalabs.yaml` |
+| `crm-contact-upsert` | hubspot | `HUBSPOT_API_KEY` | `configs/adapters/crm-contact-upsert-hubspot.yaml` |
+| `email-campaign-create` | brevo | `BREVO_API_KEY` | `configs/adapters/email-campaign-create-brevo.yaml` |
+
+Counts at this commit: 21 built-in TypeScript adapters across 18 capabilities; 3 bundled declarative manifests. See [docs/providers.md](docs/providers.md#bundled-declarative-providers) for setup and override semantics.
 
 ## Skills
 

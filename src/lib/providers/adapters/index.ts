@@ -464,6 +464,64 @@ export const ASSET_RENDERING_CAPABILITY = {
   defaultPriority: ['builtin'],
 } as const
 
+/**
+ * `crm-contact-upsert` — upsert a contact into a CRM (HubSpot is the v1
+ * default, shipped as a bundled declarative manifest in
+ * `configs/adapters/crm-contact-upsert-hubspot.yaml`). The CRM's
+ * idempotency key is the contact's email — repeated upserts with the
+ * same email update the existing row instead of creating duplicates.
+ */
+export const CRM_CONTACT_UPSERT_CAPABILITY = {
+  id: 'crm-contact-upsert',
+  description:
+    'Upsert a contact into a CRM keyed by email. Standard fields (first/last/company/phone/linkedin) project onto the CRM\'s native columns; everything in `properties` is forwarded as custom-property writes. Returns the CRM-issued contact id and a boolean `created` flag (false = the row already existed and was updated).',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      contact: {
+        type: 'object',
+        description:
+          'Standard contact fields. `email` is the idempotency key — required.',
+        properties: {
+          email: { type: 'string', description: 'Idempotency key. Required.' },
+          firstname: { type: 'string' },
+          lastname: { type: 'string' },
+          company: { type: 'string' },
+          linkedin_url: { type: 'string' },
+          phone: { type: 'string' },
+          jobtitle: { type: 'string' },
+          website: { type: 'string' },
+        },
+        required: ['email'],
+        additionalProperties: false,
+      },
+      properties: {
+        type: 'object',
+        description:
+          'Free-form custom properties forwarded to the CRM as-is (e.g. lifecyclestage, lead_source).',
+        additionalProperties: true,
+      },
+    },
+    required: ['contact'],
+    additionalProperties: false,
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      contactId: {
+        type: 'string',
+        description: 'CRM-issued unique id for the contact row.',
+      },
+      created: {
+        type: 'boolean',
+        description: 'True iff the row did not exist before this call.',
+      },
+    },
+    required: ['contactId', 'created'],
+  },
+  defaultPriority: ['hubspot'],
+} as const
+
 export const LANDING_PAGE_DEPLOY_CAPABILITY = {
   id: 'landing-page-deploy',
   description:
@@ -530,6 +588,7 @@ export async function registerBuiltinCapabilities(registry: CapabilityRegistry):
   registry.registerCapability({ ...EMAIL_CAMPAIGN_CREATE_CAPABILITY, defaultPriority: [...EMAIL_CAMPAIGN_CREATE_CAPABILITY.defaultPriority] })
   registry.registerCapability({ ...ASSET_RENDERING_CAPABILITY, defaultPriority: [...ASSET_RENDERING_CAPABILITY.defaultPriority] })
   registry.registerCapability({ ...LANDING_PAGE_DEPLOY_CAPABILITY, defaultPriority: [...LANDING_PAGE_DEPLOY_CAPABILITY.defaultPriority] })
+  registry.registerCapability({ ...CRM_CONTACT_UPSERT_CAPABILITY, defaultPriority: [...CRM_CONTACT_UPSERT_CAPABILITY.defaultPriority] })
 
   const { icpCompanySearchCrustdataAdapter } = await import('./icp-company-search-crustdata.js')
   const { icpCompanySearchApolloAdapter } = await import('./icp-company-search-apollo.js')

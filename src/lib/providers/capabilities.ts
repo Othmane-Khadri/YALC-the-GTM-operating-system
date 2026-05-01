@@ -232,6 +232,16 @@ export function getCapabilityRegistry(): CapabilityRegistry {
     _initPromise = (async () => {
       const { registerBuiltinCapabilities } = await import('./adapters/index.js')
       await registerBuiltinCapabilities(_defaultRegistry!)
+      // Declarative manifests run AFTER built-ins so a declarative entry
+      // for the same (capability, provider) wins via last-write to
+      // bucket.set(). Failures are logged but never crash boot.
+      try {
+        const { registerDeclarativeAdapters } = await import('./declarative/registry-integration.js')
+        registerDeclarativeAdapters(_defaultRegistry!)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.warn(`[declarative] loader failed: ${msg}`)
+      }
     })()
   }
   return _defaultRegistry

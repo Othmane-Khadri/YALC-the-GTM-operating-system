@@ -1,0 +1,16 @@
+{
+  "status": 201,
+  "body": {
+    "id": "12345678901",
+    "properties": {
+      "createdate": "2026-04-30T10:00:00.000Z",
+      "email": "jane@example.com",
+      "firstname": "Jane",
+      "lastname": "Doe",
+      "lastmodifieddate": "2026-04-30T10:00:00.000Z"
+    },
+    "createdAt": "2026-04-30T10:00:00.000Z",
+    "updatedAt": "2026-04-30T10:00:00.000Z",
+    "archived": false
+  }
+}

@@ -1311,6 +1311,84 @@ program
     await runBootstrap({ config, dryRun: opts.dryRun ?? false })
   }))
 
+// ─── adapters:list ──────────────────────────────────────────────────────────
+//
+// List every capability adapter the registry has resolved (built-in TS +
+// declarative YAML manifests), grouped by capability with priority index
+// and availability. Use `--json` for machine-readable output.
+program
+  .command('adapters:list')
+  .description('List capability adapters (built-in + declarative) with priority and availability.')
+  .option('--json', 'Emit JSON instead of the human-readable table')
+  .action(withDiagnostics(async (opts) => {
+    const { runAdaptersList } = await import('./commands/adapters-list')
+    const result = await runAdaptersList({ json: !!opts.json })
+    process.stdout.write(result.output + '\n')
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
+// ─── adapters:smoke ─────────────────────────────────────────────────────────
+//
+// Run a declarative manifest's `smoke_test` block against the live vendor
+// and report pass/fail. Exits 0 on green, non-zero on red.
+program
+  .command('adapters:smoke')
+  .description('Run a declarative adapter manifest\'s smoke test (path argument required).')
+  .argument('<path>', 'Path to a YAML manifest under ~/.gtm-os/adapters/ or anywhere on disk.')
+  .option('--json', 'Emit JSON instead of the human-readable summary')
+  .action(withDiagnostics(async (path: string, opts: any) => {
+    const { runAdaptersSmoke } = await import('./commands/adapters-smoke')
+    const result = await runAdaptersSmoke(path, { json: !!opts.json })
+    process.stdout.write(result.output + '\n')
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
+// ─── provider:install ───────────────────────────────────────────────────────
+//
+// Fetch a community manifest from the yalc-providers repo (or a custom
+// `--source <url>` / `YALC_PROVIDERS_SOURCE` env), validate via the
+// declarative compiler, write to `~/.gtm-os/adapters/`, and optionally
+// add the provider to `~/.gtm-os/config.yaml`'s priority list. No live
+// HTTP smoke is run — that's `adapters:smoke`.
+program
+  .command('provider:install')
+  .description(
+    'Install a declarative adapter manifest from the yalc-providers community repo.',
+  )
+  .argument(
+    '<spec>',
+    'Capability/provider pair, e.g. icp-company-search/apollo',
+  )
+  .option(
+    '--source <url>',
+    'Override the manifest URL. Used verbatim — no <cap>/<prov>.yaml suffix is appended.',
+  )
+  .option('--force', 'Overwrite an existing manifest at the target path')
+  .option(
+    '--no-prompt',
+    'Skip every interactive prompt (use with --yes for unattended installs)',
+  )
+  .option(
+    '--no-priority-update',
+    'Skip the prompt to add this provider to capabilities.<cap>.priority in config.yaml',
+  )
+  .option(
+    '--yes',
+    'Answer "yes" to the priority-list update prompt without asking',
+  )
+  .action(withDiagnostics(async (spec: string, opts: any) => {
+    const { runProviderInstall } = await import('./commands/provider-install')
+    const result = await runProviderInstall(spec, {
+      sourceUrl: opts.source,
+      force: !!opts.force,
+      noPrompt: opts.prompt === false,
+      noPriorityUpdate: opts.priorityUpdate === false,
+      autoConfirmPriority: !!opts.yes,
+    })
+    process.stdout.write(result.output + '\n')
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
 // ─── campaign:dashboard ──────────────────────────────────────────────────────
 program
   .command('campaign:dashboard')

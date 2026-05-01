@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "YALC declarative adapter manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifestVersion",
+    "capability",
+    "provider",
+    "version",
+    "auth",
+    "endpoint",
+    "response"
+  ],
+  "properties": {
+    "manifestVersion": { "type": "integer", "enum": [1] },
+    "capability": { "type": "string", "minLength": 1 },
+    "provider": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string", "enum": ["header", "query", "bearer", "none"] },
+        "name": { "type": "string" },
+        "value": { "type": "string" }
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "url"],
+      "properties": {
+        "method": { "type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH"] },
+        "url": { "type": "string", "minLength": 1 },
+        "queryTemplate": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "headers": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "bodyTemplate": { "type": "string" },
+        "contentType": { "type": "string" }
+      }
+    },
+    "response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mappings"],
+      "properties": {
+        "rootPath": { "type": "string" },
+        "mappings": {
+          "type": "object",
+          "additionalProperties": { "type": ["string", "null"] }
+        },
+        "errorEnvelope": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "matchPath": { "type": "string" },
+            "matchValue": {},
+            "messagePath": { "type": "string" }
+          }
+        }
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["style", "limit"],
+      "properties": {
+        "style": { "type": "string", "enum": ["cursor", "page"] },
+        "pageParam": { "type": "string" },
+        "cursorPath": { "type": "string" },
+        "limit": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "rateLimit": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "rps": { "type": "number" },
+        "retry": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    },
+    "smoke_test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input"],
+      "properties": {
+        "input": {},
+        "expectNonEmpty": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}
