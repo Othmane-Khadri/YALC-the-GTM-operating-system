@@ -596,6 +596,55 @@ export async function runFrameworkDisable(name: string): Promise<void> {
   console.log(`Disabled ${name}. Config preserved. Re-enable with: yalc-gtm framework:install (will detect existing config) — or edit ~/.gtm-os/frameworks/installed/${name}.json directly.`)
 }
 
+// ─── framework:set-hypothesis ─────────────────────────────────────────────
+
+interface SetHypothesisOpts {
+  icpSegment: string
+  messageAngle: string
+  signalTrigger: string
+  expectedReplyRate: string | number
+}
+
+/**
+ * Persist the 4-field outbound hypothesis for a framework. Writes the JSON
+ * sidecar at `~/.gtm-os/frameworks/installed/<name>.hypothesis.json` AND
+ * (when the framework is installed) merges the structured value into the
+ * installed-config's `inputs.hypothesis` slot.
+ *
+ * Used by setup Step 10.5 after the conversational layer captures the 4
+ * answers from the user.
+ */
+export async function runFrameworkSetHypothesis(
+  name: string,
+  opts: SetHypothesisOpts,
+): Promise<void> {
+  const rate = typeof opts.expectedReplyRate === 'number'
+    ? opts.expectedReplyRate
+    : Number(opts.expectedReplyRate)
+  if (Number.isNaN(rate)) {
+    console.error(`framework:set-hypothesis: --expected-reply-rate must be numeric (got "${opts.expectedReplyRate}")`)
+    process.exit(1)
+  }
+  const { saveOutboundHypothesis } = await import('../../lib/frameworks/outbound-hypothesis.js')
+  try {
+    saveOutboundHypothesis(name, {
+      icp_segment: opts.icpSegment,
+      message_angle: opts.messageAngle,
+      signal_trigger: opts.signalTrigger,
+      expected_reply_rate: rate,
+    })
+  } catch (err) {
+    console.error(`framework:set-hypothesis: ${err instanceof Error ? err.message : String(err)}`)
+    process.exit(1)
+  }
+  console.log(`Hypothesis locked for ${name}.`)
+  console.log(`  ICP segment:         ${opts.icpSegment}`)
+  console.log(`  Message angle:       ${opts.messageAngle}`)
+  console.log(`  Signal / trigger:    ${opts.signalTrigger}`)
+  console.log(`  Expected reply rate: ${rate}`)
+  console.log(`  Run with:  yalc-gtm framework:run ${name}`)
+}
+
 // ─── framework:remove ──────────────────────────────────────────────────────
 
 export async function runFrameworkRemove(name: string): Promise<void> {

@@ -48,6 +48,11 @@ const config: Config = {
           DEFAULT: tokens.colors.inverseBackground,
           foreground: tokens.colors.inverseForeground,
         },
+        confidence: {
+          high: tokens.confidence.high,
+          medium: tokens.confidence.medium,
+          low: tokens.confidence.low,
+        },
       },
       fontFamily: {
         sans: [tokens.fonts.body],

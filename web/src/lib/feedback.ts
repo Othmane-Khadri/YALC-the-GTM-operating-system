@@ -15,14 +15,15 @@ export function bucketForConfidence(score: number): 'high' | 'medium' | 'low' {
 }
 
 /**
- * Status-tinted badge classes — green / amber / rose. tokens.json doesn't
- * ship a green/yellow/red triplet so the hex literals below are kept as
- * inline values rather than tokens. 0.9.G can tighten if needed.
+ * Status-tinted badge classes — green / amber / rose. Backed by the
+ * `confidence.high|medium|low` triplet in `web/brand/tokens.json`,
+ * surfaced as Tailwind classes via the `confidence` color extension in
+ * `tailwind.config.ts`. Brand-fidelity tests pin the tokens.
  */
 export function bucketBadgeClass(bucket: 'high' | 'medium' | 'low'): string {
-  if (bucket === 'high') return 'bg-[#3F8F5A] text-white border-transparent'
-  if (bucket === 'medium') return 'bg-[#D4A23A] text-white border-transparent'
-  return 'bg-[#C9506E] text-white border-transparent'
+  if (bucket === 'high') return 'bg-confidence-high text-white border-transparent'
+  if (bucket === 'medium') return 'bg-confidence-medium text-white border-transparent'
+  return 'bg-confidence-low text-white border-transparent'
 }
 
 /** Pull a user-facing message out of either ApiError, Error, or unknown. */

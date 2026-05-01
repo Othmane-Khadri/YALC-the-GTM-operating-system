@@ -1324,6 +1324,35 @@ program
     execFile('open', [`http://localhost:${port}/campaigns`])
   })
 
+// ─── dashboard / ui ─────────────────────────────────────────────────────────
+//
+// Summon the SPA from anywhere. Idempotent: if the dashboard server is
+// already up on the target port, just opens the browser + prints the URL.
+// Otherwise spawns the server detached (same mechanism as `start`) and
+// waits up to 10s for it to come up.
+//
+// Route resolution:
+//   - `~/.gtm-os/company_context.yaml` missing  → /setup/review
+//   - present                                   → /today
+//   - --route <path> overrides both
+program
+  .command('dashboard')
+  .alias('ui')
+  .description('Open the SPA in the browser. Boots the dashboard server if needed.')
+  .option('--port <port>', 'Server port', '3847')
+  .option('--route <path>', 'Open this route literally instead of inferring from disk state')
+  .option('--no-open', 'Print the URL without launching a browser (headless / SSH)')
+  .action(withDiagnostics(async (opts) => {
+    const { runDashboard } = await import('./commands/dashboard')
+    const port = Number.parseInt(opts.port, 10)
+    const result = await runDashboard({
+      port: Number.isFinite(port) ? port : 3847,
+      route: opts.route,
+      open: opts.open !== false,
+    })
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
 // ─── campaign:monthly-report ────────────────────────────────────────────────
 program
   .command('campaign:monthly-report')
@@ -1387,12 +1416,15 @@ program
 program
   .command('start')
   .description(
-    'Guided onboarding — minimum-friction capture from a website (default) or interactive interview (fallback)',
+    'Guided onboarding — prompts for a website URL, then opens the SPA review (default). Use --review-in-chat for the legacy terminal interview.',
   )
   .addHelpText(
     'after',
     `
-Examples (recommended — flag-driven, zero prompts):
+Recommended (no flags — single URL prompt + browser SPA):
+  $ yalc-gtm start
+
+Flag-driven (zero prompts, headless / CI):
   $ yalc-gtm start --non-interactive --website https://your-company.com
 
   Optional refinements:
@@ -1405,8 +1437,8 @@ Examples (recommended — flag-driven, zero prompts):
   Re-runs after editing a placeholder \`.env\`:
   $ yalc-gtm start --non-interactive   # writes ~/.gtm-os/.env template
 
-  Interactive interview (no website, no flags):
-  $ yalc-gtm start
+  Legacy terminal interview (no SPA):
+  $ yalc-gtm start --review-in-chat
 `,
   )
   .option('--non-interactive', 'Skip prompts (use env vars and defaults)')
@@ -1462,6 +1494,40 @@ Examples (recommended — flag-driven, zero prompts):
   // 0.9.1: suppress the auto-open of ~/.gtm-os/.env after a fresh scaffold.
   .option('--no-open-env', 'Skip auto-opening the .env template in the default editor')
   .action(withDiagnostics(async (opts) => {
+    // 0.9.7 / A1 — no-flag default routes to the SPA. The single inquirer
+    // prompt asks for a website URL, then delegates to the same flag-capture
+    // path that `start --non-interactive --website <url>` uses, which auto-
+    // opens /setup/review. Any of: --non-interactive, --review-in-chat,
+    // capture flags (--website / --linkedin / --docs / etc.), or preview-
+    // lifecycle flags (--commit-preview / --regenerate / --discard-preview)
+    // bypass the SPA-default and run the canonical `runStart` directly.
+    const { runStartSpaDefault, shouldUseSpaDefault } = await import(
+      './commands/start-spa-default'
+    )
+    if (
+      shouldUseSpaDefault({
+        nonInteractive: opts.nonInteractive,
+        reviewInChat: opts.reviewInChat,
+        companyName: opts.companyName,
+        website: opts.website,
+        linkedin: opts.linkedin,
+        docs: opts.docs,
+        icpSummary: opts.icpSummary,
+        voice: opts.voice,
+        commitPreview: opts.commitPreview,
+        discardPreview: opts.discardPreview,
+        regenerateSection: opts.regenerate,
+        regenerateLowConfidence: opts.regenerateLowConfidence,
+      })
+    ) {
+      const result = await runStartSpaDefault({
+        tenantId: getTenant(),
+        noOpen: opts.open === false,
+        noOpenEnv: opts.openEnv === false,
+      })
+      if (result.exitCode !== 0) process.exitCode = result.exitCode
+      return
+    }
     const { runStart } = await import('../lib/onboarding/start')
     await runStart({
       tenantId: getTenant(),
@@ -2317,6 +2383,23 @@ program
   .action(withDiagnostics(async (name: string) => {
     const { runFrameworkDisable } = await import('./commands/framework.js')
     await runFrameworkDisable(name)
+  }))
+
+program
+  .command('framework:set-hypothesis <name>')
+  .description('Persist the 4-field outbound hypothesis (ICP / angle / signal / expected reply rate) for a framework')
+  .requiredOption('--icp-segment <segment>', 'ICP segment under test')
+  .requiredOption('--message-angle <angle>', 'One-line message angle being tested')
+  .requiredOption('--signal-trigger <signal>', 'Observable buying signal that makes a prospect a fit')
+  .requiredOption('--expected-reply-rate <rate>', 'Success bar — fraction in [0, 1] (e.g. 0.05 for 5%)')
+  .action(withDiagnostics(async (name: string, opts) => {
+    const { runFrameworkSetHypothesis } = await import('./commands/framework.js')
+    await runFrameworkSetHypothesis(name, {
+      icpSegment: opts.icpSegment,
+      messageAngle: opts.messageAngle,
+      signalTrigger: opts.signalTrigger,
+      expectedReplyRate: opts.expectedReplyRate,
+    })
   }))
 
 program

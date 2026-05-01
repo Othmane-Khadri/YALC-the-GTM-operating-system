@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { resolve, join } from 'node:path'
 import tokens from '../../brand/tokens.json'
 import tailwindConfig from '../../tailwind.config'
 
@@ -36,6 +36,48 @@ describe('brand tokens', () => {
     expect(tokens.fonts.body).toMatch(/[A-Za-z]/)
     expect(tokens.fonts.heading).toMatch(/[A-Za-z]/)
     expect(tokens.fonts.mono).toMatch(/[A-Za-z]/)
+  })
+
+  it('declares confidence color triplet (high/medium/low)', () => {
+    expect(tokens.confidence).toBeDefined()
+    expect(tokens.confidence.high).toMatch(/^#[0-9a-fA-F]{6}$/)
+    expect(tokens.confidence.medium).toMatch(/^#[0-9a-fA-F]{6}$/)
+    expect(tokens.confidence.low).toMatch(/^#[0-9a-fA-F]{6}$/)
+  })
+
+  it('no SPA source file references the legacy confidence hex literals', () => {
+    // Confidence colors must come from tokens.json, not inline arbitrary
+    // Tailwind classes like `bg-[#3F8F5A]`. Tokens.json itself is exempt
+    // (it's the source of truth) and so are bundled vendor artifacts under
+    // node_modules/.
+    const legacyHexes = [/#3F8F5A/i, /#D4A23A/i, /#C9506E/i]
+    const offenders: string[] = []
+    const srcDir = resolve(__dirname, '..')
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir)) {
+        const p = join(dir, entry)
+        const stat = statSync(p)
+        if (stat.isDirectory()) {
+          if (entry === 'node_modules' || entry === '__tests__') continue
+          walk(p)
+          continue
+        }
+        // Only TS/TSX sources are policed. CSS variables in globals.css
+        // legitimately mirror the brand-primary token (which happens to
+        // share the same hex as confidence.low) and is not a confidence
+        // usage — the test scope is the React component layer.
+        if (!/\.(ts|tsx)$/.test(entry)) continue
+        const text = readFileSync(p, 'utf-8')
+        for (const re of legacyHexes) {
+          if (re.test(text)) {
+            offenders.push(`${p} matches ${re}`)
+            break
+          }
+        }
+      }
+    }
+    walk(srcDir)
+    expect(offenders).toEqual([])
   })
 
   it('every Tailwind theme color resolves to a brand token (no orphans)', () => {

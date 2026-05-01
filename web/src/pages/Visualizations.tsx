@@ -84,7 +84,7 @@ export function Visualizations() {
                       {item.idiom} · {new Date(item.last_generated_at).toLocaleString()}
                     </CardDescription>
                   </div>
-                  <Badge className="bg-[#C9506E] text-white border-transparent">{item.idiom}</Badge>
+                  <Badge className="bg-primary text-primary-foreground border-transparent">{item.idiom}</Badge>
                 </div>
               </CardHeader>
               <CardContent className="space-y-2">

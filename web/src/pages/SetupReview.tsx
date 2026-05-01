@@ -124,13 +124,12 @@ function bucketForConfidence(score: number): 'high' | 'medium' | 'low' {
 }
 
 function badgeColorFor(bucket: 'high' | 'medium' | 'low'): string {
-  // Brand tokens: high uses the muted forest green you'd expect for "good";
-  // since tokens.json doesn't ship a green/yellow/red triplet we fall back to
-  // tinted versions of the existing palette so the badges still read as
-  // status indicators. Strict brand-token consumers can tighten in 0.9.G.
-  if (bucket === 'high') return 'bg-[#3F8F5A] text-white border-transparent'
-  if (bucket === 'medium') return 'bg-[#D4A23A] text-white border-transparent'
-  return 'bg-[#C9506E] text-white border-transparent'
+  // Backed by `confidence.high|medium|low` in web/brand/tokens.json. The
+  // Tailwind classes resolve via `theme.extend.colors.confidence` — see
+  // `tailwind.config.ts`. Strict brand-fidelity tests pin the mapping.
+  if (bucket === 'high') return 'bg-confidence-high text-white border-transparent'
+  if (bucket === 'medium') return 'bg-confidence-medium text-white border-transparent'
+  return 'bg-confidence-low text-white border-transparent'
 }
 
 function titleFor(id: SectionId): string {

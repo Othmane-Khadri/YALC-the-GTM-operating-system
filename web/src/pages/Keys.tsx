@@ -37,8 +37,8 @@ interface TestResult {
 }
 
 function statusColor(status: KeyEntry['status']): string {
-  if (status === 'green') return 'bg-[#3F8F5A] text-white border-transparent'
-  if (status === 'red') return 'bg-[#C9506E] text-white border-transparent'
+  if (status === 'green') return 'bg-confidence-high text-white border-transparent'
+  if (status === 'red') return 'bg-confidence-low text-white border-transparent'
   return 'bg-muted text-muted-foreground border-transparent'
 }
 

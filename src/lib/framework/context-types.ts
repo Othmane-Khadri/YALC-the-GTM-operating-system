@@ -19,6 +19,41 @@ export interface CompanyContextFounder {
   linkedin: string
 }
 
+/**
+ * Rich competitor record produced by `buildRichCompanyProfile()` during the
+ * flag-capture step. Mirrors `profile-builder.ts`'s `build_framework`
+ * tool-use schema so the SPA review surface gets weaknesses + battlecard
+ * notes on the first pass — without waiting for `framework:derive`.
+ */
+export interface CompanyContextCompetitorDetail {
+  name: string
+  website: string
+  positioning: string
+  weaknesses: string[]
+  battlecardNotes: string
+}
+
+/**
+ * Rich segment record produced by `buildRichCompanyProfile()`. Same intent
+ * as `CompanyContextCompetitorDetail` — get the LLM's structured segment
+ * understanding (decision makers, buying triggers, disqualifiers, target
+ * roles) into `company_context.yaml` immediately so review never starts
+ * from a thin shell.
+ */
+export interface CompanyContextSegmentDetail {
+  id: string
+  name: string
+  description: string
+  priority: 'primary' | 'secondary' | 'exploratory'
+  targetRoles: string[]
+  targetCompanySizes: string[]
+  targetIndustries: string[]
+  keyDecisionMakers: string[]
+  painPoints: string[]
+  buyingTriggers: string[]
+  disqualifiers: string[]
+}
+
 export interface CompanyContextIcp {
   /** Free-form ICP description as given by the user (pre-synthesis). */
   segments_freeform: string
@@ -36,6 +71,25 @@ export interface CompanyContextIcp {
    * `$context.icp.target_communities`.
    */
   target_communities: string[]
+  /**
+   * Rich competitor records (mirrors profile-builder tool-use schema).
+   * Populated when an Anthropic key was available at capture time; absent
+   * otherwise. The thin `competitors` string array stays as the
+   * back-compatible fallback for older consumers.
+   */
+  competitors_detail?: CompanyContextCompetitorDetail[]
+  /**
+   * Rich ICP segment records (mirrors profile-builder tool-use schema).
+   * Populated alongside `competitors_detail`.
+   */
+  segments_detail?: CompanyContextSegmentDetail[]
+}
+
+/** Buying-intent + monitoring keyword catalog produced by rich synthesis. */
+export interface CompanyContextSignals {
+  buyingIntentSignals: string[]
+  monitoringKeywords: string[]
+  triggerEvents: string[]
 }
 
 export interface CompanyContextVoice {
@@ -81,6 +135,13 @@ export interface CompanyContext {
   voice: CompanyContextVoice
   sources: CompanyContextSources
   meta: CompanyContextMeta
+  /**
+   * Buying-intent / monitoring catalog. Populated by
+   * `buildRichCompanyProfile()` during flag-capture when an Anthropic key
+   * is set. Optional so older yamls (and stub captures without an LLM)
+   * stay valid — readers should treat `undefined` as "no signal data yet".
+   */
+  signals?: CompanyContextSignals
 }
 
 /** Build an empty `CompanyContext` skeleton. */

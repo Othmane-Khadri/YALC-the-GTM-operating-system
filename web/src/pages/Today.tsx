@@ -214,7 +214,7 @@ export function Today() {
                           step {item.step_index} · {item.gate_id}
                         </CardDescription>
                       </div>
-                      <Badge className="bg-[#D4A23A] text-white border-transparent">awaiting gate</Badge>
+                      <Badge className="bg-confidence-medium text-white border-transparent">awaiting gate</Badge>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -310,8 +310,8 @@ export function Today() {
                     <Badge
                       className={
                         failed
-                          ? 'bg-[#C9506E] text-white border-transparent'
-                          : 'bg-[#3F8F5A] text-white border-transparent'
+                          ? 'bg-confidence-low text-white border-transparent'
+                          : 'bg-confidence-high text-white border-transparent'
                       }
                     >
                       {failed ? 'failed' : 'ok'}

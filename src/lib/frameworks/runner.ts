@@ -35,6 +35,7 @@ import { resolveSkillAlias, noteRetiredSkill } from '../skills/aliases.js'
 import { getRegistryReady } from '../providers/registry.js'
 import type { FrameworkStep, FrameworkStepEntry } from './types.js'
 import { isGateStep } from './types.js'
+import { CURRENT_SENTINEL_VERSION } from './gates.js'
 import type { Skill, SkillContext } from '../skills/types.js'
 
 /** Resolve the runs directory at call time so HOME-overrides in tests apply. */
@@ -113,6 +114,11 @@ export class FrameworkGatePauseError extends Error {
 
 /** Shape of the awaiting-gate sentinel persisted on disk. */
 export interface AwaitingGateRecord {
+  /**
+   * Schema version (A6). Optional so v1 records on disk (no `_v` field) parse
+   * cleanly; new writes always stamp `CURRENT_SENTINEL_VERSION`.
+   */
+  _v?: number
   run_id: string
   framework: string
   step_index: number
@@ -420,6 +426,7 @@ export async function runFramework(
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
       const awaitingPath = join(dir, `${runId}.awaiting-gate.json`)
       const record: AwaitingGateRecord = {
+        _v: CURRENT_SENTINEL_VERSION,
         run_id: runId,
         framework: name,
         step_index: i,

@@ -178,7 +178,109 @@ Repeat for every framework the user accepts.
 
 ---
 
-## Step 10 — Hand-off summary
+## Step 10 — Offer to lock an outbound hypothesis right now
+
+This step is the antidote to the long-standing misroute where the founder asks
+*"let's launch outbound campaign, what hypotheses can we test"* and the system
+returns a content hook (the `propose-campaigns` content skill). The fix is
+explicit: ask the user, then capture the 4 outbound dimensions BEFORE any
+content is drafted. Do **not** auto-install — that hides intent.
+
+### Step 10.1 — Channel-key gate
+
+Before asking anything, check whether the user has at least one usable
+outbound channel configured. Read `~/.gtm-os/.env` (silently — never print
+keys back) and confirm one of:
+
+- LinkedIn — both `UNIPILE_API_KEY` and `UNIPILE_DSN` are present and
+  non-comment lines, OR
+- Email — `INSTANTLY_API_KEY` is present and non-comment.
+
+If neither is available, tell the user verbatim or close to it:
+
+> Outbound campaigns need a channel. Set keys first via
+> `yalc-gtm keys:connect` (LinkedIn = `UNIPILE_API_KEY` + `UNIPILE_DSN`,
+> Email = `INSTANTLY_API_KEY`), then re-run `/setup`. Skipping this step.
+
+Then jump straight to **Step 11**. Do not run `framework:install`.
+
+### Step 10.2 — The single yes/skip prompt
+
+If the channel-key gate passed, ask exactly:
+
+> Want to test an outbound hypothesis right now? (yes / skip)
+
+If the user says "skip", confirm "Skipping outbound hypothesis. You can run
+`yalc-gtm framework:install outreach-campaign-builder` whenever you're
+ready." and jump to Step 11. Do not install.
+
+If the user says "yes", continue to Step 10.3.
+
+### Step 10.3 — Install outreach-campaign-builder
+
+Run:
+
+```bash
+yalc-gtm framework:install outreach-campaign-builder --auto-confirm --destination dashboard
+```
+
+Exit code 0 expected. The framework is `mode: on-demand`, so no launchd job
+is written — the install only persists the installed-config sidecar that
+the next sub-step writes the hypothesis into.
+
+### Step 10.4 — Ask the 4 hypothesis questions, ONE AT A TIME, IN ORDER
+
+Ask each question on its own conversational turn. Wait for the user's answer
+before moving to the next. **Never** combine questions. **Never** ask about
+content hooks, hook framings, or messaging variants — that happens later in
+the framework, not here.
+
+1. **ICP segment** — "Which ICP segment do you want to target? (Pick one
+   from the segments captured at /setup — or describe a fresh one in a
+   single line.)"
+
+2. **Message angle** — "What's the one-line message angle you're testing?
+   (The value prop you're asserting — not the hook, not the opener.)"
+
+3. **Signal / trigger** — "What observable buying signal makes a prospect a
+   fit for this hypothesis? (e.g. \"posted about SOC 2 in last 30 days\",
+   \"hired a head of compliance this quarter\", \"raised Series A within
+   the last 90 days\".)"
+
+4. **Expected reply rate** — "What reply rate would make this hypothesis a
+   win? (Express as a percentage — e.g. 5%. campaign-intelligence will
+   score the campaign against this number.)"
+
+Convert the percentage answer to a fraction in [0, 1] (e.g. 5% → 0.05) before
+persisting.
+
+### Step 10.5 — Persist the hypothesis
+
+Persist the 4 captured fields by calling the shipped CLI helper that writes
+both the JSON sidecar AND the installed-config slot:
+
+```bash
+yalc-gtm framework:set-hypothesis outreach-campaign-builder \
+  --icp-segment "<answer 1>" \
+  --message-angle "<answer 2>" \
+  --signal-trigger "<answer 3>" \
+  --expected-reply-rate <fraction>
+```
+
+Exit code 0 expected. Confirm to the user: "Hypothesis locked. Run
+`yalc-gtm framework:run outreach-campaign-builder` whenever you're ready
+to launch — the framework will draft variants, build the lead list, and
+gate on you before sending anything."
+
+### Step 10.6 — DO NOT proceed past hypothesis capture
+
+The downstream framework steps (variants, lead search, sequence drafting,
+verify-and-launch gate) are out of scope for setup. Stop here and continue
+to Step 11.
+
+---
+
+## Step 11 — Hand-off summary
 
 Print a closing summary:
 

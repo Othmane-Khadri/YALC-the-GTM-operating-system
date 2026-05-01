@@ -16,7 +16,7 @@ recommended_when:
 
 inputs:
   - name: hypothesis
-    description: "One-line hypothesis the campaign should test (e.g. \"Series A SaaS CTOs care about LLM compliance\")."
+    description: "Structured 4-field hypothesis (icp_segment, message_angle, signal_trigger, expected_reply_rate). Captured by setup Step 10 / outbound-hypothesis-capture skill."
     default: ""
   - name: channel
     description: "linkedin or email."
@@ -37,6 +37,16 @@ inputs:
 mode: on-demand
 
 steps:
+  # Step 0 — capture the structured 4-field hypothesis BEFORE any content is drafted.
+  # Replaces the prior content-focused `propose-campaigns` first-step (which leaked
+  # content hooks into the outbound flow). The hypothesis is sourced from the
+  # `hypothesis` input slot, populated by setup Step 10 or `framework:set-hypothesis`.
+  - skill: outbound-hypothesis-capture
+    input:
+      icp_segment: "{{hypothesis.icp_segment}}"
+      message_angle: "{{hypothesis.message_angle}}"
+      signal_trigger: "{{hypothesis.signal_trigger}}"
+      expected_reply_rate: "{{hypothesis.expected_reply_rate}}"
   - skill: propose-campaigns
     input:
       company_context: "$file:~/.gtm-os/company_context.yaml"
@@ -46,7 +56,7 @@ steps:
       id: pick-variant
       prompt: "Pick the variant you want to launch."
       surface: ui-modal
-      payload_from_step: 0
+      payload_from_step: 1
   - skill: icp-company-search
     input:
       industry: "{{industry}}"
@@ -54,21 +64,21 @@ steps:
       limit: "{{lead_limit}}"
   - skill: people-enrich
     input:
-      contacts: "{{steps[2].output}}"
+      contacts: "{{steps[3].output}}"
   - skill: verify-campaign-launch
     input:
-      campaign_payload: "{{steps[3].output}}"
+      campaign_payload: "{{steps[4].output}}"
   - gate:
       id: verify-and-launch
       prompt: "Verify the lead list, sequence, and schedule before launch."
       surface: ui-today
-      payload_from_step: 4
+      payload_from_step: 5
   - skill: linkedin-campaign-create
     input:
       account_id: "{{account_id}}"
       campaign_name: "{{hypothesis}}"
-      leads: "{{steps[3].output}}"
-      sequence: "{{steps[1].output}}"
+      leads: "{{steps[4].output}}"
+      sequence: "{{steps[2].output}}"
 
 output:
   destination_choice:
