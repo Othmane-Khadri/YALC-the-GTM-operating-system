@@ -138,6 +138,7 @@ interface SearchCompanyFilters {
 
 export interface SearchPeopleFilters {
   companyNames?: string[]
+  companyDomains?: string[]
   titles?: string[]
   seniorityLevels?: string[]
   location?: string
@@ -160,7 +161,7 @@ export class CrustdataService {
   }
 
   async checkCredits(): Promise<number> {
-    const res = await fetch(`${BASE_URL}/screener/credits/check`, {
+    const res = await fetch(`${BASE_URL}/user/credits`, {
       headers: getHeaders(),
     })
     if (!res.ok) return -1
@@ -261,6 +262,12 @@ export class CrustdataService {
           })),
         })
       }
+    }
+
+    if (filters.companyDomains?.length) {
+      conditions.push({
+        column: 'current_employers.company_website_domain', type: 'in', value: filters.companyDomains,
+      })
     }
 
     if (filters.titles?.length) {
