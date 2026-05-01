@@ -16,6 +16,16 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 import { describeError, eyebrowClass, preBlockClass } from '@/lib/feedback'
+import { SkillInputForm } from '@/components/skills/SkillInputForm'
+import {
+  coerceFormValues,
+  hasUnsupportedSchema,
+  loadPersistedInputs,
+  savePersistedInputs,
+  validateFormData,
+  type RawFormValues,
+  type SkillInputSchema,
+} from '@/lib/skills-form'
 
 interface SkillSummary {
   id: string
@@ -26,7 +36,7 @@ interface SkillSummary {
 }
 
 interface SkillDetail extends SkillSummary {
-  inputSchema: { properties?: Record<string, { description?: string; type?: string }>; required?: string[] }
+  inputSchema: SkillInputSchema
   outputSchema: Record<string, unknown>
   bodyPreview: string | null
 }
@@ -232,24 +242,79 @@ interface DetailProps {
 }
 
 export function SkillDetailPage({ id, skill, error, onBack }: DetailProps) {
-  const [inputs, setInputs] = useState<Record<string, string>>({})
+  const [inputs, setInputs] = useState<RawFormValues>({})
+  const [errors, setErrors] = useState<Record<string, string>>({})
   const [runBusy, setRunBusy] = useState(false)
   const [runResult, setRunResult] = useState<RunResponse | null>(null)
   const [runError, setRunError] = useState<string | null>(null)
+  // Raw JSON fallback path — auto-engaged when the schema is unsupported,
+  // otherwise opt-in via the "Use raw JSON instead" toggle.
+  const [forceJson, setForceJson] = useState(false)
+  const [jsonText, setJsonText] = useState('')
+  const [jsonError, setJsonError] = useState<string | null>(null)
 
-  const props = skill?.inputSchema?.properties ?? {}
-  const required = skill?.inputSchema?.required ?? []
+  // Hydrate from localStorage as soon as the skill detail lands.
+  useEffect(() => {
+    if (!skill) return
+    const persisted = loadPersistedInputs(skill.id)
+    if (Object.keys(persisted).length > 0) {
+      setInputs(persisted)
+      // If the persisted snapshot was a JSON string blob, surface it too.
+      if (typeof persisted.__rawJson === 'string') {
+        setJsonText(persisted.__rawJson)
+      }
+    }
+  }, [skill])
+
+  // Persist on every change so refreshes don't blow away work.
+  useEffect(() => {
+    if (!skill) return
+    const snapshot: RawFormValues = { ...inputs }
+    if (jsonText) snapshot.__rawJson = jsonText
+    savePersistedInputs(skill.id, snapshot)
+  }, [inputs, jsonText, skill])
+
+  const schemaUnsupported = hasUnsupportedSchema(skill?.inputSchema)
 
   const handleRun = async () => {
     if (!skill) return
-    setRunBusy(true)
     setRunError(null)
     setRunResult(null)
+
+    // Decide payload based on which surface is active.
+    const useJson = forceJson || schemaUnsupported
+    let payload: Record<string, unknown>
+    if (useJson) {
+      const text = jsonText.trim()
+      if (!text) {
+        setJsonError('Provide a JSON object or switch to the structured form.')
+        return
+      }
+      try {
+        const parsed = JSON.parse(text)
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          setJsonError('Top-level value must be a JSON object.')
+          return
+        }
+        payload = parsed as Record<string, unknown>
+        setJsonError(null)
+      } catch (err) {
+        setJsonError(err instanceof Error ? err.message : 'Invalid JSON')
+        return
+      }
+    } else {
+      const v = validateFormData(skill.inputSchema, inputs)
+      setErrors(v)
+      if (Object.keys(v).length > 0) return
+      payload = coerceFormValues(skill.inputSchema, inputs)
+    }
+
+    setRunBusy(true)
     try {
       setRunResult(
         await api.post<RunResponse>(
           `/api/skills/run/${encodeURIComponent(skill.id)}`,
-          inputs,
+          payload,
         ),
       )
     } catch (err) {
@@ -284,29 +349,30 @@ export function SkillDetailPage({ id, skill, error, onBack }: DetailProps) {
                 <CardTitle>Run with these inputs</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {Object.keys(props).length === 0 && (
+                {(skill.inputSchema?.properties &&
+                  Object.keys(skill.inputSchema.properties).length === 0) && (
                   <p className="text-xs text-muted-foreground">No declared inputs.</p>
                 )}
-                {Object.entries(props).map(([key, schema]) => (
-                  <label key={key} className="block space-y-1 font-mono text-xs">
-                    <span>
-                      {key}
-                      {required.includes(key) && <span className="text-destructive">*</span>}
-                      {schema.description && (
-                        <span className="ml-2 text-muted-foreground">{schema.description}</span>
-                      )}
-                    </span>
-                    <input
-                      data-testid={`skills-input-${key}`}
-                      type="text"
-                      className="w-full rounded-md border border-border bg-background p-2"
-                      value={inputs[key] ?? ''}
-                      onChange={(e) =>
-                        setInputs((prev) => ({ ...prev, [key]: e.target.value }))
-                      }
-                    />
-                  </label>
-                ))}
+                <SkillInputForm
+                  skillId={skill.id}
+                  schema={skill.inputSchema}
+                  values={inputs}
+                  errors={errors}
+                  onChange={(next) => {
+                    setInputs(next)
+                    // Clear field-level errors as the user edits.
+                    if (Object.keys(errors).length > 0) setErrors({})
+                  }}
+                  forceJson={forceJson}
+                  jsonText={jsonText}
+                  onJsonTextChange={(t) => {
+                    setJsonText(t)
+                    if (jsonError) setJsonError(null)
+                  }}
+                  jsonError={jsonError}
+                  allowJsonToggle={!schemaUnsupported}
+                  onToggleJson={() => setForceJson((v) => !v)}
+                />
                 <Button
                   variant="default"
                   size="sm"

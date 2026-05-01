@@ -1,0 +1,12 @@
+{
+  "status": 200,
+  "body": {
+    "id": "dpl_queued42",
+    "url": "yalc-smoke-queued42.vercel.app",
+    "name": "yalc-smoke",
+    "readyState": "QUEUED",
+    "status": "QUEUED",
+    "createdAt": 1714478400000,
+    "target": "production"
+  }
+}

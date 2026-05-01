@@ -461,7 +461,7 @@ export const ASSET_RENDERING_CAPABILITY = {
     },
     required: ['rendered', 'path', 'format'],
   },
-  defaultPriority: ['builtin'],
+  defaultPriority: ['playwright'],
 } as const
 
 /**
@@ -525,7 +525,7 @@ export const CRM_CONTACT_UPSERT_CAPABILITY = {
 export const LANDING_PAGE_DEPLOY_CAPABILITY = {
   id: 'landing-page-deploy',
   description:
-    'Deploy a single-page HTML asset to a hosted URL (vercel-mcp when configured; local file fallback otherwise).',
+    'Deploy a single-page HTML asset to a hosted URL via the Vercel deployment API.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -541,11 +541,12 @@ export const LANDING_PAGE_DEPLOY_CAPABILITY = {
     properties: {
       deployed: { type: 'boolean' },
       url: { type: 'string' },
+      deploymentId: { type: 'string' },
       fallbackReason: { type: ['string', 'null'] },
     },
     required: ['deployed', 'url'],
   },
-  defaultPriority: ['vercel-mcp'],
+  defaultPriority: ['vercel'],
 } as const
 
 export class MissingApiKeyError extends Error {
@@ -609,8 +610,10 @@ export async function registerBuiltinCapabilities(registry: CapabilityRegistry):
   const { linkedinTrendingContentUnipileAdapter } = await import('./linkedin-trending-content-unipile.js')
   const { linkedinCampaignCreateUnipileAdapter } = await import('./linkedin-campaign-create-unipile.js')
   const { emailCampaignCreateInstantlyAdapter } = await import('./email-campaign-create-instantly.js')
-  const { assetRenderingStubAdapter } = await import('./asset-rendering-stub.js')
-  const { landingPageDeployStubAdapter } = await import('./landing-page-deploy-stub.js')
+  const { assetRenderingPlaywrightAdapter } = await import('./asset-rendering-playwright.js')
+  // landing-page-deploy is shipped as a bundled declarative manifest at
+  // `configs/adapters/landing-page-deploy-vercel.yaml`. The stub TS adapter
+  // was removed in 0.12.0 — see E1 hand-off.
 
   registry.register(icpCompanySearchCrustdataAdapter)
   registry.register(icpCompanySearchApolloAdapter)
@@ -631,6 +634,5 @@ export async function registerBuiltinCapabilities(registry: CapabilityRegistry):
   registry.register(linkedinTrendingContentUnipileAdapter)
   registry.register(linkedinCampaignCreateUnipileAdapter)
   registry.register(emailCampaignCreateInstantlyAdapter)
-  registry.register(assetRenderingStubAdapter)
-  registry.register(landingPageDeployStubAdapter)
+  registry.register(assetRenderingPlaywrightAdapter)
 }

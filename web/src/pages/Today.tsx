@@ -13,6 +13,10 @@ import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 import { describeError, eyebrowClass } from '@/lib/feedback'
 import { StructuredValue, tryParseJson } from '@/lib/render'
+import { TriggerNowButton } from '@/components/TriggerNowButton'
+import { openSseClient } from '@/lib/sse'
+import { shouldShowViewEditsLink } from '@/components/gates/GateDiffView'
+import { GateDiffModal } from '@/components/gates/GateDiffModal'
 
 interface RunItem {
   type: 'run'
@@ -23,6 +27,8 @@ interface RunItem {
   rowCount: number
   error: string | null
   path: string
+  /** Surfaced by the server so we can show the Trigger now button (D4). */
+  mode?: 'on-demand' | 'scheduled'
 }
 
 interface GateItem {
@@ -34,6 +40,10 @@ interface GateItem {
   prompt: string
   payload: unknown
   created_at: string
+  /** Resolved timeout window for this gate's framework, in hours. */
+  timeout_hours?: number
+  /** Server-side flag: gate is in the last 20% of the timeout window. */
+  stale?: boolean
 }
 
 type FeedItem = RunItem | GateItem
@@ -49,17 +59,69 @@ function formatTime(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
 }
 
+/**
+ * Apply an SSE event to the local feed list.
+ *
+ * Splice rules:
+ *   gate_awaiting / run_started / run_completed / run_failed → upsert by
+ *     (type + framework + run_id|ranAt) at the head of the list.
+ *   gate_approved / gate_rejected → drop the matching awaiting_gate item.
+ *   gate_stale → flip `stale: true` on the matching awaiting_gate item.
+ */
+export function applyTodayEvent(
+  items: FeedItem[],
+  eventName: string,
+  payload: Record<string, unknown>,
+): FeedItem[] {
+  if (eventName === 'gate_approved' || eventName === 'gate_rejected') {
+    const runId = String(payload.run_id ?? '')
+    return items.filter(
+      (it) => !(it.type === 'awaiting_gate' && it.run_id === runId),
+    )
+  }
+  if (eventName === 'gate_stale') {
+    const runId = String(payload.run_id ?? '')
+    return items.map((it) =>
+      it.type === 'awaiting_gate' && it.run_id === runId
+        ? { ...it, stale: true }
+        : it,
+    )
+  }
+  if (eventName === 'gate_awaiting') {
+    const runId = String(payload.run_id ?? '')
+    const next = items.filter(
+      (it) => !(it.type === 'awaiting_gate' && it.run_id === runId),
+    )
+    return [payload as unknown as GateItem, ...next]
+  }
+  if (
+    eventName === 'run_started' ||
+    eventName === 'run_completed' ||
+    eventName === 'run_failed'
+  ) {
+    const framework = String(payload.framework ?? '')
+    const ranAt = String(payload.ranAt ?? '')
+    const next = items.filter(
+      (it) => !(it.type === 'run' && it.framework === framework && it.ranAt === ranAt),
+    )
+    return [payload as unknown as RunItem, ...next]
+  }
+  return items
+}
+
 export function Today() {
   const [data, setData] = useState<FeedResponse | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [retryBusy, setRetryBusy] = useState<Record<string, boolean>>({})
   const [retryMessage, setRetryMessage] = useState<string | null>(null)
   const [retryError, setRetryError] = useState<string | null>(null)
+  const [triggerBusy, setTriggerBusy] = useState<Record<string, boolean>>({})
   // Per-gate state — keyed by run_id so concurrent gates don't clobber.
   const [payloadDrafts, setPayloadDrafts] = useState<Record<string, string>>({})
   const [payloadEditing, setPayloadEditing] = useState<Record<string, boolean>>({})
   const [rejectDrafts, setRejectDrafts] = useState<Record<string, string>>({})
   const [gateBusy, setGateBusy] = useState<Record<string, boolean>>({})
+  const [diffOpenFor, setDiffOpenFor] = useState<string | null>(null)
   const [gateMessage, setGateMessage] = useState<string | null>(null)
   const [gateError, setGateError] = useState<string | null>(null)
 
@@ -74,6 +136,62 @@ export function Today() {
 
   useEffect(() => {
     reload()
+  }, [reload])
+
+  const handleTrigger = async (framework: string) => {
+    setTriggerBusy((prev) => ({ ...prev, [framework]: true }))
+    setRetryError(null)
+    setRetryMessage(null)
+    try {
+      const r = await api.post<{ run_id: string }>(
+        `/api/today/trigger/${encodeURIComponent(framework)}`,
+        {},
+      )
+      setRetryMessage(`Triggered ${framework} (run ${r.run_id}).`)
+      // Poll once after a short delay; SSE will pick up subsequent transitions.
+      setTimeout(() => {
+        void reload()
+        setTriggerBusy((prev) => ({ ...prev, [framework]: false }))
+      }, 1500)
+    } catch (err) {
+      setRetryError(`${framework}: ${describeError(err, 'Trigger failed')}`)
+      setTriggerBusy((prev) => ({ ...prev, [framework]: false }))
+    }
+  }
+
+  // Live updates — splice in events without re-fetching, and on reconnect
+  // re-fetch to recover any events emitted while disconnected.
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
+      return
+    }
+    const splice = (eventName: string) => (data: unknown) => {
+      if (!data || typeof data !== 'object') return
+      setData((prev) => {
+        const items = prev?.items ?? []
+        const next = applyTodayEvent(items, eventName, data as Record<string, unknown>)
+        return {
+          items: next,
+          total: next.length,
+          limit: prev?.limit ?? 50,
+        }
+      })
+    }
+    const client = openSseClient('/api/today/stream', {
+      handlers: {
+        gate_awaiting: splice('gate_awaiting'),
+        gate_approved: splice('gate_approved'),
+        gate_rejected: splice('gate_rejected'),
+        gate_stale: splice('gate_stale'),
+        run_started: splice('run_started'),
+        run_completed: splice('run_completed'),
+        run_failed: splice('run_failed'),
+      },
+      onReconnect: () => {
+        void reload()
+      },
+    })
+    return () => client.close()
   }, [reload])
 
   const handleRetry = async (framework: string) => {
@@ -214,30 +332,57 @@ export function Today() {
                           step {item.step_index} · {item.gate_id}
                         </CardDescription>
                       </div>
-                      <Badge className="bg-confidence-medium text-white border-transparent">awaiting gate</Badge>
+                      <div className="flex flex-col gap-1 items-end">
+                        <Badge className="bg-confidence-medium text-white border-transparent">awaiting gate</Badge>
+                        {item.stale && (
+                          <Badge
+                            data-testid={`today-gate-stale-${item.framework}`}
+                            className="bg-confidence-low text-white border-transparent"
+                          >
+                            stale
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <p className="text-sm">{item.prompt}</p>
-                    <p className="text-xs text-muted-foreground">{formatTime(item.created_at)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {formatTime(item.created_at)}
+                      {item.timeout_hours !== undefined ? (
+                        <> · auto-rejects after {item.timeout_hours}h</>
+                      ) : null}
+                    </p>
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                           Payload (Approve sends this back as your edits)
                         </label>
-                        <button
-                          type="button"
-                          data-testid={`today-payload-mode-${item.framework}`}
-                          className="text-xs px-2 py-1 rounded text-muted-foreground hover:text-foreground"
-                          onClick={() =>
-                            setPayloadEditing((prev) => ({
-                              ...prev,
-                              [item.run_id]: !prev[item.run_id],
-                            }))
-                          }
-                        >
-                          {payloadEditing[item.run_id] ? 'Reading view' : 'Edit raw JSON'}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {shouldShowViewEditsLink(item.payload, draftFor(item)) && (
+                            <button
+                              type="button"
+                              data-testid={`today-view-edits-${item.framework}`}
+                              className="text-xs px-2 py-1 rounded text-primary hover:underline"
+                              onClick={() => setDiffOpenFor(item.run_id)}
+                            >
+                              View edits
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            data-testid={`today-payload-mode-${item.framework}`}
+                            className="text-xs px-2 py-1 rounded text-muted-foreground hover:text-foreground"
+                            onClick={() =>
+                              setPayloadEditing((prev) => ({
+                                ...prev,
+                                [item.run_id]: !prev[item.run_id],
+                              }))
+                            }
+                          >
+                            {payloadEditing[item.run_id] ? 'Reading view' : 'Edit raw JSON'}
+                          </button>
+                        </div>
                       </div>
                       {payloadEditing[item.run_id] ? (
                         <textarea
@@ -291,6 +436,9 @@ export function Today() {
                         Reject
                       </Button>
                     </div>
+                    {diffOpenFor === item.run_id && (
+                      <GateDiffModal item={item} draft={draftFor(item)} onClose={() => setDiffOpenFor(null)} />
+                    )}
                   </CardContent>
                 </Card>
               )
@@ -329,16 +477,24 @@ export function Today() {
                     </p>
                   )}
                   <p className="text-xs text-muted-foreground">{formatTime(item.ranAt)}</p>
-                  {failed && (
-                    <Button
-                      size="sm"
-                      data-testid={`today-retry-${item.framework}`}
-                      disabled={!!retryBusy[item.framework]}
-                      onClick={() => handleRetry(item.framework)}
-                    >
-                      {retryBusy[item.framework] ? 'Retrying…' : 'Retry'}
-                    </Button>
-                  )}
+                  <div className="flex gap-2">
+                    {failed && (
+                      <Button
+                        size="sm"
+                        data-testid={`today-retry-${item.framework}`}
+                        disabled={!!retryBusy[item.framework]}
+                        onClick={() => handleRetry(item.framework)}
+                      >
+                        {retryBusy[item.framework] ? 'Retrying…' : 'Retry'}
+                      </Button>
+                    )}
+                    <TriggerNowButton
+                      framework={item.framework}
+                      mode={item.mode}
+                      busy={!!triggerBusy[item.framework]}
+                      onClick={() => handleTrigger(item.framework)}
+                    />
+                  </div>
                 </CardContent>
               </Card>
             )

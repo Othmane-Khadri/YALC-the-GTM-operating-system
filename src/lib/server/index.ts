@@ -15,10 +15,12 @@ import { frameworkRoutes } from './routes/frameworks'
 import { setupRoutes } from './routes/setup'
 import { todayRoutes } from './routes/today'
 import { brainRoutes } from './routes/brain'
+import { brainSectionRoutes } from './routes/brain-section'
 import { keysRoutes } from './routes/keys'
 import { skillsRoutes } from './routes/skills'
 import { gatesRoutes } from './routes/gates'
 import { visualizeApiRoutes, visualizePageRoutes } from './routes/visualize'
+import { dashboardRoutes } from './routes/dashboard'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -80,10 +82,12 @@ export function createApp() {
   app.route('/api/setup', setupRoutes)
   app.route('/api/today', todayRoutes)
   app.route('/api/brain', brainRoutes)
+  app.route('/api/brain', brainSectionRoutes)
   app.route('/api/keys', keysRoutes)
   app.route('/api/skills', skillsRoutes)
   app.route('/api/gates', gatesRoutes)
   app.route('/api/visualize', visualizeApiRoutes)
+  app.route('/api/dashboard', dashboardRoutes)
 
   // Generated visualization page — serves saved HTML from
   // `~/.gtm-os/visualizations/<view_id>.html` with the right Content-Type.

@@ -12,6 +12,7 @@
  */
 
 import { Hono } from 'hono'
+import { streamSSE } from 'hono/streaming'
 import {
   listVisualizations,
   readVisualizationMetadata,
@@ -19,8 +20,58 @@ import {
 } from '../../visualize/storage.js'
 import { loadAllFrameworks } from '../../frameworks/loader.js'
 import { listInstalledFrameworks } from '../../frameworks/registry.js'
+import { subscribeVisualizeEvents, type VisualizeEvent } from '../event-bus.js'
+
+const SSE_HEARTBEAT_MS = 25_000
 
 export const visualizeApiRoutes = new Hono()
+
+// ─── GET /api/visualize/stream ──────────────────────────────────────────────
+
+visualizeApiRoutes.get('/stream', (c) => {
+  return streamSSE(c, async (stream) => {
+    const queue: VisualizeEvent[] = []
+    let resolveWaiter: (() => void) | null = null
+    const wakeup = () => {
+      if (resolveWaiter) {
+        const r = resolveWaiter
+        resolveWaiter = null
+        r()
+      }
+    }
+    const unsubscribe = subscribeVisualizeEvents((event) => {
+      queue.push(event)
+      wakeup()
+    })
+    c.req.raw.signal.addEventListener('abort', () => {
+      unsubscribe()
+      wakeup()
+    })
+
+    let lastBeatAt = Date.now()
+    while (!c.req.raw.signal.aborted) {
+      while (queue.length > 0) {
+        const next = queue.shift() as VisualizeEvent
+        await stream.writeSSE({
+          event: next.type,
+          data: JSON.stringify(next.item),
+        })
+      }
+      const now = Date.now()
+      const sinceBeat = now - lastBeatAt
+      if (sinceBeat >= SSE_HEARTBEAT_MS) {
+        await stream.write(`:heartbeat\n\n`)
+        lastBeatAt = now
+      }
+      const sleepFor = Math.max(50, SSE_HEARTBEAT_MS - sinceBeat)
+      await new Promise<void>((resolve) => {
+        resolveWaiter = resolve
+        setTimeout(resolve, sleepFor)
+      })
+    }
+    unsubscribe()
+  })
+})
 
 visualizeApiRoutes.get('/list', (c) => {
   const items = listVisualizations()

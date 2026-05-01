@@ -7,11 +7,12 @@
  * trigger it from their terminal).
  */
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
 import { describeError, eyebrowClass } from '@/lib/feedback'
+import { openSseClient } from '@/lib/sse'
 
 interface VisualizationItem {
   view_id: string
@@ -35,16 +36,64 @@ interface ListResponse {
   frameworks: FrameworkDefault[]
 }
 
+/** Apply an SSE event to the local visualizations list. */
+export function applyVisualizeEvent(
+  prev: ListResponse | null,
+  eventName: string,
+  payload: Record<string, unknown>,
+): ListResponse | null {
+  if (!prev) return prev
+  if (eventName === 'visualization_completed') {
+    const viewId = String(payload.view_id ?? '')
+    if (!viewId) return prev
+    const incoming = payload as unknown as VisualizationItem
+    const items = prev.items.filter((it) => it.view_id !== viewId)
+    items.unshift(incoming)
+    // Mark matching framework default as generated.
+    const frameworks = prev.frameworks.map((f) =>
+      f.view_id === viewId ? { ...f, generated: true } : f,
+    )
+    return { ...prev, items, total: items.length, frameworks }
+  }
+  return prev
+}
+
 export function Visualizations() {
   const [data, setData] = useState<ListResponse | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const reload = useCallback(() => {
     api
       .get<ListResponse>('/api/visualize/list')
       .then(setData)
       .catch((err) => setLoadError(describeError(err, 'Failed to load visualizations')))
   }, [])
+
+  useEffect(() => {
+    reload()
+  }, [reload])
+
+  // Live updates via SSE — completed visualizations splice into the grid.
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
+      return
+    }
+    const splice = (eventName: string) => (payload: unknown) => {
+      if (!payload || typeof payload !== 'object') return
+      setData((prev) =>
+        applyVisualizeEvent(prev, eventName, payload as Record<string, unknown>),
+      )
+    }
+    const client = openSseClient('/api/visualize/stream', {
+      handlers: {
+        visualization_started: splice('visualization_started'),
+        visualization_completed: splice('visualization_completed'),
+        visualization_failed: splice('visualization_failed'),
+      },
+      onReconnect: () => reload(),
+    })
+    return () => client.close()
+  }, [reload])
 
   const items = data?.items ?? []
   const frameworks = data?.frameworks ?? []

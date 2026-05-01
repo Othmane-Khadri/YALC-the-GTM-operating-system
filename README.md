@@ -236,6 +236,9 @@ YALC ships providers in two forms: **built-in TypeScript adapters** (compiled in
 | **Instantly** | Cold email sending, sequence management | `INSTANTLY_API_KEY` |
 | **Anthropic** | AI planning, qualification, personalization (optional inside Claude Code) | `ANTHROPIC_API_KEY` |
 | **Voyage** | Embeddings (memory) | `VOYAGE_API_KEY` |
+| **Playwright** | Asset rendering (PDF/PNG from HTML) — optional dep | `pnpm add playwright` |
+
+> **Note on `asset-rendering`:** the `playwright` provider is shipped as an [optional dependency](docs/providers.md#optional-asset-rendering-playwright). HTML rendering always works; PDF/PNG rendering kicks in once you `pnpm add playwright && npx playwright install chromium`.
 
 ### Bundled declarative adapters
 
@@ -244,8 +247,9 @@ YALC ships providers in two forms: **built-in TypeScript adapters** (compiled in
 | `people-enrich` | peopledatalabs | `PEOPLEDATALABS_API_KEY` | `configs/adapters/people-enrich-peopledatalabs.yaml` |
 | `crm-contact-upsert` | hubspot | `HUBSPOT_API_KEY` | `configs/adapters/crm-contact-upsert-hubspot.yaml` |
 | `email-campaign-create` | brevo | `BREVO_API_KEY` | `configs/adapters/email-campaign-create-brevo.yaml` |
+| `landing-page-deploy` | vercel | `VERCEL_TOKEN` (+ optional `VERCEL_TEAM_ID`) | `configs/adapters/landing-page-deploy-vercel.yaml` |
 
-Counts at this commit: 21 built-in TypeScript adapters across 18 capabilities; 3 bundled declarative manifests. See [docs/providers.md](docs/providers.md#bundled-declarative-providers) for setup and override semantics.
+Counts at this commit: 20 built-in TypeScript adapters across 18 capabilities; 4 bundled declarative manifests. See [docs/providers.md](docs/providers.md#bundled-declarative-providers) for setup and override semantics.
 
 ## Skills
 

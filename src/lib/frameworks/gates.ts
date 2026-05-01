@@ -138,6 +138,22 @@ export interface ApprovedGateRecord {
   gate_id: string
   /** The (possibly edited) payload that the runner will resume from. */
   payload: unknown
+  /**
+   * The original (pre-edit) payload from the awaiting-gate sentinel (D3).
+   *
+   * Captured on every new approval so the UI can render a side-by-side
+   * diff of what the operator changed. Optional in the type because
+   * pre-D3 approved records on disk don't carry it; readers MUST treat
+   * `undefined` as "no diff available" rather than as `null`.
+   */
+  original_payload?: unknown
+  /**
+   * True iff the operator edited the payload before approving (D3).
+   *
+   * `undefined` for pre-D3 records (parser does not synthesise a value
+   * to keep the absence detectable).
+   */
+  edits_applied?: boolean
   /** Index into `prior_step_outputs` the payload was sourced from (if any). */
   payload_step_index: number | null
   /** Snapshot of step outputs the gate captured. */
@@ -267,7 +283,8 @@ export function writeApproved(
   if (!awaiting) {
     throw new GateNotFoundError(framework, runId)
   }
-  let payload = awaiting.payload
+  const originalPayload = awaiting.payload
+  let payload = originalPayload
   if (edits !== undefined) {
     if (
       payload &&
@@ -282,12 +299,19 @@ export function writeApproved(
       payload = edits
     }
   }
+  // D3 — diff persistence. We always capture `original_payload` so the UI
+  // can render a side-by-side diff post-approval. `edits_applied` is true
+  // only when the resolved payload actually differs from the original
+  // (passing edits that happen to be identical is a no-op, not a diff).
+  const editsApplied = !deepEqual(originalPayload, payload)
   const record: ApprovedGateRecord = withVersion({
     run_id: awaiting.run_id,
     framework: awaiting.framework,
     step_index: awaiting.step_index,
     gate_id: awaiting.gate_id,
     payload,
+    original_payload: originalPayload,
+    edits_applied: editsApplied,
     payload_step_index: awaiting.payload_step_index ?? null,
     prior_step_outputs: awaiting.prior_step_outputs,
     inputs: awaiting.inputs,
@@ -355,6 +379,41 @@ export function clearAwaitingSentinel(framework: string, runId: string): void {
 
 function ensureDir(dir: string): void {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+}
+
+/**
+ * Structural equality over JSON-shaped values (D3).
+ *
+ * Used to decide `edits_applied` on approve — a wholesale or per-key edit
+ * that produces the same shape as the original counts as no edit.
+ * Handles primitives, arrays (order-sensitive), and plain objects (key
+ * order independent). NaN / functions / Date / symbols are out of scope
+ * because awaiting-gate payloads round-trip through JSON.
+ */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (a === null || b === null) return false
+  if (typeof a !== 'object' || typeof b !== 'object') return false
+  const aIsArr = Array.isArray(a)
+  const bIsArr = Array.isArray(b)
+  if (aIsArr !== bIsArr) return false
+  if (aIsArr && bIsArr) {
+    if (a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) {
+      if (!deepEqual(a[i], b[i])) return false
+    }
+    return true
+  }
+  const aObj = a as Record<string, unknown>
+  const bObj = b as Record<string, unknown>
+  const aKeys = Object.keys(aObj)
+  const bKeys = Object.keys(bObj)
+  if (aKeys.length !== bKeys.length) return false
+  for (const k of aKeys) {
+    if (!Object.prototype.hasOwnProperty.call(bObj, k)) return false
+    if (!deepEqual(aObj[k], bObj[k])) return false
+  }
+  return true
 }
 
 export class GateConflictError extends Error {

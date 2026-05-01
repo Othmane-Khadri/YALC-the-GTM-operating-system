@@ -21,6 +21,7 @@ import { join, dirname, basename, isAbsolute, resolve as resolvePath } from 'nod
 import { homedir } from 'node:os'
 import { PKG_ROOT } from '../paths.js'
 import { writeVisualization, type WriteVisualizationResult } from './storage.js'
+import { publishVisualizeEvent } from '../server/event-bus.js'
 
 export interface VisualizeRunInput {
   view_id: string
@@ -148,6 +149,16 @@ export async function runVisualize(input: VisualizeRunInput): Promise<VisualizeR
     throw new Error('data_paths is required (one or more JSON file paths or globs)')
   }
 
+  // Best-effort SSE fan-out — surface that a visualization run started.
+  try {
+    publishVisualizeEvent({
+      type: 'visualization_started',
+      item: { view_id: input.view_id, intent: input.intent },
+    })
+  } catch {
+    // best-effort
+  }
+
   const resolvedFiles: string[] = []
   for (const pat of input.data_paths) {
     for (const f of expandPathGlob(pat)) resolvedFiles.push(f)
@@ -189,7 +200,24 @@ export async function runVisualize(input: VisualizeRunInput): Promise<VisualizeR
     }
   }
 
-  const parsed = parseVisualizeResult(collected)
+  let parsed: ParsedVisualizeResult
+  try {
+    parsed = parseVisualizeResult(collected)
+  } catch (err) {
+    try {
+      publishVisualizeEvent({
+        type: 'visualization_failed',
+        item: {
+          view_id: input.view_id,
+          intent: input.intent,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      })
+    } catch {
+      // best-effort
+    }
+    throw err
+  }
   const writeResult = writeVisualization({
     view_id: input.view_id,
     intent: input.intent,
@@ -198,6 +226,23 @@ export async function runVisualize(input: VisualizeRunInput): Promise<VisualizeR
     data_paths: resolvedFiles,
     summary: parsed.summary,
   })
+
+  // Best-effort SSE fan-out — visualization written to disk.
+  try {
+    publishVisualizeEvent({
+      type: 'visualization_completed',
+      item: {
+        view_id: input.view_id,
+        intent: input.intent,
+        idiom: parsed.idiom,
+        data_paths: resolvedFiles,
+        last_generated_at: writeResult.metadata.last_generated_at,
+        summary: parsed.summary,
+      },
+    })
+  } catch {
+    // best-effort
+  }
 
   return {
     ...writeResult,

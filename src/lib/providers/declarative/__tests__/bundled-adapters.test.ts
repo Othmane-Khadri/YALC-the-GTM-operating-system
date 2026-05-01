@@ -21,6 +21,7 @@ import {
 } from '../loader'
 import {
   CRM_CONTACT_UPSERT_CAPABILITY,
+  LANDING_PAGE_DEPLOY_CAPABILITY,
 } from '../../adapters/index'
 
 const ROOT = bundledAdaptersDir()
@@ -76,20 +77,34 @@ describe('bundled declarative manifests — compile happy-path', () => {
     expect(compiled.providerId).toBe('brevo')
     expect(compiled.envVars).toContain('BREVO_API_KEY')
   })
+
+  it('compiles landing-page-deploy-vercel.yaml without errors', () => {
+    const raw = readManifest('landing-page-deploy-vercel.yaml')
+    const compiled = compileManifest(raw, 'landing-page-deploy-vercel.yaml')
+    expect(compiled.capabilityId).toBe('landing-page-deploy')
+    expect(compiled.providerId).toBe('vercel')
+    expect(compiled.envVars).toContain('VERCEL_TOKEN')
+  })
 })
 
 describe('bundled declarative manifests — invoke against recorded fixtures', () => {
   let prevPDL: string | undefined
   let prevHS: string | undefined
   let prevBR: string | undefined
+  let prevVT: string | undefined
+  let prevVTID: string | undefined
 
   beforeEach(() => {
     prevPDL = process.env.PEOPLEDATALABS_API_KEY
     prevHS = process.env.HUBSPOT_API_KEY
     prevBR = process.env.BREVO_API_KEY
+    prevVT = process.env.VERCEL_TOKEN
+    prevVTID = process.env.VERCEL_TEAM_ID
     process.env.PEOPLEDATALABS_API_KEY = 'test-pdl'
     process.env.HUBSPOT_API_KEY = 'test-hs'
     process.env.BREVO_API_KEY = 'test-br'
+    process.env.VERCEL_TOKEN = 'test-vt'
+    delete process.env.VERCEL_TEAM_ID
   })
 
   afterEach(() => {
@@ -99,6 +114,10 @@ describe('bundled declarative manifests — invoke against recorded fixtures', (
     else process.env.HUBSPOT_API_KEY = prevHS
     if (prevBR === undefined) delete process.env.BREVO_API_KEY
     else process.env.BREVO_API_KEY = prevBR
+    if (prevVT === undefined) delete process.env.VERCEL_TOKEN
+    else process.env.VERCEL_TOKEN = prevVT
+    if (prevVTID === undefined) delete process.env.VERCEL_TEAM_ID
+    else process.env.VERCEL_TEAM_ID = prevVTID
   })
 
   it('peopledatalabs invoke yields { results: [{email,...}] } shape', async () => {
@@ -138,6 +157,66 @@ describe('bundled declarative manifests — invoke against recorded fixtures', (
     })) as { campaignId: unknown; status: unknown }
     expect(out.campaignId).toBeTruthy()
     expect(out.status).toBeTruthy()
+  })
+
+  it('vercel invoke yields { deployed: true, url, deploymentId } on READY response', async () => {
+    const raw = readManifest('landing-page-deploy-vercel.yaml')
+    const fixture = loadFixture('vercel', 'deploy-success') as RecordedHttp
+    const compiled = compileManifest(raw, 'v.yaml', { fetchImpl: makeFetchShim(fixture) })
+    const out = (await compiled.invoke({
+      html: '<!doctype html><h1>yalc-smoke</h1>',
+      slug: 'yalc-smoke',
+    })) as { deployed: boolean; url: string; deploymentId: string }
+    expect(out.deployed).toBe(true)
+    expect(out.url).toBe('https://yalc-smoke-abc123.vercel.app')
+    expect(out.deploymentId).toBe('dpl_abc123xyz')
+  })
+
+  it('vercel invoke yields { deployed: false, url } when readyState is not READY', async () => {
+    const raw = readManifest('landing-page-deploy-vercel.yaml')
+    const fixture = loadFixture('vercel', 'deploy-queued') as RecordedHttp
+    const compiled = compileManifest(raw, 'v.yaml', { fetchImpl: makeFetchShim(fixture) })
+    const out = (await compiled.invoke({
+      html: '<!doctype html><h1>yalc-smoke</h1>',
+      slug: 'yalc-smoke',
+    })) as { deployed: boolean; url: string; deploymentId: string }
+    expect(out.deployed).toBe(false)
+    // URL still exposed so the caller can poll/preview the pending deployment.
+    expect(out.url).toBe('https://yalc-smoke-queued42.vercel.app')
+    expect(out.deploymentId).toBe('dpl_queued42')
+  })
+
+  it('vercel invoke surfaces 4xx errors as ProviderApiError with vendor message', async () => {
+    const { ProviderApiError } = await import('../../adapters/index')
+    const raw = readManifest('landing-page-deploy-vercel.yaml')
+    const fixture = loadFixture('vercel', 'deploy-error') as RecordedHttp
+    const compiled = compileManifest(raw, 'v.yaml', { fetchImpl: makeFetchShim(fixture) })
+    let caught: unknown
+    try {
+      await compiled.invoke({ html: '<h1>x</h1>', slug: 's' })
+    } catch (e) {
+      caught = e
+    }
+    expect(caught).toBeInstanceOf(ProviderApiError)
+    expect((caught as Error).message).toMatch(/Not authorized/)
+  })
+
+  it('vercel adapter is unavailable when VERCEL_TOKEN is unset', () => {
+    const prev = process.env.VERCEL_TOKEN
+    delete process.env.VERCEL_TOKEN
+    try {
+      const raw = readManifest('landing-page-deploy-vercel.yaml')
+      const compiled = compileManifest(raw, 'v.yaml')
+      expect(compiled.envVars).toEqual(['VERCEL_TOKEN'])
+    } finally {
+      if (prev !== undefined) process.env.VERCEL_TOKEN = prev
+    }
+  })
+})
+
+describe('landing-page-deploy capability — vercel default priority', () => {
+  it('default priority lists vercel first', () => {
+    expect(LANDING_PAGE_DEPLOY_CAPABILITY.defaultPriority[0]).toBe('vercel')
   })
 })
 
@@ -194,6 +273,7 @@ describe('bundled adapters loader path', () => {
         'people-enrich/peopledatalabs',
         'crm-contact-upsert/hubspot',
         'email-campaign-create/brevo',
+        'landing-page-deploy/vercel',
       ]),
     )
   })

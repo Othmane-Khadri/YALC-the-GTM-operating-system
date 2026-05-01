@@ -1327,6 +1327,39 @@ program
     if (result.exitCode !== 0) process.exit(result.exitCode)
   }))
 
+// ─── gates:list ─────────────────────────────────────────────────────────────
+//
+// List every awaiting human-gate sentinel with framework, gate id, age, time
+// remaining before auto-reject, and stale/fresh status. Auto-rejects any
+// already-expired sentinel before listing. Use `--json` for machine output.
+program
+  .command('gates:list')
+  .description('List awaiting human-gates with age, timeout, and stale/fresh status.')
+  .option('--json', 'Emit JSON instead of the human-readable table')
+  .action(withDiagnostics(async (opts) => {
+    const { runGatesList } = await import('./commands/gates-list')
+    const result = await runGatesList({ json: !!opts.json })
+    process.stdout.write(result.output + '\n')
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
+// ─── notify:test ────────────────────────────────────────────────────────────
+//
+// Send a single test notification to the requested channel so operators can
+// verify their wiring (Slack webhook URL, macOS notification permissions)
+// before relying on the runner's gate-notification fan-out.
+program
+  .command('notify:test')
+  .description('Send a test notification (--channel slack|desktop) to verify config.')
+  .requiredOption('--channel <channel>', 'Channel to test: slack or desktop')
+  .action(withDiagnostics(async (opts) => {
+    const { runNotifyTest } = await import('./commands/notify-test')
+    const channel = String(opts.channel).toLowerCase() as 'slack' | 'desktop'
+    const result = await runNotifyTest(channel)
+    process.stdout.write(result.output + '\n')
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
 // ─── adapters:smoke ─────────────────────────────────────────────────────────
 //
 // Run a declarative manifest's `smoke_test` block against the live vendor
@@ -1419,6 +1452,7 @@ program
   .description('Open the SPA in the browser. Boots the dashboard server if needed.')
   .option('--port <port>', 'Server port', '3847')
   .option('--route <path>', 'Open this route literally instead of inferring from disk state')
+  .option('--archetype <id>', 'Open the archetype-specific dashboard (a, b, c, or d)')
   .option('--no-open', 'Print the URL without launching a browser (headless / SSH)')
   .action(withDiagnostics(async (opts) => {
     const { runDashboard } = await import('./commands/dashboard')
@@ -1426,6 +1460,7 @@ program
     const result = await runDashboard({
       port: Number.isFinite(port) ? port : 3847,
       route: opts.route,
+      archetype: opts.archetype,
       open: opts.open !== false,
     })
     if (result.exitCode !== 0) process.exit(result.exitCode)
@@ -2486,6 +2521,61 @@ program
   .action(withDiagnostics(async (name: string) => {
     const { runFrameworkRemove } = await import('./commands/framework.js')
     await runFrameworkRemove(name)
+  }))
+
+// ─── routine:propose ───────────────────────────────────────────────────────
+//
+// Run the deterministic Routine Generator and print the proposed routine
+// (frameworks + schedules + default dashboard + notes). Read-only — never
+// writes to `~/.gtm-os/`. Exits 2 when no Anthropic key is available so
+// the SPA can branch on "nothing to install".
+program
+  .command('routine:propose')
+  .description('Print the proposed Routine (frameworks, schedules, dashboard) without applying.')
+  .option('--json', 'Emit JSON instead of the human-readable preview')
+  .action(withDiagnostics(async (opts) => {
+    const { runRoutinePropose } = await import('./commands/routine.js')
+    const r = await runRoutinePropose({ json: !!opts.json })
+    process.stdout.write(r.output + '\n')
+    if (r.exitCode !== 0) process.exit(r.exitCode)
+  }))
+
+// ─── routine:install ───────────────────────────────────────────────────────
+//
+// Recompute the proposal (so a stale preview can't drift), prompt for
+// confirmation (unless `--yes`), then apply: install each framework via
+// `framework:install --auto-confirm`, write `~/.gtm-os/routine.yaml`, and
+// patch `dashboard.default_route` into `~/.gtm-os/config.yaml`.
+program
+  .command('routine:install')
+  .description('Apply the proposed Routine: install frameworks + persist sidecar.')
+  .option('--yes', 'Skip the interactive confirmation prompt')
+  .option('--dry-run', 'Print the actions that would run, but do not write anything')
+  .option('--only <names>', 'Comma-separated subset of frameworks to install')
+  .action(withDiagnostics(async (opts) => {
+    const { runRoutineInstall } = await import('./commands/routine.js')
+    const only = typeof opts.only === 'string'
+      ? opts.only.split(',').map((s: string) => s.trim()).filter(Boolean)
+      : undefined
+    const r = await runRoutineInstall({
+      yes: !!opts.yes,
+      dryRun: !!opts.dryRun,
+      only,
+    })
+    process.stdout.write(r.output + '\n')
+    if (r.exitCode !== 0) process.exit(r.exitCode)
+  }))
+
+// ─── trigger ───────────────────────────────────────────────────────────────
+// On-demand-only counterpart to `framework:run`. Validates the named
+// framework is `mode: on-demand`, fires it, and exits 0 with the new run id.
+program
+  .command('trigger <framework>')
+  .description('Fire an on-demand framework now (writes ~/.gtm-os/triggers.log)')
+  .action(withDiagnostics(async (framework: string) => {
+    const { runTrigger } = await import('./commands/trigger.js')
+    const r = await runTrigger(framework)
+    if (r.exitCode !== 0) process.exit(r.exitCode)
   }))
 
 // ─── provider:list ─────────────────────────────────────────────────────────

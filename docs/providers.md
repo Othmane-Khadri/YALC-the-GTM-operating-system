@@ -265,6 +265,20 @@ Idempotent contact upsert via `POST /crm/v3/objects/contacts?idProperty=email`. 
 
 Email campaign create via `POST /v3/emailCampaigns`. Returns the new campaign id in `draft` status; trigger send separately via Brevo's `sendNow` endpoint or the Brevo UI. Drop-in alternative to Instantly for capability `email-campaign-create`. Get a key at https://app.brevo.com/settings/keys/api.
 
+## Optional: asset rendering (Playwright)
+
+The `asset-rendering` capability writes HTML to disk by default and can render PDF / PNG when [Playwright](https://playwright.dev) is installed. Playwright ships as an **optional dependency** so `npm install` / `pnpm install` doesn't fail in sandboxed CI environments where the chromium binary can't be downloaded.
+
+To enable PDF / PNG rendering:
+
+```bash
+pnpm add playwright
+# or: npm i playwright
+npx playwright install chromium
+```
+
+Run `yalc-gtm adapters:list` and confirm the `asset-rendering` row flips from `✗` to `✓` for the `playwright` provider. Until Playwright is installed, the adapter still handles `format: 'html'` cleanly and returns a `fallbackReason` when callers ask for `pdf` or `png`.
+
 ### User-installed manifests
 
 The same loader also reads `~/.gtm-os/adapters/*.yaml`. A user manifest with the same `(capability, provider)` key as a bundled one wins via last-write-to-bucket — useful for hot-patching a vendor URL change without waiting on a YALC release. The CLI labels these `[user]` instead of `[bundled]`.

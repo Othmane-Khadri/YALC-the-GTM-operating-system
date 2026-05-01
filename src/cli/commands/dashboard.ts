@@ -22,6 +22,7 @@ import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { spawn as nodeSpawn } from 'node:child_process'
+import { isArchetypeId } from '../../lib/frameworks/archetypes.js'
 
 const DEFAULT_PORT = 3847
 
@@ -50,6 +51,11 @@ export interface DashboardCliOptions {
   waitTimeoutMs?: number
   /** Poll interval while waiting for the server to come up (ms). */
   waitIntervalMs?: number
+  /**
+   * Open the archetype-specific dashboard. Takes precedence over `route`.
+   * Accepts a-d (case-insensitive). Unknown values cause a non-zero exit.
+   */
+  archetype?: string
 }
 
 export interface DashboardCliResult {
@@ -74,6 +80,10 @@ function normaliseRoute(route: string): string {
 }
 
 function resolveRoute(opts: DashboardCliOptions): string {
+  // --archetype wins over --route so users can pin a specific dashboard.
+  if (opts.archetype && opts.archetype.trim() !== '') {
+    return `/dashboard/${opts.archetype.trim().toLowerCase()}`
+  }
   if (opts.route && opts.route.trim() !== '') {
     return normaliseRoute(opts.route)
   }
@@ -132,6 +142,25 @@ export async function runDashboard(
   opts: DashboardCliOptions = {},
 ): Promise<DashboardCliResult> {
   const port = opts.port ?? DEFAULT_PORT
+
+  // Validate --archetype before any side-effects so we exit cleanly without
+  // probing the port or printing a confusing URL.
+  if (opts.archetype !== undefined && opts.archetype.trim() !== '') {
+    if (!isArchetypeId(opts.archetype.trim())) {
+      console.error(
+        `Unknown archetype "${opts.archetype}". Expected one of a, b, c, d.`,
+      )
+      return {
+        exitCode: 1,
+        url: '',
+        route: '',
+        port,
+        alreadyRunning: false,
+        spawnedPid: null,
+      }
+    }
+  }
+
   const route = resolveRoute(opts)
   const url = `http://localhost:${port}${route}`
 

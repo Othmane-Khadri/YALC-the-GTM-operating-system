@@ -280,7 +280,71 @@ to Step 11.
 
 ---
 
-## Step 11 — Hand-off summary
+## Step 11 — Propose + install the Routine
+
+Up until now the user has clicked through providers, captured context, and
+(optionally) locked an outbound hypothesis. The Routine Generator collapses
+the remaining decisions ("which frameworks to install, on what schedule,
+with which default dashboard") into a single yes/no prompt. The generator
+is deterministic, rule-based, and reads only the artifacts already on disk
+— no LLM, no network calls.
+
+### Step 11.1 — Run the proposal (read-only)
+
+Run:
+
+```bash
+yalc-gtm routine:propose
+```
+
+Exit code 0 expected when an Anthropic key is set. Exit code 2 means "no
+reasoning provider" — the proposal still prints (it will be empty) but tell
+the user to set `ANTHROPIC_API_KEY` and skip directly to **Step 12**.
+
+The output is a numbered list of frameworks (with schedule + rationale per
+entry), the chosen default dashboard route, and any generator notes. The
+command is read-only — it never writes to `~/.gtm-os/`.
+
+### Step 11.2 — The single yes / show details / skip prompt
+
+Show the user the proposed routine output verbatim, then ask exactly:
+
+> Install this routine? (yes / show details / skip)
+
+- **yes** — continue to Step 11.3.
+- **show details** — for each framework in the proposal, print the
+  framework yaml `description` plus the entry `rationale` (already on
+  the proposal). Then re-ask the prompt.
+- **skip** — confirm "Skipping routine install. You can re-run
+  `yalc-gtm routine:propose` whenever you are ready." and jump straight
+  to **Step 12**. Do not call `routine:install`. The proposal is *not*
+  persisted on skip — re-running setup re-derives.
+
+### Step 11.3 — Apply
+
+Run:
+
+```bash
+yalc-gtm routine:install --yes
+```
+
+Exit code 0 expected. The command:
+
+- Re-runs `routine:propose` internally (so a stale preview cannot drift).
+- Calls `framework:install --auto-confirm --destination dashboard` per
+  non-deferred entry.
+- Skips frameworks already installed (idempotent — re-running is safe).
+- Skips deferred entries (currently only `outreach-campaign-builder`
+  without a locked hypothesis — Step 10 covers that path).
+- Writes `~/.gtm-os/routine.yaml` (the proposal snapshot + install meta).
+- Patches `dashboard.default_route` into `~/.gtm-os/config.yaml`.
+
+Print the command stdout to the user — it lists what got installed,
+skipped, and any warnings.
+
+---
+
+## Step 12 — Hand-off summary
 
 Print a closing summary:
 

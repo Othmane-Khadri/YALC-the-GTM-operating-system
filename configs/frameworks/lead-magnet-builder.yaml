@@ -3,8 +3,7 @@ display_name: "Lead Magnet Builder"
 description: >
   On-demand wizard that proposes 5 lead-magnet ideas for a buyer persona,
   outlines the one you pick, renders the asset, and optionally deploys it
-  to a public URL via vercel-mcp (with a local-file fallback when no MCP
-  is configured).
+  to a public URL via Vercel (requires VERCEL_TOKEN).
 
 requires:
   any_of_keys:
@@ -21,7 +20,7 @@ inputs:
     description: "Output asset format — html, pdf, or png."
     default: "html"
   - name: deploy
-    description: "Deploy the rendered asset to a public URL via vercel-mcp (yes/no)."
+    description: "Deploy the rendered asset to a public URL via Vercel (yes/no)."
     default: "no"
 
 mode: on-demand
