@@ -253,6 +253,29 @@ Counts at this commit: 20 built-in TypeScript adapters across 18 capabilities; 4
 
 ## Skills
 
+YALC ships skills across three distinct runtime systems. See [CONTRIBUTING.md](CONTRIBUTING.md#skills) for the full distinction.
+
+### Bundled Claude Code skills (`.claude/skills/`)
+
+Conversational entry points. Activate from a Claude Code session with the trigger phrases in each skill's `description` frontmatter.
+
+| Skill | What it does |
+|-------|--------------|
+| `campaign-dashboard` | Opens the local campaign visualization dashboard in the browser |
+| `debugger` | 5-layer diagnostic funnel for any failing GTM-OS CLI command |
+| `predictleads-dashboard` | Generates a self-contained HTML page from cached PredictLeads signals |
+| `predictleads-lookalikes` | Pulls up to 50 companies similar to a seed domain (1 credit per seed) |
+| `predictleads-signals` | Single-company signal lookup (jobs, financing, news, tech) with 7-day cache |
+| `prospect-discovery-pipeline` | Meta-skill: chains lookalikes → ICP filter → CMO finder → signals → 2 LinkedIn variants |
+| `provider-builder` | Authors a declarative adapter manifest from vendor + capability + docs URL in ~5 min |
+| `setup` | New-user onboarding: install, env, capture, preview, commit, doctor, framework recommend |
+
+**16 more skills shipping in 0.13.0** — see [CHANGELOG.md](CHANGELOG.md) and [docs/skills-architecture.md](docs/skills-architecture.md).
+
+### Legacy TypeScript skill registry (`src/lib/skills/builtin/`)
+
+Loaded at runtime by `orchestrate` and surfaced via `skills:list`.
+
 | Skill | Category | Description |
 |-------|----------|-------------|
 | `qualify-leads` | data | 7-gate lead qualification pipeline |

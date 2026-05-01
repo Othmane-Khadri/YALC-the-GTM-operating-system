@@ -20,3 +20,5 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
+      - name: Lint skill trigger phrases
+        run: node scripts/lint-skill-triggers.mjs
