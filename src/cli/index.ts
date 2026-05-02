@@ -46,6 +46,13 @@ program
   .option('-c, --config <path>', 'Path to config YAML', '~/.gtm-os/config.yaml')
   .option('-t, --tenant <slug>', 'Tenant slug (overrides GTM_OS_TENANT env and .gtm-os-tenant file)')
   .option('-v, --verbose', 'Enable verbose output with full stack traces')
+  .addHelpText(
+    'after',
+    `
+Next: run \`yalc-gtm start\` to set up your GTM context, or \`yalc-gtm doctor\` to diagnose your environment.
+Docs: https://github.com/Othmane-Khadri/YALC-the-GTM-operating-system#getting-started
+`,
+  )
   .hook('preAction', (thisCommand) => {
     // Resolve verbose flag first — affects error output globally
     const opts = thisCommand.opts()

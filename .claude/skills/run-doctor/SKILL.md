@@ -40,6 +40,16 @@ Use this skill when the user says:
 - Send any external requests beyond the live provider probes that doctor itself runs.
 - Auto-fix anything. All fixes need your approval.
 
+## Pre-flight (do this before step 1)
+
+**Onboarding interruption guard.** Run:
+
+```bash
+test -f ~/.gtm-os/.in-flight-setup && echo "BLOCKED" || echo "OK"
+```
+
+If `BLOCKED`, surface a soft warning: setup is mid-flight and the diagnostic snapshot may be incomplete (config + DB are still being assembled). Since this skill is read-only and never writes anything, ask the user whether to (a) run anyway against the in-flight state, or (b) finish `yalc-gtm setup --resume` first and re-invoke. Default to (b) unless the user explicitly opts in to (a).
+
 ## Workflow
 
 ### Step 0: No user input needed

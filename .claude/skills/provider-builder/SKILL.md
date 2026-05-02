@@ -19,11 +19,25 @@ Author a declarative adapter manifest from a vendor name, a capability id, and a
 
 ## Pre-flight (do this before step 1)
 
-1. Confirm the trigger is in scope. If the user mentioned OAuth, an SDK, gRPC, or signed requests, jump to **Failure mode 2** and exit cleanly.
-2. Confirm `pnpm cli adapters:list` works in the cwd. If not, the package isn't built or the user is in the wrong directory — surface that and stop.
-3. Resolve the env var name with the user (e.g., `APOLLO_API_KEY`). **Do not** open `~/.gtm-os/.env`. Use `process.env` only — `node -e "console.log(process.env.APOLLO_API_KEY ? 'set' : 'unset')"` is the maximum disclosure allowed (prints `set` / `unset`, never the value).
+1. **Onboarding interruption guard.** Run:
+   ```bash
+   test -f ~/.gtm-os/.in-flight-setup && echo "BLOCKED" || echo "OK"
+   ```
+   If `BLOCKED`, stop. Tell the user: "Setup is mid-flight. Finish `yalc-gtm start` first, then re-invoke me." Exit cleanly. This skill writes to the adapter registry from Step 5 onward, so it must not race the onboarding flow.
+
+2. Confirm the trigger is in scope. If the user mentioned OAuth, an SDK, gRPC, or signed requests, jump to **Failure mode 2** and exit cleanly.
+3. Confirm `pnpm cli adapters:list` works in the cwd. If not, the package isn't built or the user is in the wrong directory — surface that and stop.
+4. Resolve the env var name with the user (e.g., `APOLLO_API_KEY`). **Do not** open `~/.gtm-os/.env`. Use `process.env` only — `node -e "console.log(process.env.APOLLO_API_KEY ? 'set' : 'unset')"` is the maximum disclosure allowed (prints `set` / `unset`, never the value).
 
 ## Workflow
+
+### Step 0 — Greet + state scope
+
+Greet the user briefly and state what this skill will and won't do, so they can correct course before any work starts:
+
+> "I'll author a declarative YAML adapter for `<vendor>` against the `<capability>` capability — draft the manifest from vendor docs, smoke-test it against the live endpoint, and only register it under `~/.gtm-os/adapters/` once smoke is green. I won't read or print any API keys, won't touch `~/.gtm-os/.env`, and won't draft anything for OAuth / SDK-only / signed-request vendors (those need a TS adapter). Roughly five minutes if the vendor's REST docs are clean."
+
+Confirm the vendor + capability id with the user before moving to Step 1. If either is missing, ask for it now — one question at a time.
 
 ### Step 1 — Discover
 

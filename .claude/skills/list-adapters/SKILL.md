@@ -39,6 +39,16 @@ Use this skill when the user says:
 - Smoke-test live vendor endpoints. That's `adapters:smoke <path>`.
 - Auto-install missing providers. Use `provider-builder` (author a new YAML) or `provider:install <capability>/<provider>` (fetch from `providers/manifests/`).
 
+## Pre-flight (do this before step 1)
+
+**Onboarding interruption guard.** Run:
+
+```bash
+test -f ~/.gtm-os/.in-flight-setup && echo "BLOCKED" || echo "OK"
+```
+
+If `BLOCKED`, surface a soft warning: setup is mid-flight, so the adapter inventory may not yet reflect freshly-set keys or newly-installed manifests. Since this skill is read-only and never writes anything, ask the user whether to (a) run anyway against the in-flight state, or (b) finish `yalc-gtm setup --resume` first and re-invoke. Default to (b) unless the user explicitly opts in to (a).
+
 ## Workflow
 
 ### Step 0: No user input needed
