@@ -79,11 +79,11 @@ Tests: `src/__tests__/predictleads*.test.ts` (34 tests across service, storage, 
 - `Signals` — rich_text — short summary like `Series B $30M (2026-04-12) · Hiring 3 sales · Uses Salesforce`
 - `Signals Updated At` — date
 
-For Earleads' Unified Leads DB, the data source ID is `56e04a3e-a757-4714-b328-1e5910a80bb1`. Add the columns once via Notion's UI or the `notion-update-data-source` MCP tool. Without them, the writes silently no-op.
+For your Unified Leads DB, look up the data source ID in Notion (or via the Notion API) and add the columns once via Notion's UI or the `notion-update-data-source` MCP tool. Without them, the writes silently no-op.
 
 ## Tenant config
 
-Earleads tenant opts in via `~/.gtm-os/tenants/earleads/adapters.yaml`:
+Each tenant opts in via `~/.gtm-os/tenants/<your-tenant>/adapters.yaml`:
 
 ```yaml
 signals:

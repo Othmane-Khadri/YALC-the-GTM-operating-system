@@ -9,7 +9,7 @@ Pulls up to 50 companies similar to a seed domain via PredictLeads' `similar_com
 
 ## When to use
 
-- Expanding a target list from a known anchor account ("find more like Workmotion")
+- Expanding a target list from a known anchor account ("find more like Stripe")
 - Sanity-checking that a prospect fits an existing client's pattern
 - Building a watchlist of competitors for monitoring
 - First step of `prospect-discovery-pipeline` (but use that skill if outreach is downstream)
@@ -20,13 +20,13 @@ Pulls up to 50 companies similar to a seed domain via PredictLeads' `similar_com
 
 ```bash
 # 50 lookalikes from a seed domain (1 credit)
-npx tsx src/cli/index.ts signals:similar --domain workmotion.com --limit 50
+npx tsx src/cli/index.ts signals:similar --domain stripe.com --limit 50
 
 # Tighter list (still 1 credit per call)
-npx tsx src/cli/index.ts signals:similar --domain scayle.com --limit 20
+npx tsx src/cli/index.ts signals:similar --domain linear.app --limit 20
 
 # Read back from local SQLite (no API call)
-npx tsx src/cli/index.ts signals:show --domain workmotion.com --type similar
+npx tsx src/cli/index.ts signals:show --domain stripe.com --type similar
 ```
 
 ## Cost
@@ -48,7 +48,7 @@ Reasons are populated for some seed domains and not others (PredictLeads inconsi
 ## Common pitfalls
 
 - **Megacaps in results**: PredictLeads returns market peers including SAP, Microsoft, Google for many B2B SaaS seeds. Filter by hand or via Crustdata `company_identify` before going further.
-- **Multiple seed merge**: if you run two seeds (`workmotion.com` and `scayle.com`), results are stored separately by source domain. Dedupe in code or use `prospect-discovery-pipeline` which handles the merge.
+- **Multiple seed merge**: if you run two seeds (`stripe.com` and `linear.app`), results are stored separately by source domain. Dedupe in code or use `prospect-discovery-pipeline` which handles the merge.
 - **`similar_company` rows have no event date**: they're a lookup, not an event. Don't sort by event_date; sort by score (in payload) or position.
 
 ## Required env
