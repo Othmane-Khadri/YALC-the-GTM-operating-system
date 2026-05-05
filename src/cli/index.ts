@@ -1613,6 +1613,11 @@ Flag-driven (zero prompts, headless / CI):
   )
   // 0.9.1: suppress the auto-open of ~/.gtm-os/.env after a fresh scaffold.
   .option('--no-open-env', 'Skip auto-opening the .env template in the default editor')
+  .option(
+    '--port <number>',
+    'Dashboard server port for the SPA handoff. Defaults to 3847.',
+    (val) => Number.parseInt(val, 10),
+  )
   .action(withDiagnostics(async (opts) => {
     // 0.9.7 / A1 — no-flag default routes to the SPA. The single inquirer
     // prompt asks for a website URL, then delegates to the same flag-capture
@@ -1644,6 +1649,7 @@ Flag-driven (zero prompts, headless / CI):
         tenantId: getTenant(),
         noOpen: opts.open === false,
         noOpenEnv: opts.openEnv === false,
+        port: Number.isFinite(opts.port) ? opts.port : undefined,
       })
       if (result.exitCode !== 0) process.exitCode = result.exitCode
       return
@@ -1673,6 +1679,7 @@ Flag-driven (zero prompts, headless / CI):
       noAutoCommit: opts.autoCommit === false,
       autoCommitThreshold: opts.autoCommitThreshold,
       noOpenEnv: opts.openEnv === false,
+      port: Number.isFinite(opts.port) ? opts.port : undefined,
     })
   }))
 

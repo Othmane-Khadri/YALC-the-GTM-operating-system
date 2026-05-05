@@ -1,5 +1,7 @@
 # MCP Integration
 
+> **Tip:** you can run any of these commands by asking Claude Code in your IDE — see [Quick start in README](../README.md#quick-start).
+
 ## Claude Code MCP vs YALC MCP — at a glance
 
 YALC and Claude Code both have a thing called "MCP". They are different

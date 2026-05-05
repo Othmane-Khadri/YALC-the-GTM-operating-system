@@ -1,5 +1,7 @@
 # Troubleshooting
 
+> **Tip:** you can run any of these commands by asking Claude Code in your IDE — see [Quick start in README](../README.md#quick-start).
+
 Run `yalc-gtm doctor` first — it checks 5 layers and tells you exactly what's wrong.
 
 ## Environment Issues

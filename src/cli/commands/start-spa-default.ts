@@ -75,6 +75,8 @@ export interface RunStartSpaDefaultOptions {
   openHook?: StartOptions['openHook']
   noOpen?: boolean
   noOpenEnv?: boolean
+  /** Override the dashboard server port. Defaults to 3847. */
+  port?: number
   /** Bound on retry attempts when the user keeps entering invalid URLs. */
   maxAttempts?: number
 }
@@ -155,6 +157,7 @@ export async function runStartSpaDefault(
     openHook: opts.openHook,
     noOpen: opts.noOpen,
     noOpenEnv: opts.noOpenEnv,
+    port: opts.port,
   })
 
   return { exitCode: 0, website }

@@ -1,20 +1,27 @@
 # First Run Tutorial
 
-This guide walks you through what happens when you run `yalc-gtm start` for the first time, and then shows you three things to try after setup.
+This guide walks you through what happens when you run YALC's first-run flow, and then shows you three things to try after setup.
 
-## Prerequisites
+## Quick start
 
+Node.js 20 or higher required ([nodejs.org](https://nodejs.org/)).
+
+### Option A — Drive YALC from your IDE (recommended)
+Open this repo in Cursor or VS Code with the Claude Code extension installed.
+In the chat panel, paste this repo URL or just say "let's start".
+Claude will introduce YALC, check your prerequisites, and walk you through setup.
+
+### Option B — Use the CLI directly
 ```bash
-git clone https://github.com/Othmane-Khadri/YALC-the-GTM-operating-system.git
-cd YALC-the-GTM-operating-system
-pnpm install
+npm i -g yalc-gtm-os
+yalc-gtm start
 ```
+
+That is the whole installation. The `start` command writes its config to `~/.gtm-os/`, asks for your company website URL, then opens the browser at `/setup/review` so you can confirm the inferred framework.
 
 ## Running `start`
 
-```bash
-yalc-gtm start
-```
+Whether you triggered it from the IDE chat or invoked it directly, `yalc-gtm start` walks through the same 4 steps below.
 
 ### Step 1/4 — Environment
 

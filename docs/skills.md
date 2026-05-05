@@ -1,5 +1,7 @@
 # Skills Catalog
 
+> **Tip:** you can run any of these commands by asking Claude Code in your IDE — see [Quick start in README](../README.md#quick-start).
+
 Skills are the execution primitives of GTM-OS. Each skill is a self-contained operation that can be invoked by the CLI, the orchestrator, or chained together in multi-step workflows.
 
 Skills are provider-agnostic — `find-companies` doesn't know about Crustdata or Firecrawl. It declares what capabilities it needs, and the Provider Registry resolves the best available provider.

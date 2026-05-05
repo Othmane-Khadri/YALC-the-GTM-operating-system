@@ -1,5 +1,7 @@
 # Skill Architecture — Author Guide
 
+> **Tip:** you can run any of these commands by asking Claude Code in your IDE — see [Quick start in README](../README.md#quick-start).
+
 This is the canonical reference for adding a Claude Code skill that wraps a YALC capability. Every new skill in `.claude/skills/` starts here.
 
 ---

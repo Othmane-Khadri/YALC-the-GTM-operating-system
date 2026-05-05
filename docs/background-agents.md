@@ -1,5 +1,7 @@
 # Background Agents
 
+> **Tip:** you can run any of these commands by asking Claude Code in your IDE — see [Quick start in README](../README.md#quick-start).
+
 GTM-OS background agents run skills on a schedule using macOS launchd.
 
 ## Architecture

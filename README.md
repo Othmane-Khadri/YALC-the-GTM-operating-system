@@ -10,12 +10,18 @@
 
 YALC is an open-source, AI-native operating system for running any GTM campaign. CLI-first. Intelligence compounds from every interaction.
 
-## Quick Start
+## Quick start
 
 Node.js 20 or higher required ([nodejs.org](https://nodejs.org/)).
 
+### Option A — Drive YALC from your IDE (recommended)
+Open this repo in Cursor or VS Code with the Claude Code extension installed.
+In the chat panel, paste this repo URL or just say "let's start".
+Claude will introduce YALC, check your prerequisites, and walk you through setup.
+
+### Option B — Use the CLI directly
 ```bash
-npm install -g yalc-gtm-os
+npm i -g yalc-gtm-os
 yalc-gtm start
 ```
 
@@ -62,25 +68,6 @@ If you would rather walk through the legacy 4-step terminal interview instead of
 yalc-gtm start --review-in-chat
 ```
 
-### After Setup
-
-```bash
-# Easiest: describe what you want in natural language and let YALC plan the work
-yalc-gtm orchestrate "find 10 SaaS CTOs matching my ICP and qualify them"
-
-# Create a campaign
-yalc-gtm campaign:create --title "Q2 Outbound" --hypothesis "VP Eng responds to pain-point messaging"
-
-# Track campaign progress
-yalc-gtm campaign:track --dry-run
-
-# Or qualify a lead list you already have (CSV or JSON)
-yalc-gtm leads:qualify --source csv --input ./your-leads.csv --dry-run
-
-# Send via a non-default email provider (e.g. Brevo via the MCP template)
-yalc-gtm email:send --provider brevo --to lead@example.com --body "Hi there"
-```
-
 ### Non-Interactive Setup
 
 For CI or automation, set your keys in `~/.gtm-os/.env` (or `.env.local` in your project) and run:
@@ -98,18 +85,6 @@ UNIPILE_DSN=https://api{N}.unipile.com:{PORT}
 NOTION_API_KEY=secret_...
 ENCRYPTION_KEY=$(openssl rand -hex 32)
 ```
-
-## Recommended workflow: drive YALC from your IDE chat
-
-YALC is designed to be driven by an AI assistant — Claude Code, Cursor, Copilot, or whatever you have open. Once it's installed globally, you don't need to remember commands. You just talk to your assistant.
-
-Typical flow inside Cursor or VS Code with Claude Code:
-
-1. Install once: `npm i -g yalc-gtm-os`.
-2. Open your IDE and ask in plain language: *"Set up YALC for my company, then find 10 SaaS CTOs and qualify them."*
-3. The assistant runs the commands. Interactive prompts from `start` show up in the same chat panel; you answer them inline.
-
-Every command also works directly in a terminal if you prefer that style. The "Using YALC from Claude Code" section below has the details on how Claude Code integrates with YALC's commands and how the LLM hand-off works when no `ANTHROPIC_API_KEY` is set.
 
 ## Features at a Glance
 
@@ -286,35 +261,6 @@ Loaded at runtime by `orchestrate` and surfaced via `skills:list`.
 | `monthly-campaign-report` | analysis | Cross-campaign intelligence report |
 | `orchestrate` | integration | Multi-step workflow from natural language |
 
-## CLI Commands
-
-```
-start                   Guided onboarding — keys, context, framework, goals in one flow
-setup                   Check API keys and provider connectivity
-onboard                 Build GTM framework from profile/website
-campaign:track          Poll Unipile, advance sequences, sync Notion
-campaign:create         Create campaign with A/B variant testing
-campaign:report         Generate weekly intelligence report
-campaign:monthly-report Cross-campaign monthly report
-campaign:dashboard      Open visualization dashboard
-leads:qualify           Run 7-gate qualification pipeline
-leads:scrape-post       Scrape LinkedIn post engagers
-leads:import            Import leads from CSV/JSON/Notion
-linkedin:answer-comments Reply to LinkedIn post comments
-email:send              Send a sequence or single message (pick the email provider with --provider <name>)
-email:create-sequence   Generate email drip sequence
-notion:sync             Bidirectional SQLite ↔ Notion sync
-notion:bootstrap        Import existing Notion data to SQLite
-orchestrate             Natural language → phased skill execution
-agent:run               Run background agent immediately
-agent:install           Install agent as launchd service
-agent:list              List agents with last run status
-```
-
-The listing above covers the common commands. The full surface also includes the `crm:*` (CRM sync and import), `email:*` (send, accounts, status), `provider:*`, `memory:*`, `context:*`, `pipeline:*`, `skills:*`, and `tenant:*` families, plus `configure`, `doctor`, `update`, `personalize`, `competitive-intel`, `test-run`, and `campaign:schedule`. Run `yalc-gtm --help` for the complete list.
-
-All commands that send or write support `--dry-run`. See [Command Reference](docs/commands.md) for full details, flags, and examples.
-
 ## Documentation
 
 | Guide | What it covers |
@@ -380,6 +326,54 @@ YALC loads `~/.gtm-os/.env` automatically on every run (followed by `.env.local`
 3. Support `--dry-run` on any command that sends or writes
 4. Never log API keys — use `sk-...redacted` pattern
 5. Wire campaign outcomes to the intelligence store
+
+## All commands
+
+```
+start                   Guided onboarding — keys, context, framework, goals in one flow
+setup                   Check API keys and provider connectivity
+onboard                 Build GTM framework from profile/website
+campaign:track          Poll Unipile, advance sequences, sync Notion
+campaign:create         Create campaign with A/B variant testing
+campaign:report         Generate weekly intelligence report
+campaign:monthly-report Cross-campaign monthly report
+campaign:dashboard      Open visualization dashboard
+leads:qualify           Run 7-gate qualification pipeline
+leads:scrape-post       Scrape LinkedIn post engagers
+leads:import            Import leads from CSV/JSON/Notion
+linkedin:answer-comments Reply to LinkedIn post comments
+email:send              Send a sequence or single message (pick the email provider with --provider <name>)
+email:create-sequence   Generate email drip sequence
+notion:sync             Bidirectional SQLite ↔ Notion sync
+notion:bootstrap        Import existing Notion data to SQLite
+orchestrate             Natural language → phased skill execution
+agent:run               Run background agent immediately
+agent:install           Install agent as launchd service
+agent:list              List agents with last run status
+```
+
+The listing above covers the common commands. The full surface also includes the `crm:*` (CRM sync and import), `email:*` (send, accounts, status), `provider:*`, `memory:*`, `context:*`, `pipeline:*`, `skills:*`, and `tenant:*` families, plus `configure`, `doctor`, `update`, `personalize`, `competitive-intel`, `test-run`, and `campaign:schedule`. Run `yalc-gtm --help` for the complete list.
+
+All commands that send or write support `--dry-run`. See [Command Reference](docs/commands.md) for full details, flags, and examples.
+
+### Common after-setup recipes
+
+```bash
+# Easiest: describe what you want in natural language and let YALC plan the work
+yalc-gtm orchestrate "find 10 SaaS CTOs matching my ICP and qualify them"
+
+# Create a campaign
+yalc-gtm campaign:create --title "Q2 Outbound" --hypothesis "VP Eng responds to pain-point messaging"
+
+# Track campaign progress
+yalc-gtm campaign:track --dry-run
+
+# Or qualify a lead list you already have (CSV or JSON)
+yalc-gtm leads:qualify --source csv --input ./your-leads.csv --dry-run
+
+# Send via a non-default email provider (e.g. Brevo via the MCP template)
+yalc-gtm email:send --provider brevo --to lead@example.com --body "Hi there"
+```
 
 ## License
 

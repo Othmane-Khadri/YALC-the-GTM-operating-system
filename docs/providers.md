@@ -1,5 +1,7 @@
 # Provider Setup Guide
 
+> **Tip:** you can run any of these commands by asking Claude Code in your IDE — see [Quick start in README](../README.md#quick-start).
+
 GTM-OS uses external providers to power different capabilities. Only **Anthropic** is required. Everything else is optional and unlocks additional features as you add them.
 
 ## Required

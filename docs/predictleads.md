@@ -1,5 +1,7 @@
 # PredictLeads integration
 
+> **Tip:** you can run any of these commands by asking Claude Code in your IDE — see [Quick start in README](../README.md#quick-start).
+
 Company-level intent signals: job openings, financing events, technographics, news events, similar companies. Used for prospect discovery, qualification enrichment, and outbound personalization.
 
 ## What you can do

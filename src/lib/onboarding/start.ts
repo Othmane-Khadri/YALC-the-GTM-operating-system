@@ -124,6 +124,11 @@ export interface StartOptions {
    */
   serverUrl?: string
   /**
+   * Override the dashboard server port. Wired through `--port` on the
+   * `start` command; falls back to 3847.
+   */
+  port?: number
+  /**
    * Browser-open hook injected for tests. Production callers leave this
    * unset and the helper resolves to `openBrowser()`.
    */
@@ -622,7 +627,7 @@ export async function runStart(opts: StartOptions): Promise<void> {
     //   3. --no-open → just print the URL (server is NOT spawned; user
     //      presumably already has one running or wants to drive headlessly).
     // Browser-open failures fall back to the printed URL silently.
-    const port = 3847
+    const port = opts.port ?? 3847
     const reviewUrl = `${opts.serverUrl ?? `http://localhost:${port}`}/setup/review`
 
     if (opts.reviewInChat) {
@@ -630,10 +635,28 @@ export async function runStart(opts: StartOptions): Promise<void> {
       return
     }
 
+    // Always print the URL banner first so it's visible (and copy-pasteable)
+    // regardless of whether the auto-open succeeds or we're in a context
+    // where opening a browser doesn't make sense (SSH, CI, no TTY).
+    console.log('')
+    console.log('  ──────────────────────────────────────────')
+    console.log(`    YALC setup ready: ${reviewUrl}`)
+    console.log('  ──────────────────────────────────────────')
+    console.log('')
+
+    // Auto-open is suppressed when the user opted out, when running over
+    // SSH, when YALC_NO_OPEN is set, or when stdout isn't a TTY (CI, pipes).
+    // The URL banner above stays in place either way.
+    const skipAutoOpen =
+      !!opts.noOpen ||
+      !!process.env.SSH_CONNECTION ||
+      !!process.env.YALC_NO_OPEN ||
+      !process.stdout.isTTY
+
     // 0.9.2: auto-spawn the dashboard server if the port isn't already in
     // use. Without this, the browser opens to a non-existent server.
     let spawnedPid: number | null = null
-    if (!opts.noOpen) {
+    if (!skipAutoOpen) {
       const inUse = await isPortListening(port).catch(() => false)
       if (!inUse) {
         spawnedPid = await spawnDashboardServer(port)
@@ -642,10 +665,24 @@ export async function runStart(opts: StartOptions): Promise<void> {
             `  Started review server on :${port} (pid: ${spawnedPid}). Stop later with: kill ${spawnedPid}`,
           )
           // Wait up to 10s for the server to start listening so the
-          // browser-open below doesn't race against an empty port.
+          // browser-open below doesn't race against an empty port. If the
+          // child died (e.g. EADDRINUSE from a race), surface a friendly
+          // error so the user knows how to recover.
+          let cameUp = false
           for (let i = 0; i < 20; i++) {
-            if (await isPortListening(port).catch(() => false)) break
+            if (await isPortListening(port).catch(() => false)) {
+              cameUp = true
+              break
+            }
             await new Promise((r) => setTimeout(r, 500))
+          }
+          if (!cameUp) {
+            console.error('')
+            console.error(`  Port ${port} is already in use.`)
+            console.error(`  Either stop the existing process (lsof -i :${port}) or run with a different port:`)
+            console.error(`    yalc-gtm start --port ${port + 1}`)
+            process.exitCode = 1
+            return
           }
         } else {
           console.log(
@@ -660,7 +697,7 @@ export async function runStart(opts: StartOptions): Promise<void> {
       attempted: false,
       launched: false,
     }
-    if (!opts.noOpen) {
+    if (!skipAutoOpen) {
       if (opts.openHook) {
         openResult = opts.openHook(reviewUrl)
       } else {
@@ -672,6 +709,15 @@ export async function runStart(opts: StartOptions): Promise<void> {
 
     if (openResult.launched) {
       console.log(`  Opening ${reviewUrl} in your browser…`)
+    } else if (skipAutoOpen) {
+      const reason = opts.noOpen
+        ? '--no-open'
+        : process.env.SSH_CONNECTION
+          ? 'SSH session detected'
+          : process.env.YALC_NO_OPEN
+            ? 'YALC_NO_OPEN set'
+            : 'non-TTY context'
+      console.log(`  Auto-open skipped (${reason}). Open the URL above to review and commit.`)
     } else {
       console.log(`  Open ${reviewUrl} to review and commit.`)
     }

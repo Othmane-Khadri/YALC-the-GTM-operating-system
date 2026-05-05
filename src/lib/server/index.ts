@@ -219,5 +219,19 @@ export function startServer(port = 3847) {
   console.log('  /review    — Lead review dashboard')
   console.log('  /frameworks — Installed framework dashboards')
   console.log('  /swipe     — Skill optimization\n')
-  serve({ fetch: app.fetch, port })
+  const server = serve({ fetch: app.fetch, port })
+  // Surface EADDRINUSE (and other listen errors) instead of letting Node
+  // crash with an uncaught exception. Callers that care can attach their
+  // own listener; otherwise we re-emit a clear message and exit non-zero.
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`\nPort ${port} is already in use.`)
+      console.error(`Either stop the existing process (lsof -i :${port}) or run with a different port:`)
+      console.error(`  yalc-gtm start --port ${port + 1}`)
+      process.exit(1)
+    }
+    console.error(`Server error: ${err.message}`)
+    process.exit(1)
+  })
+  return server
 }

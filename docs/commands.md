@@ -1,5 +1,7 @@
 # Command Reference
 
+> **Tip:** you can run any of these commands by asking Claude Code in your IDE — see [Quick start in README](../README.md#quick-start).
+
 All commands accept `--tenant <slug>` to scope operations to a specific tenant. All commands that send or write support `--dry-run`.
 
 ## Setup & Onboarding

@@ -1,5 +1,29 @@
 # YALC GTM-OS — Claude Code Rules
 
+## What YALC is
+
+The modern GTM stack is fragmented, expensive, and hostile to small teams: a dozen point tools, opaque pricing, data scattered across vendors. YALC is one open-source CLI plus IDE chat layer that owns the full outbound loop — prospecting, enrichment, qualification, campaigns, and email — under a single configuration. It's built for operators and founders who run their own outbound and want to keep their data on their own machine. Architecture splits cleanly: read context from your knowledge base, execute from this repo. Local-first by default, your data stays on your machine.
+
+## When the user opens this repo
+
+If the user pastes the repo URL (`https://github.com/Othmane-Khadri/YALC-the-GTM-operating-system`), drops a "what is this" / "let's start" / "let's go" / "how do I use this" / "i just cloned this" / "where do I begin" message, or otherwise signals first-touch intent, invoke the `yalc-orientation` skill (`.claude/skills/yalc-orientation/SKILL.md`).
+
+If the user has a specific operational request — "import these leads", "launch a campaign for X", "scrape this LinkedIn post" — route directly to the matching capability or skill. Do NOT force them through orientation; they already know what they want.
+
+## Common stuck states
+
+### Localhost won't open
+**Symptom:** browser doesn't reach `http://localhost:3847/setup/review`.
+**Fix:** confirm `yalc-gtm start` exited cleanly, copy the URL from the terminal banner, and check port 3847 isn't taken (`lsof -i :3847`).
+
+### `yalc-gtm: command not found`
+**Symptom:** shell can't resolve the binary.
+**Fix:** run `npm i -g yalc-gtm-os` (or `pnpm link --global` from the repo root if hacking on YALC itself).
+
+### `~/.gtm-os/` missing or `.env` empty
+**Symptom:** first-run paths absent or env file blank.
+**Fix:** run `yalc-gtm start` to scaffold; the CLI writes the template and opens it for editing.
+
 ## Project Identity
 Open-source AI-native GTM operating system. Stack: Next.js 14, Tailwind, Drizzle + SQLite, Jotai, Anthropic SDK.
 
