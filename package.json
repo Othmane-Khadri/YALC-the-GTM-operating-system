@@ -1,10 +1,10 @@
 {
   "name": "yalc-gtm-os",
-  "version": "0.13.3",
+  "version": "0.13.4",
   "private": false,
   "type": "module",
   "license": "MIT",
-  "description": "YALC \u2014 open-source, AI-native GTM operating system. CLI-first engine for lead finding, enrichment, qualification, and campaign orchestration.",
+  "description": "YALC — open-source, AI-native GTM operating system. CLI-first engine for lead finding, enrichment, qualification, and campaign orchestration.",
   "repository": {
     "type": "git",
     "url": "https://github.com/Othmane-Khadri/YALC-the-GTM-operating-system.git"
