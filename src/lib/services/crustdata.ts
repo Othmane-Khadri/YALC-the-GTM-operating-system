@@ -10,8 +10,15 @@
 // 6. Deduplicate before enrichment.
 // 7. Maximize results per credit — use full limit (up to 1000 for DB).
 // 8. Cached over realtime for enrichment (1 credit vs 4).
+//
+// All paid endpoints route through `cachedFetch` so partial results survive a
+// mid-run crash or credit exhaustion. The credit-balance endpoint stays on the
+// live `fetch` because executeWithTracking depends on real-time deltas.
+
+import { cachedFetch } from '../cache/cached-fetch'
 
 const BASE_URL = 'https://api.crustdata.com'
+const CACHE_SCOPE = 'crustdata'
 
 /** Required env vars for the Crustdata provider. */
 export const envVarSchema = {
@@ -215,11 +222,11 @@ export class CrustdataService {
     if (filters.keywords) body.keywords = filters.keywords
     body.limit = filters.limit ?? _defaultMaxResults
 
-    const res = await fetch(`${BASE_URL}/v1/companies/search`, {
+    const res = await cachedFetch(`${BASE_URL}/v1/companies/search`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(body),
-    })
+    }, { scope: CACHE_SCOPE })
 
     if (!res.ok) {
       const text = await res.text()
@@ -233,9 +240,9 @@ export class CrustdataService {
   async enrichCompany(domain: string): Promise<CrustdataCompany> {
     // Crustdata's previous /v1/companies/enrich path 404s; the working endpoint
     // is /screener/company?company_domain=<d>, which returns an array of matches.
-    const res = await fetch(`${BASE_URL}/screener/company?company_domain=${encodeURIComponent(domain)}`, {
+    const res = await cachedFetch(`${BASE_URL}/screener/company?company_domain=${encodeURIComponent(domain)}`, {
       headers: getHeaders(),
-    })
+    }, { scope: CACHE_SCOPE })
 
     if (!res.ok) {
       const text = await res.text()
@@ -312,11 +319,11 @@ export class CrustdataService {
       body.cursor = filters.cursor
     }
 
-    const res = await fetch(`${BASE_URL}/screener/persondb/search/`, {
+    const res = await cachedFetch(`${BASE_URL}/screener/persondb/search/`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(body),
-    })
+    }, { scope: CACHE_SCOPE })
 
     if (!res.ok) {
       const text = await res.text()

@@ -1,4 +1,7 @@
 import { UnipileClient } from 'unipile-node-sdk'
+import { cachedFetch, withCache } from '../cache/cached-fetch'
+
+const CACHE_SCOPE = 'unipile'
 
 /**
  * Required env vars for the Unipile provider. Doctor walks each service's
@@ -38,10 +41,18 @@ export class UnipileService {
   }
 
   async getProfile(accountId: string, identifier: string, sections?: 'experience' | 'education' | 'languages' | 'skills' | 'certifications' | 'about' | Array<'experience' | 'education' | 'languages' | 'skills' | 'certifications' | 'about'> | '*') {
-    const c = getClient()
-    const input: Parameters<typeof c.users.getProfile>[0] = { account_id: accountId, identifier }
-    if (sections) input.linkedin_sections = sections
-    return c.users.getProfile(input)
+    // SDK-mediated call — wrap with withCache so bulk enrichment runs survive
+    // a mid-pipeline crash and don't re-hit Unipile per profile on rerun.
+    const sectionsKey = sections === undefined ? '' : Array.isArray(sections) ? sections.join(',') : String(sections)
+    return withCache(
+      { scope: CACHE_SCOPE, key: `getProfile:${accountId}:${identifier}:${sectionsKey}` },
+      async () => {
+        const c = getClient()
+        const input: Parameters<typeof c.users.getProfile>[0] = { account_id: accountId, identifier }
+        if (sections) input.linkedin_sections = sections
+        return c.users.getProfile(input)
+      },
+    )
   }
 
   async searchLinkedIn(accountId: string, query: string, limit = 25): Promise<Record<string, unknown>[]> {
@@ -49,7 +60,7 @@ export class UnipileService {
     const dsn = process.env.UNIPILE_DSN!
     const apiKey = process.env.UNIPILE_API_KEY!
     const url = `${dsn}/api/v1/linkedin/search?account_id=${encodeURIComponent(accountId)}`
-    const res = await fetch(url, {
+    const res = await cachedFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -62,7 +73,7 @@ export class UnipileService {
         keywords: query,
         limit,
       }),
-    })
+    }, { scope: CACHE_SCOPE })
     if (!res.ok) {
       const text = await res.text()
       throw new Error(`Unipile LinkedIn search failed (${res.status}): ${text}`)

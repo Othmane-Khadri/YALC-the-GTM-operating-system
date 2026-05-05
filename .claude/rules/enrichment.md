@@ -24,6 +24,15 @@ Align on the chosen tool at campaign start. The C8 pattern was Firecrawl-first b
 3. **MCP providers** load from `~/.gtm-os/mcp/*.json` — see MCP loader in `src/lib/providers/` for the dynamic loading pattern.
 4. Provider errors must be caught and returned as structured `ProviderError` objects, never thrown as raw exceptions.
 5. New providers must register in `src/lib/providers/builtin/index.ts` and export from the barrel.
+6. **All external HTTP calls must go through `cachedFetch`** from `src/lib/cache/cached-fetch.ts`. SDK-mediated calls (Unipile SDK, Notion SDK, MCP) wrap the inner call with `withCache({ scope, key }, fn)` from the same module. This is non-negotiable: it preserves partial results when a script crashes mid-build or runs out of credits, and it dedupes identical calls across campaigns. Adding a new provider means adopting the same convention — never roll a per-provider cache.
+
+### Cache mechanics
+- Cache root: `~/.gtm-os/_cache/<scope>/<sha256>.json`. Override via `YALC_CACHE_DIR`.
+- Scope defaults to URL hostname; pass an explicit `scope` for SDK-mediated calls.
+- TTL is OFF by default (cache forever) — this is a credit-saving cache, not a freshness cache. Pass `ttlMs` for endpoints whose data goes stale.
+- Bypass for one call: `cachedFetch(url, init, { bypass: true })` or `withCache({ ..., ttlMs: 0 })`.
+- Force-bypass everything in a process: `FORCE=1 npx tsx ...`.
+- Only 2xx responses are cached. 4xx/5xx always go live.
 
 ## Provider Implementation Checklist
 - [ ] Implements `StepExecutor` from `src/lib/providers/types.ts`
@@ -31,3 +40,4 @@ Align on the chosen tool at campaign start. The C8 pattern was Firecrawl-first b
 - [ ] Credit cost documented in provider metadata
 - [ ] Rate limiting configured (see `src/lib/rate-limiter/`)
 - [ ] Error handling returns `ProviderError` with actionable messages
+- [ ] All external calls use `cachedFetch` / `withCache` from `src/lib/cache/cached-fetch.ts`

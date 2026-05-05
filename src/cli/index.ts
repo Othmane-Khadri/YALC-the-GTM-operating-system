@@ -103,6 +103,10 @@ program
   .option('--dry-run', 'Preview campaign creation without writing to DB')
   .action(withDiagnostics(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', homedir()))
+    const tenantId = getTenant()
+    const { requireClientICP } = await import('../lib/qualification/icp-gate')
+    await requireClientICP('campaign:create', tenantId)
+
     const { runCreator } = await import('../lib/campaign/creator')
     const { buildScheduleFromOptions } = await import('../lib/campaign/schedule')
 
@@ -119,7 +123,7 @@ program
 
     await runCreator({
       config,
-      tenantId: getTenant(),
+      tenantId,
       ...opts,
       autoCopy: opts.autoCopy,
       dryRun: opts.dryRun ?? false,
@@ -219,6 +223,9 @@ program
   .option('--account <name>', 'Unipile account name or ID to use for scraping')
   .action(withDiagnostics(async (opts) => {
     await assertChannelEnabled('linkedin', 'leads:scrape-post')
+    const { requireClientICP } = await import('../lib/qualification/icp-gate')
+    await requireClientICP('leads:scrape-post', getTenant())
+
     const config = loadConfig(program.opts().config.replace('~', homedir()))
     const { scrapePostEngagers } = await import('../lib/scraping/post-engagers')
     const result = await scrapePostEngagers({
@@ -665,6 +672,9 @@ program
   .option('--linkedin-account <id>', 'Unipile LinkedIn account ID')
   .option('--dry-run', 'Preview actions without sending', false)
   .action(async (opts) => {
+    const { requireClientICP } = await import('../lib/qualification/icp-gate')
+    await requireClientICP('campaign:create-sequence', getTenant())
+
     const { readFileSync } = await import('fs')
 
     // Parse leads
@@ -1002,40 +1012,18 @@ program
   .option('--dry-run', 'Preview qualification without writing results')
   .option('--no-dedup', 'Skip dedup gate entirely')
   .option('--slack-confirm', 'Enable Slack confirmation for ambiguous dedup matches')
-  .option('--verify-experience', 'Mandatory LinkedIn experience-section enrichment + drift check + verified-employer ICP match (requires per-tenant ICP)')
+  .option('--no-verify-experience', 'Skip mandatory LinkedIn experience-section enrichment, drift check, and verified-employer ICP match. Default is ON — every qualify run verifies leads against their actual current LinkedIn role and rejects company-disqualifier matches deterministically.')
   .option('--enrich-signals', 'After qualify, pull PredictLeads company signals for surviving leads')
   .option('--signals-types <types>', 'Comma-separated signal types (jobs,funding,tech,news)')
   .option('--no-cache', 'Force re-fetch even if cached within TTL (used with --enrich-signals)')
   .action(withDiagnostics(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', homedir()))
     const tenantId = getTenant()
-    const verifyExperience = opts.verifyExperience === true
+    // commander auto-sets opts.verifyExperience = true unless --no-verify-experience is passed
+    const verifyExperience = opts.verifyExperience !== false
 
-    type ClientICPType = import('../lib/qualification/types').ClientICP
-    let clientICP: ClientICPType | null = null
-    if (verifyExperience) {
-      const { resolveClientICP, ICPSchemaError } = await import('../lib/qualification/icp-source')
-      try {
-        clientICP = await resolveClientICP(tenantId)
-      } catch (err) {
-        if (err instanceof ICPSchemaError) {
-          console.error(`[qualify] FATAL: ICP schema invalid for tenant '${tenantId}'.`)
-          console.error(`  Source: ${err.source}`)
-          console.error(`  Missing fields: ${err.missingFields.join(', ')}`)
-          console.error(`  Required: target_industries, target_roles, disqualifiers`)
-          process.exit(1)
-        }
-        throw err
-      }
-      if (!clientICP) {
-        console.error(`[qualify] FATAL: --verify-experience set but no ICP found for tenant '${tenantId}'.`)
-        console.error(`  Either:`)
-        console.error(`    1) Run 'yalc-gtm start' to populate ~/.gtm-os/tenants/${tenantId}/framework.yaml, or`)
-        console.error(`    2) Create a clients/${tenantId}.yml file in the repo root with: target_industries, target_roles, disqualifiers.`)
-        process.exit(1)
-      }
-      console.log(`[qualify] Loaded ICP for tenant '${tenantId}' (source: ${clientICP.source})`)
-    }
+    const { requireClientICP } = await import('../lib/qualification/icp-gate')
+    const clientICP = await requireClientICP('qualify', tenantId)
 
     const { runQualify } = await import('../lib/qualification/pipeline')
     await runQualify({

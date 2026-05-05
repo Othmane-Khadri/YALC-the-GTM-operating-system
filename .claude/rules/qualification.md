@@ -22,3 +22,5 @@ Applies to: `src/lib/qualification/`
 3. Gates execute sequentially. A lead that fails any gate is tagged with the failure reason and skipped for remaining gates.
 4. Each gate must emit structured logs: gate name, lead count in, lead count out, duration.
 5. Gate configs are tenant-scoped — read from `~/.gtm-os/tenants/{slug}/qualification/`.
+6. **Per-tenant ICP is mandatory for every command that touches leads or campaigns.** Use `requireClientICP(tag, tenantId)` from `src/lib/qualification/icp-gate.ts` at the top of any new CLI handler in this category. The gate exits the process loud-and-early when no ICP is configured — do not paper over it with try/catch or default values.
+7. **Strict-ICP qualify gates are ON by default.** `--no-verify-experience` opts out (preserves legacy behavior for backward compat); never make the new code paths conditionally skipped behind an unreachable flag.
