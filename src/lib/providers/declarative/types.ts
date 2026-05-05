@@ -54,15 +54,30 @@ export interface ManifestSmokeTest {
   expectNonEmpty?: string[]
 }
 
+/**
+ * One HTTP call inside a multi-step manifest. The step's projected output
+ * (after `response.mappings`) is exposed to subsequent steps via the
+ * `{{steps.<id>.<path>}}` template root.
+ */
+export interface ManifestStep {
+  id: string
+  endpoint: ManifestEndpoint
+  request?: ManifestRequest
+  response: ManifestResponse
+}
+
 export interface ManifestRaw {
   manifestVersion: number
   capability: string
   provider: string
   version: string
   auth: ManifestAuth
-  endpoint: ManifestEndpoint
+  /** Single-step manifest: top-level endpoint/request/response. Mutually exclusive with `steps`. */
+  endpoint?: ManifestEndpoint
   request?: ManifestRequest
-  response: ManifestResponse
+  response?: ManifestResponse
+  /** Multi-step manifest: a chain of HTTP calls. Mutually exclusive with top-level endpoint/request/response. */
+  steps?: ManifestStep[]
   pagination?: ManifestPagination
   rateLimit?: Record<string, unknown>
   smoke_test?: ManifestSmokeTest

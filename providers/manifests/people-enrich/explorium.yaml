@@ -1,68 +1,88 @@
 # Explorium AgentSource — people-enrich
 #
-# Vendor docs: https://docs.explorium.ai/reference/prospects/match_prospects
-# Endpoint:    POST /v1/prospects/match
-# Auth:        api_key header (static — no OAuth)
+# Vendor docs:
+#   https://docs.explorium.ai/reference/prospects/match_prospects
+#   https://docs.explorium.ai/reference/prospects/enrichments/contacts_information
+# Endpoints:
+#   1. POST /v1/prospects/match                              → prospect_id
+#   2. POST /v1/prospects/contacts_information/enrich        → email + phone
+# Auth:    api_key header (static — no OAuth)
 #
 # Resolves a contact (by email, LinkedIn URL, or name + company) to an
-# Explorium prospect_id and echoes back the identifying fields. The
-# prospect_id is the key for all downstream Explorium enrichment calls
-# (contacts_information, professional_profile, etc.).
+# Explorium prospect_id, then fetches verified contact details (professional
+# email + mobile phone) for that prospect. Returns the standard people-enrich
+# `results[]` shape with email, phone, linkedin_url, and a few extras.
 #
-# v1 scope and limitation:
-#   The DSL executes a single HTTP call. Explorium separates matching
-#   (POST /v1/prospects/match → prospect_id) from contact enrichment
-#   (POST /v1/prospects/contacts_information/enrich → emails, phones).
-#   This manifest covers the match step only. Returned email/linkedin fields
-#   are echoed from the caller's input, not new data fetched by Explorium.
-#   Full email + phone retrieval requires DSL multi-step support (planned
-#   for v2). Until then, use this adapter to resolve prospect_ids and pass
-#   them to the contacts_information endpoint outside YALC, or wait for v2.
+# This adapter uses the multi-step DSL: each step's projected output is
+# threaded into the next via {{steps.<id>.<path>}} placeholders.
 #
-# Input accepted per contact (contacts[0]):
-#   * email alone          → matched by email (highest accuracy)
-#   * linkedin_url alone   → matched by LinkedIn profile URL
-#   * firstname + lastname + company_name → matched by name + company
+# Input accepted (contacts[0]):
+#   * email          → matched by email (highest accuracy)
+#   * linkedin_url   → matched by LinkedIn profile URL
+#   * firstname + lastname + company_name → name + company match
 #   Providing more fetchers improves match accuracy.
 manifestVersion: 1
 capability: people-enrich
 provider: explorium
-version: 0.1.0
+version: 0.2.0
 auth:
   type: header
   name: api_key
   value: ${env:EXPLORIUM_API_KEY}
-endpoint:
-  method: POST
-  url: https://api.explorium.ai/v1/prospects/match
-request:
-  contentType: application/json
-  bodyTemplate: |
-    {
-      "prospects_to_match": [
+steps:
+  # Step 1: resolve the contact to an Explorium prospect_id.
+  - id: match
+    endpoint:
+      method: POST
+      url: https://api.explorium.ai/v1/prospects/match
+    request:
+      contentType: application/json
+      bodyTemplate: |
         {
-          "email": "{{input.contacts[0].domain}}",
-          "linkedin": "{{input.contacts[0].linkedin_url}}",
-          "full_name": "{{input.contacts[0].firstname}} {{input.contacts[0].lastname}}",
-          "company_name": "{{input.contacts[0].company_name}}"
+          "prospects_to_match": [
+            {
+              "email": "{{input.contacts[0].email}}",
+              "linkedin": "{{input.contacts[0].linkedin_url}}",
+              "full_name": "{{input.contacts[0].firstname}} {{input.contacts[0].lastname}}",
+              "company_name": "{{input.contacts[0].company_name}}"
+            }
+          ]
         }
-      ]
-    }
-response:
-  rootPath: matched_prospects
-  mappings:
-    "results[].email": "$.input.email"
-    "results[].linkedin_url": "$.input.linkedin"
-    "results[].company": "$.input.company_name"
-    "results[].prospect_id": "$.prospect_id"
-  errorEnvelope:
-    matchPath: $.details
-    messagePath: $.details
+    response:
+      rootPath: matched_prospects[0]
+      mappings:
+        "prospect_id": "$.prospect_id"
+      errorEnvelope:
+        matchPath: $.details
+        messagePath: $.details
+
+  # Step 2: enrich the prospect_id with contact details (email + phone).
+  - id: enrich
+    endpoint:
+      method: POST
+      url: https://api.explorium.ai/v1/prospects/contacts_information/enrich
+    request:
+      contentType: application/json
+      bodyTemplate: |
+        {
+          "prospect_id": "{{steps.match.prospect_id}}",
+          "parameters": {
+            "contact_types": ["email", "phone"]
+          }
+        }
+    response:
+      rootPath: data
+      mappings:
+        "results[].email": "$.professional_email"
+        "results[].phone": "$.mobile_phone"
+        "results[].emails": "$.emails"
+        "results[].phone_numbers": "$.phone_numbers"
+      errorEnvelope:
+        matchPath: $.details
+        messagePath: $.details
 smoke_test:
   input:
     contacts:
-      - firstname: Marc
-        lastname: Benioff
-        company_name: Salesforce
+      - email: "marc@salesforce.com"
   expectNonEmpty:
-    - "results[0].prospect_id"
+    - "results[0].email"
