@@ -61,6 +61,12 @@ ${rowsForPrompt}
 
 Score each lead. Be discriminating — not every lead is a good fit.
 - icp_score: 0-100 integer. 80+ = strong fit, 50-79 = moderate, below 50 = poor
+
+HARD RULES (apply BEFORE the score band):
+- If the lead's verified current company industry is on the disqualifiers list provided in the company context, the icp_score MUST be ≤ 30.
+- If the lead's headline contains "ex-[disqualified company]" (e.g., "ex-Aon", "ex-Marsh"), flag and the icp_score MUST be ≤ 40.
+- When target_industries is specified in the company context, the lead's verified current company industry MUST clearly fit one of the listed target industries to score above 60. If unclear, score 50 or below.
+
 - icp_fit_level: "Strong", "Moderate", or "Poor"
 - qualification_reason: 1-2 sentences explaining WHY this score
 - qualification_signals: Comma-separated positive/negative signals (e.g. "+right industry, +senior title, -small company")`

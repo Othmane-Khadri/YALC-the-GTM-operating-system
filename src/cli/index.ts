@@ -1002,11 +1002,41 @@ program
   .option('--dry-run', 'Preview qualification without writing results')
   .option('--no-dedup', 'Skip dedup gate entirely')
   .option('--slack-confirm', 'Enable Slack confirmation for ambiguous dedup matches')
+  .option('--verify-experience', 'Mandatory LinkedIn experience-section enrichment + drift check + verified-employer ICP match (requires per-tenant ICP)')
   .option('--enrich-signals', 'After qualify, pull PredictLeads company signals for surviving leads')
   .option('--signals-types <types>', 'Comma-separated signal types (jobs,funding,tech,news)')
   .option('--no-cache', 'Force re-fetch even if cached within TTL (used with --enrich-signals)')
   .action(withDiagnostics(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', homedir()))
+    const tenantId = getTenant()
+    const verifyExperience = opts.verifyExperience === true
+
+    type ClientICPType = import('../lib/qualification/types').ClientICP
+    let clientICP: ClientICPType | null = null
+    if (verifyExperience) {
+      const { resolveClientICP, ICPSchemaError } = await import('../lib/qualification/icp-source')
+      try {
+        clientICP = await resolveClientICP(tenantId)
+      } catch (err) {
+        if (err instanceof ICPSchemaError) {
+          console.error(`[qualify] FATAL: ICP schema invalid for tenant '${tenantId}'.`)
+          console.error(`  Source: ${err.source}`)
+          console.error(`  Missing fields: ${err.missingFields.join(', ')}`)
+          console.error(`  Required: target_industries, target_roles, disqualifiers`)
+          process.exit(1)
+        }
+        throw err
+      }
+      if (!clientICP) {
+        console.error(`[qualify] FATAL: --verify-experience set but no ICP found for tenant '${tenantId}'.`)
+        console.error(`  Either:`)
+        console.error(`    1) Run 'yalc-gtm start' to populate ~/.gtm-os/tenants/${tenantId}/framework.yaml, or`)
+        console.error(`    2) Create a clients/${tenantId}.yml file in the repo root with: target_industries, target_roles, disqualifiers.`)
+        process.exit(1)
+      }
+      console.log(`[qualify] Loaded ICP for tenant '${tenantId}' (source: ${clientICP.source})`)
+    }
+
     const { runQualify } = await import('../lib/qualification/pipeline')
     await runQualify({
       config,
@@ -1016,6 +1046,9 @@ program
       dryRun: opts.dryRun ?? false,
       noDedup: opts.noDedup === true || opts.dedup === false,
       slackConfirm: opts.slackConfirm ?? false,
+      tenantId,
+      verifyExperience,
+      clientICP,
     })
 
     if (opts.enrichSignals) {

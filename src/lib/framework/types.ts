@@ -82,6 +82,11 @@ export interface ICPSegment {
   targetCompanySizes: string[]
   targetIndustries: string[]
   /**
+   * Optional: which geographies this segment targets. Defined for v1, not
+   * enforced until later PR.
+   */
+  targetGeographies?: string[]
+  /**
    * Optional: which company stages this segment targets. When populated with
    * early stages ('pre-seed' | 'seed'), providers like Crustdata's
    * people_search_db are skipped in favor of Unipile profile lookups because

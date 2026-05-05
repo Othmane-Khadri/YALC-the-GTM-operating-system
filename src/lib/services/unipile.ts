@@ -37,27 +37,29 @@ export class UnipileService {
     return c.account.getAll()
   }
 
-  async getProfile(accountId: string, identifier: string) {
+  async getProfile(accountId: string, identifier: string, sections?: 'experience' | 'education' | 'languages' | 'skills' | 'certifications' | 'about' | Array<'experience' | 'education' | 'languages' | 'skills' | 'certifications' | 'about'> | '*') {
     const c = getClient()
-    return c.users.getProfile({ account_id: accountId, identifier })
+    const input: Parameters<typeof c.users.getProfile>[0] = { account_id: accountId, identifier }
+    if (sections) input.linkedin_sections = sections
+    return c.users.getProfile(input)
   }
 
   async searchLinkedIn(accountId: string, query: string, limit = 25): Promise<Record<string, unknown>[]> {
     // The SDK doesn't expose a LinkedIn search method — use REST API directly
     const dsn = process.env.UNIPILE_DSN!
     const apiKey = process.env.UNIPILE_API_KEY!
-    const url = `${dsn}/api/v1/linkedin/search`
+    const url = `${dsn}/api/v1/linkedin/search?account_id=${encodeURIComponent(accountId)}`
     const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-API-KEY': apiKey,
+        accept: 'application/json',
       },
       body: JSON.stringify({
-        account_id: accountId,
         api: 'classic',
         category: 'people',
-        keyword: query,
+        keywords: query,
         limit,
       }),
     })

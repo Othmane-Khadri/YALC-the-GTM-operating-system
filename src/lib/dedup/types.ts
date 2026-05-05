@@ -2,6 +2,8 @@
  * Dedup Module Types
  */
 
+import type { VerifiedFields, DriftFlags, DisqualifiedRecord } from '../qualification/types'
+
 // ─── Lead Record ────────────────────────────────────────────────────────────
 
 export interface LeadRecord {
@@ -21,6 +23,12 @@ export interface LeadRecord {
   providerId?: string
   source?: string
   dedup_status?: DedupStatus
+  /** Verified LinkedIn experience data — set by enrichment when --verify-experience is on. */
+  verified?: VerifiedFields | null
+  /** Drift flags — set by drift-check gate when verified data is present. */
+  drift?: DriftFlags | null
+  /** Hard-rejection record from the verified-employer ICP match gate. */
+  disqualified?: DisqualifiedRecord | null
   [key: string]: unknown
 }
 

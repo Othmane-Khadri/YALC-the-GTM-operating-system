@@ -54,9 +54,24 @@ data/leads/*
 data/intelligence/*
 data/campaigns/*
 data/content/*
+data/scrapes/
 !data/leads/.gitkeep
 !data/intelligence/.gitkeep
 !data/intelligence/README.md
 !data/campaigns/.gitkeep
 !data/content/.gitkeep
 gtm-os.db.bak
+
+# Local-only runtime / per-tenant context (lives at ~/.gtm-os/, never commit)
+/gtm-os.yaml
+/clients/
+.herenow/
+
+# Per-campaign gold fixtures (real lead data)
+gold-fixtures/
+
+# Campaign-specific scratch scripts (local working files, not framework code)
+scripts/c8-*
+scripts/c9-*
+scripts/claude-code-attendee-*
+scripts/seo-hire-*
