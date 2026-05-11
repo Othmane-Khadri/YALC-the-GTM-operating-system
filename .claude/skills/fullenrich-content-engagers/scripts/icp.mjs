@@ -23,8 +23,17 @@ function fieldValue(row, field) {
   return v == null ? '' : String(v);
 }
 
+function compileRegex(pattern) {
+  // Parse Perl-style inline flags like (?i) at the start of the pattern, since
+  // JavaScript's RegExp doesn't support inline flag syntax — it expects flags
+  // as a separate argument.
+  const m = pattern.match(/^\(\?([imsu]+)\)/);
+  if (m) return new RegExp(pattern.slice(m[0].length), m[1]);
+  return new RegExp(pattern);
+}
+
 function ruleMatches(rule, value) {
-  if (rule.kind === 'regex') return new RegExp(rule.pattern).test(value);
+  if (rule.kind === 'regex') return compileRegex(rule.pattern).test(value);
   if (rule.kind === 'contains_any') {
     const v = value.toLowerCase();
     return rule.values.some(s => v.includes(String(s).toLowerCase()));

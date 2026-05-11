@@ -2,15 +2,20 @@
 /**
  * fullenrich-content-engagers — LinkedIn post URL to ICP-qualified, enriched CSV.
  *
- *   node scripts/run.mjs <linkedin-post-url>
+ *   node scripts/run.mjs <linkedin-post-url-or-post-id>
  *       [--out path.csv] [--icp config/icp.json] [--threshold 50]
  *       [--max <N>] [--max-credits <N>] [--dry-run] [--yes]
  *
  * Required env: FULLENRICH_API_KEY, UNIPILE_API_KEY, UNIPILE_DSN, UNIPILE_ACCOUNT_ID
+ *
+ * Setup before first run:
+ *   cd .claude/skills/fullenrich-content-engagers
+ *   npm install
  */
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { UnipileClient } from 'unipile-node-sdk';
 import {
   startBulkEnrich,
   getCredits,
@@ -53,46 +58,94 @@ function parseArgs(argv) {
 
 function die(msg) { console.error(`ERROR: ${msg}`); process.exit(1); }
 
-function unipileEnv() {
-  const env = {
-    apiKey: process.env.UNIPILE_API_KEY,
-    dsn: process.env.UNIPILE_DSN,
-    accountId: process.env.UNIPILE_ACCOUNT_ID,
-  };
-  for (const [k, v] of Object.entries(env)) if (!v) die(`UNIPILE_${k.replace(/[A-Z]/g, c => '_' + c).toUpperCase().replace(/^_/, '')} not set`);
-  return env;
-}
-
-async function unipileGet(envU, path, query = {}) {
-  const url = new URL(envU.dsn + path);
-  for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
-  const r = await fetch(url, { headers: { 'X-API-KEY': envU.apiKey, accept: 'application/json' } });
-  if (!r.ok) throw new Error(`Unipile ${path} -> ${r.status} ${await r.text()}`);
-  return r.json();
-}
-
-async function paginate(envU, path, query = {}, max = 1000) {
-  const items = [];
-  let cursor = null;
-  while (items.length < max) {
-    const q = cursor ? { ...query, cursor } : query;
-    const page = await unipileGet(envU, path, q);
-    items.push(...(page.items || []));
-    if (!page.cursor || (page.items || []).length === 0) break;
-    cursor = page.cursor;
+function getUnipile() {
+  for (const k of ['UNIPILE_API_KEY', 'UNIPILE_DSN', 'UNIPILE_ACCOUNT_ID']) {
+    if (!process.env[k]) die(`${k} not set`);
   }
-  return items.slice(0, max);
+  return {
+    client: new UnipileClient(process.env.UNIPILE_DSN, process.env.UNIPILE_API_KEY),
+    accountId: process.env.UNIPILE_ACCOUNT_ID,
+    dsn: process.env.UNIPILE_DSN,
+    apiKey: process.env.UNIPILE_API_KEY,
+  };
 }
 
-function engagerToContact(e) {
+/**
+ * Resolve a LinkedIn post URL OR a raw post_id/social_id into a {social_id, post}.
+ */
+async function resolvePost(u, urlOrId) {
+  const post = await u.client.users.getPost({ account_id: u.accountId, post_id: urlOrId });
+  return { social_id: post.social_id || post.id, post };
+}
+
+async function listAllComments(u, postId, maxPages) {
+  let all = [];
+  let cursor;
+  let pages = 0;
+  do {
+    const page = await u.client.users.getAllPostComments({
+      account_id: u.accountId,
+      post_id: postId,
+      limit: 100,
+      ...(cursor ? { cursor } : {}),
+    });
+    if (page.items) all = all.concat(page.items);
+    cursor = page.cursor || null;
+    pages++;
+  } while (cursor && pages < maxPages);
+  return all;
+}
+
+/**
+ * Reactions: the SDK doesn't expose listing reactions, so raw REST.
+ * First page: ?account_id=X&limit=N (no cursor).
+ * Subsequent: ?cursor=X only (no account_id/limit).
+ * Cursor lives in data.paging.cursor.
+ */
+async function listAllReactions(u, postId, maxPages) {
+  let all = [];
+  let cursor;
+  let pages = 0;
+  do {
+    let qs;
+    if (cursor) qs = new URLSearchParams({ cursor });
+    else qs = new URLSearchParams({ account_id: u.accountId, limit: '100' });
+    const url = `${u.dsn}/api/v1/posts/${encodeURIComponent(postId)}/reactions?${qs}`;
+    const r = await fetch(url, { headers: { 'X-API-KEY': u.apiKey, Accept: 'application/json' } });
+    if (!r.ok) throw new Error(`reactions GET ${r.status}: ${await r.text()}`);
+    const data = await r.json();
+    if (data.items) all = all.concat(data.items);
+    const raw = data.paging?.cursor ?? data.cursor ?? null;
+    cursor = typeof raw === 'string' ? raw
+           : (raw && typeof raw === 'object' && Object.keys(raw).length) ? JSON.stringify(raw)
+           : null;
+    pages++;
+  } while (cursor && pages < maxPages);
+  return all;
+}
+
+/**
+ * Engager records from comments/reactions have varying shapes. Normalize to
+ * the FullEnrich contact shape so ICP scoring + enrichment work uniformly.
+ *
+ * Common Unipile author fields:
+ *   author: { first_name, last_name, public_identifier, profile_url, headline }
+ *   author_details: { first_name, last_name, headline, ... } (sometimes nested deeper)
+ */
+function engagerToContact(raw) {
+  const a = raw.author || raw.actor || raw.author_details || raw;
+  const fn = a.first_name || (a.name || '').split(' ')[0] || '';
+  const ln = a.last_name || (a.name || '').split(' ').slice(1).join(' ') || '';
+  const slug = a.public_identifier || a.publicIdentifier || '';
+  const profileUrl = a.profile_url || a.profileUrl || (slug ? `https://www.linkedin.com/in/${slug}` : '');
   return {
-    first_name: e.first_name || (e.name || '').split(' ')[0] || '',
-    last_name: e.last_name || (e.name || '').split(' ').slice(1).join(' ') || '',
-    linkedin_url: e.profile_url || e.public_identifier ? `https://linkedin.com/in/${e.public_identifier}` : (e.linkedin_url || ''),
-    title: e.headline || e.title || '',
-    headline: e.headline || '',
-    company_name: e.company || '',
-    domain: e.company_domain || '',
+    first_name: String(fn).trim(),
+    last_name: String(ln).trim(),
+    linkedin_url: profileUrl,
+    title: a.headline || a.title || '',
+    headline: a.headline || '',
+    company_name: a.company || a.current_company || '',
+    domain: '',
     enrich_fields: ['contact.work_emails', 'contact.phones'],
     custom: { source: 'fullenrich-content-engagers' },
   };
@@ -100,32 +153,34 @@ function engagerToContact(e) {
 
 async function main() {
   const { positional, flags } = parseArgs(process.argv.slice(2));
-  const postUrl = positional[0];
-  if (!postUrl) die('Usage: node scripts/run.mjs <linkedin-post-url> [flags]');
+  const postArg = positional[0];
+  if (!postArg) die('Usage: node scripts/run.mjs <linkedin-post-url-or-post-id> [flags]');
   if (!process.env.FULLENRICH_API_KEY) die('FULLENRICH_API_KEY not set');
-  const envU = unipileEnv();
+  const u = getUnipile();
 
   const credits = await getCredits();
   console.log(`[fullenrich] credit balance: ${credits.balance}`);
 
   console.log('[unipile] resolving post...');
-  const post = await unipileGet(envU, `/api/v1/posts/${encodeURIComponent(postUrl)}`, { account_id: envU.accountId });
-  const socialId = post.social_id || post.id;
-  console.log(`[unipile] social_id: ${socialId}`);
+  const { social_id, post } = await resolvePost(u, postArg);
+  console.log(`[unipile] social_id: ${social_id}`);
+  console.log(`[unipile] reactions: ~${post.reaction_counter ?? '?'}, comments: ~${post.comment_counter ?? '?'}`);
 
+  const maxPages = Math.max(1, Math.ceil(parseInt(flags.max, 10) / 100));
   console.log('[unipile] fetching reactions + comments...');
   const [reactions, comments] = await Promise.all([
-    paginate(envU, `/api/v1/posts/${socialId}/reactions`, { account_id: envU.accountId }, parseInt(flags.max, 10)),
-    paginate(envU, `/api/v1/posts/${socialId}/comments`, { account_id: envU.accountId }, parseInt(flags.max, 10)),
+    listAllReactions(u, social_id, maxPages).catch(e => { console.error('[unipile] reactions failed:', e.message); return []; }),
+    listAllComments(u, social_id, maxPages).catch(e => { console.error('[unipile] comments failed:', e.message); return []; }),
   ]);
-  const all = [...reactions, ...comments];
+  console.log(`[unipile] ${reactions.length} reactions + ${comments.length} comments`);
+
   const byUrl = new Map();
-  for (const e of all) {
+  for (const e of [...reactions, ...comments]) {
     const c = engagerToContact(e);
-    if (c.linkedin_url) byUrl.set(c.linkedin_url, c);
+    if (c.linkedin_url && c.first_name) byUrl.set(c.linkedin_url, c);
   }
   const engagers = [...byUrl.values()];
-  console.log(`[unipile] ${all.length} engagements -> ${engagers.length} unique engagers`);
+  console.log(`[unipile] ${reactions.length + comments.length} engagements -> ${engagers.length} unique engagers`);
 
   const icp = await loadIcp(flags.icp);
   const threshold = parseInt(flags.threshold, 10) || 50;
@@ -161,7 +216,7 @@ async function main() {
   const ok = await confirmSpend({
     expected: estimated,
     balance: credits.balance,
-    label: `Enrich ${contacts.length} ICP-qualified engagers from ${postUrl}`,
+    label: `Enrich ${contacts.length} ICP-qualified engagers from post ${social_id}`,
     yes: flags.yes,
   });
   if (!ok) process.exit(2);

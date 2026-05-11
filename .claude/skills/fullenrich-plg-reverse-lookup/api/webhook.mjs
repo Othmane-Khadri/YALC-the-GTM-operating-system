@@ -17,7 +17,6 @@
  */
 
 import fs from 'node:fs/promises';
-import path from 'node:path';
 
 const COUNTER_PATH = process.env.COUNTER_PATH || '/tmp/lookup-counter.json';
 const MAX_CREDITS_PER_DAY = parseInt(process.env.MAX_CREDITS_PER_DAY || '200', 10);
@@ -128,23 +127,40 @@ export async function handleFullenrichCallback(req, res) {
   }
 
   for (const c of payload.data || []) {
-    const ci = c?.contact_info || {};
-    const ident = c?.identity || c?.input || {};
+    // Reverse-lookup payload shape (verified live 2026-05-11):
+    //   { input: { email }, custom, contact_info: {}, profile: {
+    //       id, full_name, first_name, last_name,
+    //       location: { country, country_code, city, region },
+    //       employment: { current: { title, seniority, company: { name, domain, industry, ... }, is_current, start_at } },
+    //       social_profiles: { professional_network: { url, handle, id } } } }
+    const p = c?.profile || {};
+    const emp = p.employment?.current || {};
     const enriched = {
-      email: c?.input?.email || ident.email,
-      first_name: ident.first_name || '',
-      last_name: ident.last_name || '',
-      title: ident.title || ident.headline || '',
-      company_name: ident.company_name || ident.company || '',
-      linkedin_url: ident.linkedin_url || ci.linkedin_url || '',
+      email: c?.input?.email || '',
+      first_name: p.first_name || '',
+      last_name: p.last_name || '',
+      full_name: p.full_name || '',
+      title: emp.title || '',
+      seniority: emp.seniority || '',
+      company_name: emp.company?.name || '',
+      company_domain: emp.company?.domain || '',
+      industry: emp.company?.industry?.main_industry || '',
+      linkedin_url: p.social_profiles?.professional_network?.url || '',
+      location: [p.location?.city, p.location?.region, p.location?.country].filter(Boolean).join(', '),
+      custom: c?.custom || {},
     };
 
-    const text = `:bust_in_silhouette: PLG signup identified\n*${enriched.first_name} ${enriched.last_name}* — ${enriched.title} @ ${enriched.company_name}\n${enriched.linkedin_url}\nEmail: ${enriched.email}`;
+    if (!enriched.first_name && !enriched.last_name) {
+      console.log(`[plg-callback] no profile data returned for ${enriched.email} — skipping downstream pushes`);
+      continue;
+    }
+
+    const text = `:bust_in_silhouette: PLG signup identified\n*${enriched.full_name || (enriched.first_name + ' ' + enriched.last_name)}* — ${enriched.title || 'unknown role'} @ ${enriched.company_name || 'unknown company'}\n${enriched.linkedin_url}\nEmail: ${enriched.email} · ${enriched.location}`;
     await Promise.all([
       postSlack(text),
       postHubspot(enriched),
     ]);
-    console.log(`[plg-callback] processed ${enriched.email}`);
+    console.log(`[plg-callback] processed ${enriched.email} -> ${enriched.full_name} @ ${enriched.company_name}`);
   }
 
   res.statusCode = 200; res.end('ok');

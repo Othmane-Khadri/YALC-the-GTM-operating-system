@@ -1,0 +1,6 @@
+.env
+*.log
+*.csv
+!examples/*.csv
+enriched*.json
+lookup-counter.json

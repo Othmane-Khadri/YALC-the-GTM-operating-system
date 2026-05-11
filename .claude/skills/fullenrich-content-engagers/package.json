@@ -1,0 +1,17 @@
+{
+  "name": "fullenrich-content-engagers",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "LinkedIn post URL to ICP-qualified, FullEnrich-enriched lead CSV.",
+  "main": "scripts/run.mjs",
+  "scripts": {
+    "start": "node scripts/run.mjs"
+  },
+  "dependencies": {
+    "unipile-node-sdk": "^1.9.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
