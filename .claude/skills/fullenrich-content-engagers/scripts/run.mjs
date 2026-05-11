@@ -71,11 +71,41 @@ function getUnipile() {
 }
 
 /**
+ * Resolve a LinkedIn post URL/URN/ID into the format Unipile expects.
+ *
+ * Unipile's getPost accepts post URNs (urn:li:share:NNN, urn:li:activity:NNN,
+ * urn:li:ugcPost:NNN) but NOT raw URLs. The web URL slug `/posts/{slug}-{id}-{trk}`
+ * embeds the SHARE id (not the activity id); calling Unipile with that bare
+ * number fails, but `urn:li:share:{id}` works (verified live 2026-05-11).
+ *
+ * Verified handling:
+ *   https://www.linkedin.com/posts/{slug}-share-{NNN}-{trk}  -> urn:li:share:NNN
+ *   urn:li:share:NNN                                          -> urn:li:share:NNN
+ *   urn:li:activity:NNN                                       -> urn:li:activity:NNN
+ *   urn:li:ugcPost:NNN                                        -> urn:li:ugcPost:NNN
+ *   raw numeric (assumed share id)                            -> urn:li:share:NNN
+ */
+function extractPostId(urlOrId) {
+  const urn = urlOrId.match(/urn:li:(activity|share|ugcPost):(\d{10,})/);
+  if (urn) return `urn:li:${urn[1]}:${urn[2]}`;
+  if (/^\d{15,}$/.test(urlOrId)) return `urn:li:share:${urlOrId}`;
+  // Web URL with embedded share id: /posts/.../share-NNN-tracking
+  const sharePattern = urlOrId.match(/-share[-:](\d{15,})/);
+  if (sharePattern) return `urn:li:share:${sharePattern[1]}`;
+  // Fallback: longest run of digits, assume share id (the URL conventions
+  // we've seen all expose the share id in the slug).
+  const all = [...urlOrId.matchAll(/(\d{15,})/g)].map(m => m[1]);
+  if (all.length) return `urn:li:share:${all.sort((a, b) => b.length - a.length)[0]}`;
+  return urlOrId;
+}
+
+/**
  * Resolve a LinkedIn post URL OR a raw post_id/social_id into a {social_id, post}.
  */
 async function resolvePost(u, urlOrId) {
-  const post = await u.client.users.getPost({ account_id: u.accountId, post_id: urlOrId });
-  return { social_id: post.social_id || post.id, post };
+  const postId = extractPostId(urlOrId);
+  const post = await u.client.users.getPost({ account_id: u.accountId, post_id: postId });
+  return { social_id: post.social_id || post.id || postId, post };
 }
 
 async function listAllComments(u, postId, maxPages) {
