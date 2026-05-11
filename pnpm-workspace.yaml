@@ -1,2 +1,6 @@
+onlyBuiltDependencies:
+  - better-sqlite3
+  - esbuild
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
+  better-sqlite3: true
