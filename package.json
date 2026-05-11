@@ -90,5 +90,8 @@
   },
   "optionalDependencies": {
     "playwright": "^1.49.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3", "esbuild"]
   }
 }

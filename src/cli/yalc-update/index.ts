@@ -104,10 +104,10 @@ export async function runYalcUpdate() {
   )
 
   if (lockfileChanged) {
-    step('New packages detected — running npm install…')
-    const install = spawnSync('npm', ['install'], { cwd: root, stdio: 'inherit' })
+    step('New packages detected — running pnpm install…')
+    const install = spawnSync('npx', ['pnpm', 'install'], { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' })
     if (install.status !== 0) {
-      fail('npm install failed.')
+      fail('pnpm install failed.')
       hint('Fix the dependency issue above, then run `yalc-update` again.')
       process.exit(1)
     }
