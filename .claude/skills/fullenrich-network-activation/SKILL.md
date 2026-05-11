@@ -73,10 +73,10 @@ node scripts/run.mjs <path/to/Connections.csv>
 
 ## Reference
 
-- Shared API client: `../_shared/fullenrich/client.mjs`
-- Shared webhook receiver: `../_shared/fullenrich/webhook.mjs`
-- Shared CSV reader/writer: `../_shared/fullenrich/csv.mjs`
-- Shared ICP scorer: `../fullenrich-content-engagers/scripts/icp.mjs` (cross-skill import — both skills score the same way)
+- Shared API client: `./scripts/lib/fullenrich-client.mjs`
+- Shared webhook receiver: `./scripts/lib/fullenrich-webhook.mjs`
+- Shared CSV reader/writer: `./scripts/lib/csv.mjs`
+- ICP scorer: `./scripts/icp.mjs`
 - FullEnrich v2 docs: `https://docs.fullenrich.com/llms.txt`
 
 ## Sourcing the Connections.csv

@@ -1,0 +1,13 @@
+{
+  "name": "fullenrich-network-activation",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-contained Claude Code skill. Powered by FullEnrich v2. MIT.",
+  "scripts": {
+    "start": "node scripts/run.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

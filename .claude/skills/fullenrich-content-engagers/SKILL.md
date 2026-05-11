@@ -78,8 +78,8 @@ node scripts/run.mjs <linkedin-post-url>
 
 ## Reference
 
-- Shared API client: `../_shared/fullenrich/client.mjs`
-- Shared webhook receiver: `../_shared/fullenrich/webhook.mjs`
-- Shared CSV writer: `../_shared/fullenrich/csv.mjs`
+- Shared API client: `./scripts/lib/fullenrich-client.mjs`
+- Shared webhook receiver: `./scripts/lib/fullenrich-webhook.mjs`
+- Shared CSV writer: `./scripts/lib/csv.mjs`
 - ICP config: `config/icp.json` (editable per use case)
 - FullEnrich v2 docs: `https://docs.fullenrich.com/llms.txt`

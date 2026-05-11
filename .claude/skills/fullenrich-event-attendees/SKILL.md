@@ -102,9 +102,9 @@ node scripts/run.mjs --event-url https://www.linkedin.com/events/<id>/
 
 ## Reference
 
-- Shared API client: `../_shared/fullenrich/client.mjs`
-- Shared webhook receiver: `../_shared/fullenrich/webhook.mjs`
-- Shared CSV reader/writer: `../_shared/fullenrich/csv.mjs`
+- Shared API client: `./scripts/lib/fullenrich-client.mjs`
+- Shared webhook receiver: `./scripts/lib/fullenrich-webhook.mjs`
+- Shared CSV reader/writer: `./scripts/lib/csv.mjs`
 - FullEnrich v2 docs: `https://docs.fullenrich.com/llms.txt`
 - Webhook payload shape (verified live):
   ```

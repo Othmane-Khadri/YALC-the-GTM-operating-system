@@ -19,13 +19,13 @@ import {
   chunk,
   estimateCost,
   confirmSpend,
-} from '../../_shared/fullenrich/client.mjs';
+} from './lib/fullenrich-client.mjs';
 import {
   fetchFromWebhookSite,
   createWebhookSiteToken,
-} from '../../_shared/fullenrich/webhook.mjs';
-import { writeCsv, parseCsv } from '../../_shared/fullenrich/csv.mjs';
-import { loadIcp, scoreRow } from '../../fullenrich-content-engagers/scripts/icp.mjs';
+} from './lib/fullenrich-webhook.mjs';
+import { writeCsv, parseCsv } from './lib/csv.mjs';
+import { loadIcp, scoreRow } from './icp.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

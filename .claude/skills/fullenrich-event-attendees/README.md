@@ -104,7 +104,7 @@ A CSV with columns:
 
 Check balance before running:
 ```bash
-node -e "import('../_shared/fullenrich/client.mjs').then(m=>m.getCredits().then(console.log))"
+node -e "import('./scripts/lib/fullenrich-client.mjs').then(m=>m.getCredits().then(console.log))"
 ```
 
 ## Credit safety

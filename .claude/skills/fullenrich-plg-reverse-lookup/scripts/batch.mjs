@@ -15,12 +15,12 @@ import {
   chunk,
   estimateCost,
   confirmSpend,
-} from '../../_shared/fullenrich/client.mjs';
+} from './lib/fullenrich-client.mjs';
 import {
   fetchFromWebhookSite,
   createWebhookSiteToken,
-} from '../../_shared/fullenrich/webhook.mjs';
-import { readCsv } from '../../_shared/fullenrich/csv.mjs';
+} from './lib/fullenrich-webhook.mjs';
+import { readCsv } from './lib/csv.mjs';
 
 function parseArgs(argv) {
   const flags = {

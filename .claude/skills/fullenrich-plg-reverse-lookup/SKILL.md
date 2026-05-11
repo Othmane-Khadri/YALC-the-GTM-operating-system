@@ -22,7 +22,7 @@ Two install paths in one repo:
 
 ## What This Skill Does NOT Do
 
-- Does not capture signup events itself. You wire your product's signup hook (Stripe, Loops, Mintlify, your own backend) to either path A's CSV or path B's webhook URL.
+- Does not capture signup events itself. You wire your product's signup hook (your backend, your auth provider, your payment processor, whatever fires when a new user is created) to either path A's CSV or path B's webhook URL.
 - Does not write outreach copy.
 - **Does not spend credits without explicit user approval (CLI mode).** See "Credit safety contract" below.
 
@@ -89,7 +89,7 @@ Then POST to `https://<your-deploy>.vercel.app/api/webhook` with body `{ email: 
 
 ## Reference
 
-- Shared API client: `../_shared/fullenrich/client.mjs`
-- Shared webhook receiver: `../_shared/fullenrich/webhook.mjs`
+- Shared API client: `./scripts/lib/fullenrich-client.mjs`
+- Shared webhook receiver: `./scripts/lib/fullenrich-webhook.mjs`
 - FullEnrich v2 docs: `https://docs.fullenrich.com/llms.txt`
 - Reverse lookup endpoint: `POST /api/v2/contact/reverse/email/bulk`
