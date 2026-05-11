@@ -1,7 +1,9 @@
-import { execSync } from 'child_process'
+import { execSync, spawnSync } from 'child_process'
 import { existsSync } from 'fs'
 import { dirname, join, resolve } from 'path'
 import { fileURLToPath } from 'url'
+
+const IS_WIN = process.platform === 'win32'
 
 /**
  * Self-update. Detects how YALC was installed and routes accordingly:
@@ -55,13 +57,24 @@ function runFromSourceUpdate(root: string) {
 
   try {
     console.log('[update] Installing dependencies...')
-    run('pnpm install --frozen-lockfile 2>/dev/null || pnpm install')
+    const install = spawnSync('npx', ['pnpm', 'install'], {
+      cwd: root,
+      stdio: 'inherit',
+      shell: IS_WIN,
+    })
+    if (install.status !== 0) {
+      console.log('[update] pnpm install had warnings (non-fatal)')
+    }
   } catch {
     console.log('[update] pnpm install had warnings (non-fatal)')
   }
 
   try {
-    run('pnpm link --global')
+    spawnSync('npx', ['pnpm', 'link', '--global'], {
+      cwd: root,
+      stdio: 'inherit',
+      shell: IS_WIN,
+    })
   } catch {
     // Non-fatal — may already be linked
   }
@@ -91,17 +104,14 @@ function runFromSourceUpdate(root: string) {
 
 function runNpmUpdate() {
   console.log('[update] Detected npm-installed YALC. Pulling the latest published version...')
-  try {
-    execSync('npm update -g yalc-gtm-os', { stdio: 'inherit' })
-  } catch {
-    // Some npm versions don't move the global pin with `npm update`. Fall back.
-    console.log('[update] Falling back to `npm install -g yalc-gtm-os@latest`...')
-    try {
-      execSync('npm install -g yalc-gtm-os@latest', { stdio: 'inherit' })
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err)
-      console.error('[update] npm update failed.')
-      console.error(`  ${message.split('\n')[0]}`)
+  const opts = { stdio: 'inherit' as const, shell: IS_WIN }
+  const update = spawnSync('npx', ['pnpm', 'update', '-g', 'yalc-gtm-os'], opts)
+  if (update.status !== 0) {
+    // Some package managers don't move the global pin with `update`. Fall back.
+    console.log('[update] Falling back to `npx pnpm install -g yalc-gtm-os@latest`...')
+    const install = spawnSync('npx', ['pnpm', 'install', '-g', 'yalc-gtm-os@latest'], opts)
+    if (install.status !== 0) {
+      console.error('[update] pnpm update failed.')
       process.exit(1)
     }
   }
