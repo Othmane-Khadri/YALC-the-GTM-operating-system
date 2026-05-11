@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "functions": {
+    "api/signup.mjs": { "memory": 256, "maxDuration": 10 },
+    "api/fullenrich-callback.mjs": { "memory": 256, "maxDuration": 10 }
+  },
+  "routes": [
+    { "src": "/api/webhook", "dest": "/api/signup.mjs" },
+    { "src": "/api/fullenrich-callback", "dest": "/api/fullenrich-callback.mjs" }
+  ]
+}

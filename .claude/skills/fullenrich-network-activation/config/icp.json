@@ -1,0 +1,42 @@
+{
+  "name": "Default GTM ICP — edit me to match your buyer",
+  "threshold": 50,
+  "rules": [
+    {
+      "field": "title",
+      "kind": "regex",
+      "pattern": "(?i)\\b(founder|ceo|cmo|cro|coo|cto|head of|vp|vice president|director)\\b.*\\b(growth|marketing|sales|revenue|gtm|operations|ops|product|engineering)\\b",
+      "score": 40,
+      "reason": "Senior + relevant function"
+    },
+    {
+      "field": "title",
+      "kind": "regex",
+      "pattern": "(?i)\\b(founder|co-founder|ceo|cmo|cro|coo|cto)\\b",
+      "score": 30,
+      "reason": "C-level / founder"
+    },
+    {
+      "field": "title",
+      "kind": "regex",
+      "pattern": "(?i)\\b(growth|gtm|revops|sdr|bdr|account executive|ae)\\b",
+      "score": 20,
+      "reason": "GTM practitioner"
+    },
+    {
+      "field": "headline",
+      "kind": "contains_any",
+      "values": ["ai", "automation", "outbound", "lead gen", "prospecting", "saas", "b2b"],
+      "score": 10,
+      "reason": "Headline relevance"
+    }
+  ],
+  "exclusions": [
+    {
+      "field": "title",
+      "kind": "regex",
+      "pattern": "(?i)\\b(student|intern|recruiter|career coach)\\b",
+      "reason": "Out of ICP"
+    }
+  ]
+}
