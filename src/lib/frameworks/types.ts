@@ -163,6 +163,15 @@ export interface FrameworkDefinition {
   mode?: FrameworkMode
   /** Skill steps and (optional) human-gate pauses, in execution order. */
   steps: FrameworkStepEntry[]
+  /**
+   * Optional per-framework awaiting-gate timeout (hours). When a gate's
+   * `created_at` exceeds this many hours and the gate is still awaiting
+   * action, the runner auto-rejects it with reason
+   * `"timeout: <N>h elapsed without action"`.
+   *
+   * Precedence: this field > `YALC_DEFAULT_GATE_TIMEOUT_HOURS` env > 72h default.
+   */
+  gate_timeout_hours?: number
   output: FrameworkOutput
   seed_run?: FrameworkSeedRun
   /**

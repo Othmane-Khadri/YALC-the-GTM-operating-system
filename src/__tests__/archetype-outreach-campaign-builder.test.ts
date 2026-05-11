@@ -69,6 +69,16 @@ describe('archetype C — outreach-campaign-builder', () => {
     saveInstalledConfig(cfg)
 
     const reg = getSkillRegistry()
+    reg.register(
+      makeStubSkill('outbound-hypothesis-capture', {
+        hypothesis: {
+          icp_segment: 'Series A founders',
+          message_angle: 'SDR-replacement agents',
+          signal_trigger: 'hiring SDR in last 30d',
+          expected_reply_rate: 0.06,
+        },
+      }),
+    )
     reg.register(makeStubSkill('propose-campaigns', { variants: [{ id: 'v1', angle: 'CAC' }] }))
     reg.register(makeStubSkill('icp-company-search', { companies: [{ name: 'Acme' }] }))
     reg.register(makeStubSkill('people-enrich', { results: [{ email: 'jane@acme.com' }] }))

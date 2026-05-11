@@ -2,11 +2,16 @@
  * /api/brain/* — read-only context viewer for the SPA's /brain page.
  *
  * Walks the live tenant tree and returns every section that exists, plus
- * any per-section confidence metadata captured during synthesis. The
- * commit pipeline removes `_meta.json` from `_preview/` once the user
- * commits, so the per-section confidence is not yet preserved into the
- * live tree — when a `_meta.json` exists at the live root we surface it,
- * otherwise we report `confidence: null`.
+ * any per-section confidence metadata.
+ *
+ * Confidence read order (A6, Part 2):
+ *   1. `<liveRoot>/_meta.json#sections.<id>.confidence` — persisted at
+ *      commit time by `commitPreview`. The fast path; no recompute.
+ *   2. `_preview/_meta.json#sections.<id>.confidence` — covers the case
+ *      where a re-onboarding is in progress and the new score hasn't
+ *      committed yet.
+ *   3. `computeConfidenceFromSignals(...)` — fallback only when the
+ *      persisted file is absent and we still have raw signals.
  *
  * Endpoints:
  *   GET  /api/brain/context              — list sections with rendered content
@@ -124,11 +129,11 @@ function collectLiveFiles(section: SectionName, tenant: TenantContext): BrainSec
 }
 
 /**
- * Best-effort metadata lookup. `_meta.json` is stripped at commit time so
- * the typical live tree has no per-section confidence available; we still
- * check for an explicit live-tree `_meta.json` for deployments that pin
- * one. As a fallback we read the preview's `_meta.json` (if a re-onboarding
- * is in progress) so the user's most-recent confidence numbers surface.
+ * Best-effort metadata lookup. `<liveRoot>/_meta.json` is now persisted by
+ * `commitPreview` (A6) so the typical live tree carries per-section
+ * confidence directly. We still check the preview's `_meta.json` as a
+ * fallback so a re-onboarding-in-progress surfaces fresh numbers before
+ * the user commits.
  */
 function readSectionMeta(tenant: TenantContext): Record<string, BrainSection['confidence_signals'] extends infer X ? X : never> {
   const out: Record<string, BrainSection['confidence_signals']> = {}
@@ -161,7 +166,7 @@ function readSectionMeta(tenant: TenantContext): Record<string, BrainSection['co
   return out
 }
 
-function computeConfidenceFromSignals(signals: {
+function computeConfidenceFromSignalsImpl(signals: {
   input_chars: number
   llm_self_rating: number
   has_metadata_anchors: boolean
@@ -173,6 +178,24 @@ function computeConfidenceFromSignals(signals: {
   const rating = Math.min(1, signals.llm_self_rating / 10) * 0.5
   const anchors = signals.has_metadata_anchors ? 0.2 : 0
   return Math.round((ratio + rating + anchors) * 100) / 100
+}
+
+/**
+ * Test seam: brain.ts intentionally short-circuits to the persisted live
+ * `_meta.json#sections.<id>.confidence` when present (A6, Part 2). Tests
+ * spy on this object's `compute` field to verify the recompute path is
+ * never invoked for sections with a persisted score.
+ */
+export const __confidenceRecompute = {
+  compute: computeConfidenceFromSignalsImpl,
+}
+
+function computeConfidenceFromSignals(signals: {
+  input_chars: number
+  llm_self_rating: number
+  has_metadata_anchors: boolean
+}): number {
+  return __confidenceRecompute.compute(signals)
 }
 
 // ─── GET /api/brain/context ─────────────────────────────────────────────────

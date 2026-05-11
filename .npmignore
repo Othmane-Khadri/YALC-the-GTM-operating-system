@@ -17,3 +17,7 @@ logs
 .env.*
 !.env.example
 CLAUDE.md
+
+# Internal client-specific automation (NEVER ship — contains client GTM assets)
+scripts/hedi/
+TEAM_SETUP.md

@@ -340,6 +340,75 @@ export async function runFlagCapture(opts: FlagCaptureOptions): Promise<FlagCapt
     }
   }
 
+  // Rich profile synthesis (A4) — single tool-use call against Claude that
+  // populates competitors[].weaknesses, segments[].buyingTriggers,
+  // segments[].keyDecisionMakers, signals.* directly into
+  // company_context.yaml. Skipped silently when no Anthropic key is set or
+  // the captured content is too thin to ground synthesis. Failures are
+  // non-fatal — the thin context still ships and downstream synthesis
+  // (`writeSynthesizedPreview`) picks up the slack.
+  if (process.env.ANTHROPIC_API_KEY) {
+    try {
+      const { buildRichCompanyProfile } = await import('./rich-profile.js')
+      const rich = await buildRichCompanyProfile({
+        companyName: opts.companyName ?? ctx.company.name,
+        website: opts.website,
+        websiteContent,
+        linkedinContent,
+        docsContent,
+        icpSummary: opts.icpSummary,
+      })
+      if (rich) {
+        // Rich detail arrays (always overwrite when the model produced them
+        // — these fields don't exist pre-rich-synthesis).
+        if (rich.competitors.length > 0) {
+          ctx.icp.competitors_detail = rich.competitors
+          // Keep the back-compat string array in sync so older readers still
+          // see competitor names.
+          const names = rich.competitors.map((c) => c.name).filter(Boolean)
+          if (names.length > 0) ctx.icp.competitors = names
+        }
+        if (rich.segments.length > 0) {
+          ctx.icp.segments_detail = rich.segments
+          // Aggregate pain points across segments — the thin field is
+          // consumed by stub synthesis when no LLM is available later.
+          const pains = new Set<string>()
+          for (const s of rich.segments) for (const p of s.painPoints) pains.add(p)
+          if (pains.size > 0) ctx.icp.pain_points = Array.from(pains)
+          // Stitch a freeform summary when the user didn't supply one.
+          if (!ctx.icp.segments_freeform) {
+            const lines = rich.segments
+              .map((s) => (s.description ? `${s.name}: ${s.description}` : s.name))
+              .filter(Boolean)
+            if (lines.length) ctx.icp.segments_freeform = lines.join('\n')
+          }
+        }
+        ctx.signals = rich.signals
+
+        // User-supplied fields always win — only fill when missing.
+        if (rich.company) {
+          if (!ctx.company.name && rich.company.name) ctx.company.name = rich.company.name
+          if (!ctx.company.description && rich.company.description) {
+            ctx.company.description = rich.company.description
+          }
+          if (!ctx.company.industry && rich.company.industry) {
+            ctx.company.industry = rich.company.industry
+          }
+          if (!ctx.company.stage && rich.company.stage) {
+            ctx.company.stage = rich.company.stage
+          }
+          if (!ctx.company.team_size && rich.company.teamSize) {
+            ctx.company.team_size = rich.company.teamSize
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(
+        `[start] rich profile synthesis skipped: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
+  }
+
   return {
     context: ctx,
     websiteContent,
@@ -368,7 +437,25 @@ export function writeCapturedPreview(
   ensurePreviewDir('company_context.yaml', tenant)
   writeFileSync(previewPath('company_context.yaml', tenant), yaml.dump(result.context))
 
-  // 2. _meta.json — captured_at + sources.
+  // 2. _meta.json — captured_at + sources + minimal company_context
+  //    confidence entry (A4). The full per-section confidence pass runs in
+  //    `writeSynthesizedPreview()` later; here we only need company_context
+  //    populated so /setup/review surfaces a badge for it from the get-go.
+  //    A6 owns the post-commit meta persistence semantics — we stay minimal.
+  const richEnriched = !!(
+    (result.context.icp.competitors_detail?.length ?? 0) > 0 ||
+    (result.context.icp.segments_detail?.length ?? 0) > 0 ||
+    result.context.signals
+  )
+  // Cheap heuristic: rich synthesis ran cleanly → 0.85. Thin capture only
+  // (just website/LinkedIn captured, no LLM) → 0.5. The single-source
+  // `company.name`-only fallback → 0.3.
+  const captureConfidence = richEnriched
+    ? 0.85
+    : result.context.company.website
+      ? 0.5
+      : 0.3
+
   writePreviewMeta(
     {
       captured_at: result.context.meta.captured_at,
@@ -377,6 +464,18 @@ export function writeCapturedPreview(
         linkedin: result.sourcesUsed.linkedin ?? null,
         docs: result.sourcesUsed.docs ?? null,
         voice: result.sourcesUsed.voice ?? null,
+      },
+      sections: {
+        company_context: {
+          confidence: captureConfidence,
+          confidence_signals: {
+            input_chars: (result.websiteContent?.length ?? 0) +
+              (result.linkedinContent?.length ?? 0) +
+              (result.docsContent?.length ?? 0),
+            llm_self_rating: richEnriched ? 8 : 5,
+            has_metadata_anchors: !!result.websiteHasMetadataAnchors,
+          },
+        },
       },
       version: '0.6.0',
     },

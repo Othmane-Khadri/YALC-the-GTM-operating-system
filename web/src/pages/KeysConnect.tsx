@@ -33,7 +33,12 @@ export function KeysConnect() {
   useEffect(() => {
     if (typeof window === 'undefined') return
     const x = new URLSearchParams(window.location.search)
-    setPid(x.get('provider') ?? '')
+    // 0.9.6 / A5: doctor handoff URLs use the path-style
+    // /keys/connect/<provider>; the legacy /keys/connect?provider=<id>
+    // shape still works. Path segment wins when both are present.
+    const segMatch = window.location.pathname.match(/^\/keys\/connect\/([^/?#]+)/)
+    const fromPath = segMatch ? decodeURIComponent(segMatch[1]) : ''
+    setPid(fromPath || x.get('provider') || '')
     setMode(x.get('mode') ?? '')
   }, [])
 
@@ -169,7 +174,7 @@ export function KeysConnect() {
         {r && (
           <div className={C} data-testid="keys-connect-result">
             <p className="font-medium">
-              <span className={'rounded px-2 py-0.5 text-xs text-white mr-2 ' + (r.status === 'configured' ? 'bg-[#3F8F5A]' : 'bg-[#C9506E]')}>{r.status}</span>
+              <span className={'rounded px-2 py-0.5 text-xs text-white mr-2 ' + (r.status === 'configured' ? 'bg-confidence-high' : 'bg-confidence-low')}>{r.status}</span>
               {r.provider}
             </p>
             <p className="text-xs text-muted-foreground mt-1">{r.healthcheck.status} · {r.healthcheck.detail}</p>

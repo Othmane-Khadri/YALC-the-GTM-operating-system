@@ -1,5 +1,7 @@
 # Provider Setup Guide
 
+> **Tip:** you can run any of these commands by asking Claude Code in your IDE — see [Quick start in README](../README.md#quick-start).
+
 GTM-OS uses external providers to power different capabilities. Only **Anthropic** is required. Everything else is optional and unlocks additional features as you add them.
 
 ## Required
@@ -223,3 +225,62 @@ You can always add new provider keys after initial setup:
 1. Add the key to `.env.local`
 2. Run `yalc-gtm doctor` to verify
 3. The new capabilities are immediately available
+
+---
+
+## Bundled declarative providers
+
+YALC ships a small set of providers as YAML manifests under `configs/adapters/`. They behave exactly like built-in TypeScript adapters — same capability registry, same priority resolution — but are defined declaratively (no code change required to ship a new one). The adapters appear under `[bundled]` in `yalc-gtm adapters:list`.
+
+| Capability | Provider | Env var | Manifest |
+|---|---|---|---|
+| `people-enrich` | peopledatalabs | `PEOPLEDATALABS_API_KEY` | `configs/adapters/people-enrich-peopledatalabs.yaml` |
+| `crm-contact-upsert` | hubspot | `HUBSPOT_API_KEY` | `configs/adapters/crm-contact-upsert-hubspot.yaml` |
+| `email-campaign-create` | brevo | `BREVO_API_KEY` | `configs/adapters/email-campaign-create-brevo.yaml` |
+
+**How to use:**
+
+1. Drop the env var in `.env.local`. No code change needed — boot picks up the manifest automatically.
+2. Run `yalc-gtm adapters:list` and confirm the row flips from `✗` to `✓`.
+3. (Optional) Make the bundled provider win the resolution race for an existing capability by setting a priority in `~/.gtm-os/config.yaml`:
+   ```yaml
+   capabilities:
+     people-enrich:
+       priority: [peopledatalabs, fullenrich, crustdata]
+     email-campaign-create:
+       priority: [brevo, instantly]
+   ```
+4. (Optional) Run a hermetic check before pointing real traffic at the manifest:
+   ```bash
+   yalc-gtm adapters:smoke configs/adapters/people-enrich-peopledatalabs.yaml
+   ```
+
+### People Data Labs
+
+Bulk people enrichment via `POST /v5/person/bulk`. Returns email + phone for matched profiles. Drop-in alternative to FullEnrich for capability `people-enrich`. Sign up at https://dashboard.peopledatalabs.com.
+
+### HubSpot
+
+Idempotent contact upsert via `POST /crm/v3/objects/contacts?idProperty=email`. Uses a Private App access token (no OAuth refresh). Returns the CRM-issued contact id. Provides the default adapter for `crm-contact-upsert`. Get a token at https://developers.hubspot.com/docs/api/private-apps.
+
+### Brevo (formerly Sendinblue)
+
+Email campaign create via `POST /v3/emailCampaigns`. Returns the new campaign id in `draft` status; trigger send separately via Brevo's `sendNow` endpoint or the Brevo UI. Drop-in alternative to Instantly for capability `email-campaign-create`. Get a key at https://app.brevo.com/settings/keys/api.
+
+## Optional: asset rendering (Playwright)
+
+The `asset-rendering` capability writes HTML to disk by default and can render PDF / PNG when [Playwright](https://playwright.dev) is installed. Playwright ships as an **optional dependency** so `npm install` / `pnpm install` doesn't fail in sandboxed CI environments where the chromium binary can't be downloaded.
+
+To enable PDF / PNG rendering:
+
+```bash
+pnpm add playwright
+# or: npm i playwright
+npx playwright install chromium
+```
+
+Run `yalc-gtm adapters:list` and confirm the `asset-rendering` row flips from `✗` to `✓` for the `playwright` provider. Until Playwright is installed, the adapter still handles `format: 'html'` cleanly and returns a `fallbackReason` when callers ask for `pdf` or `png`.
+
+### User-installed manifests
+
+The same loader also reads `~/.gtm-os/adapters/*.yaml`. A user manifest with the same `(capability, provider)` key as a bundled one wins via last-write-to-bucket — useful for hot-patching a vendor URL change without waiting on a YALC release. The CLI labels these `[user]` instead of `[bundled]`.

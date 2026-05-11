@@ -1,6 +1,6 @@
 ---
 name: landing-page-deploy
-description: Deploy a single-page HTML asset to a hosted URL (vercel-mcp when configured; local file fallback otherwise).
+description: Deploy a single-page HTML asset to a hosted URL via Vercel.
 category: integration
 inputs:
   - name: html
@@ -25,11 +25,13 @@ output_schema:
       type: boolean
     url:
       type: string
+    deploymentId:
+      type: string
     fallbackReason:
       type: ['string', 'null']
 ---
 
-Deploy the supplied HTML to a public URL via the configured deployer (vercel-mcp). Falls back to a local file when no deployer is configured — the returned `fallbackReason` explains how to install vercel-mcp to enable real deploys.
+Deploy the supplied HTML to a public URL via the Vercel deployment API. Requires `VERCEL_TOKEN`; an optional `VERCEL_TEAM_ID` scopes the deploy to a team. The result returns `{ deployed, url, deploymentId }` — `deployed` is `true` only once Vercel reports `readyState === 'READY'`; on intermediate states the URL is still set so callers can preview or poll.
 
 Slug: {{slug}}
 Title: {{title}}

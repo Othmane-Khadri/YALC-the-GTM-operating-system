@@ -1,0 +1,63 @@
+# Apollo.io — icp-company-search
+#
+# Vendor docs: https://apolloapis.docs.apiary.io/#reference/organization-search
+# Endpoint:    POST /v1/mixed_companies/search
+# Auth:        X-Api-Key header (static — no OAuth)
+#
+# Apollo's company search endpoint returns a paginated list of companies
+# matching keyword, location, and headcount filters. We map each result
+# row onto YALC's `icp-company-search` `companies[]` shape so Apollo is a
+# drop-in alternative to the built-in Crustdata adapter.
+#
+# v1 manifest scope:
+#   * Honours `input.keywords`, `input.location`, `input.employeeRange`,
+#     and `input.limit`. Free-text industry filter is folded into
+#     `q_organization_keyword_tags` because Apollo's keyword index covers
+#     industry vocabulary.
+#   * No pagination loop in v1 — page=1 with `per_page` capped at the
+#     caller-supplied limit. Multi-page sweep is a v1.1 follow-up once
+#     the operator-facing `cursor` style of the registry stabilizes.
+#   * Single-tag input (the bodyTemplate substitutes the entire
+#     `keywords` string into one array element). Operators searching
+#     multiple tags should call the adapter once per tag and dedupe
+#     downstream.
+manifestVersion: 1
+capability: icp-company-search
+provider: apollo
+version: 0.1.0
+auth:
+  type: header
+  name: X-Api-Key
+  value: ${env:APOLLO_API_KEY}
+endpoint:
+  method: POST
+  url: https://api.apollo.io/v1/mixed_companies/search
+request:
+  contentType: application/json
+  bodyTemplate: |
+    {
+      "q_organization_keyword_tags": ["{{input.keywords}}"],
+      "organization_locations": ["{{input.location}}"],
+      "organization_num_employees_ranges": ["{{input.employeeRange}}"],
+      "page": 1,
+      "per_page": 25
+    }
+response:
+  rootPath: organizations
+  mappings:
+    "companies[].name": "$.name"
+    "companies[].domain": "$.primary_domain"
+    "companies[].linkedin_url": "$.linkedin_url"
+    "companies[].headcount": "$.estimated_num_employees"
+    "companies[].industry": "$.industry"
+  errorEnvelope:
+    matchPath: $.error
+    messagePath: $.error
+smoke_test:
+  input:
+    keywords: "saas"
+    location: "United States"
+    employeeRange: "11-50"
+    limit: 5
+  expectNonEmpty:
+    - "companies[0].domain"

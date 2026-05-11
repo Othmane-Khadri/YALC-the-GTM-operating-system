@@ -94,7 +94,12 @@ describe('GET /api/today/feed', () => {
   })
 
   it('mixes awaiting-gate items into the feed using the documented schema', async () => {
-    seedRun('alpha', '2026-04-29T10:00:00Z')
+    // Use a recent timestamp for the gate so it stays inside the default
+    // 72h timeout window regardless of when the suite runs. The run uses a
+    // slightly older recent timestamp so the gate sorts ahead of it.
+    const gateCreatedAt = new Date(Date.now() - 30 * 60 * 1000).toISOString() // 30 min ago
+    const runRanAt = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() // 2h ago
+    seedRun('alpha', runRanAt)
     seedAwaitingGate('alpha', {
       run_id: 'r1',
       framework: 'alpha',
@@ -102,7 +107,7 @@ describe('GET /api/today/feed', () => {
       gate_id: 'qual_review',
       prompt: 'Approve qualification batch?',
       payload: { rows: 12 },
-      created_at: '2026-04-29T11:30:00Z',
+      created_at: gateCreatedAt,
     })
     const { createApp } = await import('../lib/server/index')
     const app = createApp()
@@ -114,7 +119,7 @@ describe('GET /api/today/feed', () => {
     expect(gate).toBeDefined()
     expect(gate?.gate_id).toBe('qual_review')
     expect(gate?.framework).toBe('alpha')
-    // Mixed sort puts the gate (11:30) before the run (10:00).
+    // Mixed sort puts the more recent gate before the older run.
     expect(body.items[0].type).toBe('awaiting_gate')
   })
 

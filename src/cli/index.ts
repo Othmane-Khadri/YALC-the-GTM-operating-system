@@ -46,6 +46,13 @@ program
   .option('-c, --config <path>', 'Path to config YAML', '~/.gtm-os/config.yaml')
   .option('-t, --tenant <slug>', 'Tenant slug (overrides GTM_OS_TENANT env and .gtm-os-tenant file)')
   .option('-v, --verbose', 'Enable verbose output with full stack traces')
+  .addHelpText(
+    'after',
+    `
+Next: run \`yalc-gtm start\` to set up your GTM context, or \`yalc-gtm doctor\` to diagnose your environment.
+Docs: https://github.com/Othmane-Khadri/YALC-the-GTM-operating-system#getting-started
+`,
+  )
   .hook('preAction', (thisCommand) => {
     // Resolve verbose flag first — affects error output globally
     const opts = thisCommand.opts()
@@ -1332,6 +1339,117 @@ program
     await runBootstrap({ config, dryRun: opts.dryRun ?? false })
   }))
 
+// ─── adapters:list ──────────────────────────────────────────────────────────
+//
+// List every capability adapter the registry has resolved (built-in TS +
+// declarative YAML manifests), grouped by capability with priority index
+// and availability. Use `--json` for machine-readable output.
+program
+  .command('adapters:list')
+  .description('List capability adapters (built-in + declarative) with priority and availability.')
+  .option('--json', 'Emit JSON instead of the human-readable table')
+  .action(withDiagnostics(async (opts) => {
+    const { runAdaptersList } = await import('./commands/adapters-list')
+    const result = await runAdaptersList({ json: !!opts.json })
+    process.stdout.write(result.output + '\n')
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
+// ─── gates:list ─────────────────────────────────────────────────────────────
+//
+// List every awaiting human-gate sentinel with framework, gate id, age, time
+// remaining before auto-reject, and stale/fresh status. Auto-rejects any
+// already-expired sentinel before listing. Use `--json` for machine output.
+program
+  .command('gates:list')
+  .description('List awaiting human-gates with age, timeout, and stale/fresh status.')
+  .option('--json', 'Emit JSON instead of the human-readable table')
+  .action(withDiagnostics(async (opts) => {
+    const { runGatesList } = await import('./commands/gates-list')
+    const result = await runGatesList({ json: !!opts.json })
+    process.stdout.write(result.output + '\n')
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
+// ─── notify:test ────────────────────────────────────────────────────────────
+//
+// Send a single test notification to the requested channel so operators can
+// verify their wiring (Slack webhook URL, macOS notification permissions)
+// before relying on the runner's gate-notification fan-out.
+program
+  .command('notify:test')
+  .description('Send a test notification (--channel slack|desktop) to verify config.')
+  .requiredOption('--channel <channel>', 'Channel to test: slack or desktop')
+  .action(withDiagnostics(async (opts) => {
+    const { runNotifyTest } = await import('./commands/notify-test')
+    const channel = String(opts.channel).toLowerCase() as 'slack' | 'desktop'
+    const result = await runNotifyTest(channel)
+    process.stdout.write(result.output + '\n')
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
+// ─── adapters:smoke ─────────────────────────────────────────────────────────
+//
+// Run a declarative manifest's `smoke_test` block against the live vendor
+// and report pass/fail. Exits 0 on green, non-zero on red.
+program
+  .command('adapters:smoke')
+  .description('Run a declarative adapter manifest\'s smoke test (path argument required).')
+  .argument('<path>', 'Path to a YAML manifest under ~/.gtm-os/adapters/ or anywhere on disk.')
+  .option('--json', 'Emit JSON instead of the human-readable summary')
+  .action(withDiagnostics(async (path: string, opts: any) => {
+    const { runAdaptersSmoke } = await import('./commands/adapters-smoke')
+    const result = await runAdaptersSmoke(path, { json: !!opts.json })
+    process.stdout.write(result.output + '\n')
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
+// ─── provider:install ───────────────────────────────────────────────────────
+//
+// Fetch a community manifest from the yalc-providers repo (or a custom
+// `--source <url>` / `YALC_PROVIDERS_SOURCE` env), validate via the
+// declarative compiler, write to `~/.gtm-os/adapters/`, and optionally
+// add the provider to `~/.gtm-os/config.yaml`'s priority list. No live
+// HTTP smoke is run — that's `adapters:smoke`.
+program
+  .command('provider:install')
+  .description(
+    'Install a declarative adapter manifest from the yalc-providers community repo.',
+  )
+  .argument(
+    '<spec>',
+    'Capability/provider pair, e.g. icp-company-search/apollo',
+  )
+  .option(
+    '--source <url>',
+    'Override the manifest URL. Used verbatim — no <cap>/<prov>.yaml suffix is appended.',
+  )
+  .option('--force', 'Overwrite an existing manifest at the target path')
+  .option(
+    '--no-prompt',
+    'Skip every interactive prompt (use with --yes for unattended installs)',
+  )
+  .option(
+    '--no-priority-update',
+    'Skip the prompt to add this provider to capabilities.<cap>.priority in config.yaml',
+  )
+  .option(
+    '--yes',
+    'Answer "yes" to the priority-list update prompt without asking',
+  )
+  .action(withDiagnostics(async (spec: string, opts: any) => {
+    const { runProviderInstall } = await import('./commands/provider-install')
+    const result = await runProviderInstall(spec, {
+      sourceUrl: opts.source,
+      force: !!opts.force,
+      noPrompt: opts.prompt === false,
+      noPriorityUpdate: opts.priorityUpdate === false,
+      autoConfirmPriority: !!opts.yes,
+    })
+    process.stdout.write(result.output + '\n')
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
 // ─── campaign:dashboard ──────────────────────────────────────────────────────
 program
   .command('campaign:dashboard')
@@ -1344,6 +1462,37 @@ program
     const { execFile } = await import('child_process')
     execFile('open', [`http://localhost:${port}/campaigns`])
   })
+
+// ─── dashboard / ui ─────────────────────────────────────────────────────────
+//
+// Summon the SPA from anywhere. Idempotent: if the dashboard server is
+// already up on the target port, just opens the browser + prints the URL.
+// Otherwise spawns the server detached (same mechanism as `start`) and
+// waits up to 10s for it to come up.
+//
+// Route resolution:
+//   - `~/.gtm-os/company_context.yaml` missing  → /setup/review
+//   - present                                   → /today
+//   - --route <path> overrides both
+program
+  .command('dashboard')
+  .alias('ui')
+  .description('Open the SPA in the browser. Boots the dashboard server if needed.')
+  .option('--port <port>', 'Server port', '3847')
+  .option('--route <path>', 'Open this route literally instead of inferring from disk state')
+  .option('--archetype <id>', 'Open the archetype-specific dashboard (a, b, c, or d)')
+  .option('--no-open', 'Print the URL without launching a browser (headless / SSH)')
+  .action(withDiagnostics(async (opts) => {
+    const { runDashboard } = await import('./commands/dashboard')
+    const port = Number.parseInt(opts.port, 10)
+    const result = await runDashboard({
+      port: Number.isFinite(port) ? port : 3847,
+      route: opts.route,
+      archetype: opts.archetype,
+      open: opts.open !== false,
+    })
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
 
 // ─── campaign:monthly-report ────────────────────────────────────────────────
 program
@@ -1408,12 +1557,15 @@ program
 program
   .command('start')
   .description(
-    'Guided onboarding — minimum-friction capture from a website (default) or interactive interview (fallback)',
+    'Guided onboarding — prompts for a website URL, then opens the SPA review (default). Use --review-in-chat for the legacy terminal interview.',
   )
   .addHelpText(
     'after',
     `
-Examples (recommended — flag-driven, zero prompts):
+Recommended (no flags — single URL prompt + browser SPA):
+  $ yalc-gtm start
+
+Flag-driven (zero prompts, headless / CI):
   $ yalc-gtm start --non-interactive --website https://your-company.com
 
   Optional refinements:
@@ -1426,8 +1578,8 @@ Examples (recommended — flag-driven, zero prompts):
   Re-runs after editing a placeholder \`.env\`:
   $ yalc-gtm start --non-interactive   # writes ~/.gtm-os/.env template
 
-  Interactive interview (no website, no flags):
-  $ yalc-gtm start
+  Legacy terminal interview (no SPA):
+  $ yalc-gtm start --review-in-chat
 `,
   )
   .option('--non-interactive', 'Skip prompts (use env vars and defaults)')
@@ -1482,7 +1634,47 @@ Examples (recommended — flag-driven, zero prompts):
   )
   // 0.9.1: suppress the auto-open of ~/.gtm-os/.env after a fresh scaffold.
   .option('--no-open-env', 'Skip auto-opening the .env template in the default editor')
+  .option(
+    '--port <number>',
+    'Dashboard server port for the SPA handoff. Defaults to 3847.',
+    (val) => Number.parseInt(val, 10),
+  )
   .action(withDiagnostics(async (opts) => {
+    // 0.9.7 / A1 — no-flag default routes to the SPA. The single inquirer
+    // prompt asks for a website URL, then delegates to the same flag-capture
+    // path that `start --non-interactive --website <url>` uses, which auto-
+    // opens /setup/review. Any of: --non-interactive, --review-in-chat,
+    // capture flags (--website / --linkedin / --docs / etc.), or preview-
+    // lifecycle flags (--commit-preview / --regenerate / --discard-preview)
+    // bypass the SPA-default and run the canonical `runStart` directly.
+    const { runStartSpaDefault, shouldUseSpaDefault } = await import(
+      './commands/start-spa-default'
+    )
+    if (
+      shouldUseSpaDefault({
+        nonInteractive: opts.nonInteractive,
+        reviewInChat: opts.reviewInChat,
+        companyName: opts.companyName,
+        website: opts.website,
+        linkedin: opts.linkedin,
+        docs: opts.docs,
+        icpSummary: opts.icpSummary,
+        voice: opts.voice,
+        commitPreview: opts.commitPreview,
+        discardPreview: opts.discardPreview,
+        regenerateSection: opts.regenerate,
+        regenerateLowConfidence: opts.regenerateLowConfidence,
+      })
+    ) {
+      const result = await runStartSpaDefault({
+        tenantId: getTenant(),
+        noOpen: opts.open === false,
+        noOpenEnv: opts.openEnv === false,
+        port: Number.isFinite(opts.port) ? opts.port : undefined,
+      })
+      if (result.exitCode !== 0) process.exitCode = result.exitCode
+      return
+    }
     const { runStart } = await import('../lib/onboarding/start')
     await runStart({
       tenantId: getTenant(),
@@ -1508,6 +1700,7 @@ Examples (recommended — flag-driven, zero prompts):
       noAutoCommit: opts.autoCommit === false,
       autoCommitThreshold: opts.autoCommitThreshold,
       noOpenEnv: opts.openEnv === false,
+      port: Number.isFinite(opts.port) ? opts.port : undefined,
     })
   }))
 
@@ -2341,11 +2534,83 @@ program
   }))
 
 program
+  .command('framework:set-hypothesis <name>')
+  .description('Persist the 4-field outbound hypothesis (ICP / angle / signal / expected reply rate) for a framework')
+  .requiredOption('--icp-segment <segment>', 'ICP segment under test')
+  .requiredOption('--message-angle <angle>', 'One-line message angle being tested')
+  .requiredOption('--signal-trigger <signal>', 'Observable buying signal that makes a prospect a fit')
+  .requiredOption('--expected-reply-rate <rate>', 'Success bar — fraction in [0, 1] (e.g. 0.05 for 5%)')
+  .action(withDiagnostics(async (name: string, opts) => {
+    const { runFrameworkSetHypothesis } = await import('./commands/framework.js')
+    await runFrameworkSetHypothesis(name, {
+      icpSegment: opts.icpSegment,
+      messageAngle: opts.messageAngle,
+      signalTrigger: opts.signalTrigger,
+      expectedReplyRate: opts.expectedReplyRate,
+    })
+  }))
+
+program
   .command('framework:remove <name>')
   .description('Remove an installed framework: delete config, agent yaml, and run history')
   .action(withDiagnostics(async (name: string) => {
     const { runFrameworkRemove } = await import('./commands/framework.js')
     await runFrameworkRemove(name)
+  }))
+
+// ─── routine:propose ───────────────────────────────────────────────────────
+//
+// Run the deterministic Routine Generator and print the proposed routine
+// (frameworks + schedules + default dashboard + notes). Read-only — never
+// writes to `~/.gtm-os/`. Exits 2 when no Anthropic key is available so
+// the SPA can branch on "nothing to install".
+program
+  .command('routine:propose')
+  .description('Print the proposed Routine (frameworks, schedules, dashboard) without applying.')
+  .option('--json', 'Emit JSON instead of the human-readable preview')
+  .action(withDiagnostics(async (opts) => {
+    const { runRoutinePropose } = await import('./commands/routine.js')
+    const r = await runRoutinePropose({ json: !!opts.json })
+    process.stdout.write(r.output + '\n')
+    if (r.exitCode !== 0) process.exit(r.exitCode)
+  }))
+
+// ─── routine:install ───────────────────────────────────────────────────────
+//
+// Recompute the proposal (so a stale preview can't drift), prompt for
+// confirmation (unless `--yes`), then apply: install each framework via
+// `framework:install --auto-confirm`, write `~/.gtm-os/routine.yaml`, and
+// patch `dashboard.default_route` into `~/.gtm-os/config.yaml`.
+program
+  .command('routine:install')
+  .description('Apply the proposed Routine: install frameworks + persist sidecar.')
+  .option('--yes', 'Skip the interactive confirmation prompt')
+  .option('--dry-run', 'Print the actions that would run, but do not write anything')
+  .option('--only <names>', 'Comma-separated subset of frameworks to install')
+  .action(withDiagnostics(async (opts) => {
+    const { runRoutineInstall } = await import('./commands/routine.js')
+    const only = typeof opts.only === 'string'
+      ? opts.only.split(',').map((s: string) => s.trim()).filter(Boolean)
+      : undefined
+    const r = await runRoutineInstall({
+      yes: !!opts.yes,
+      dryRun: !!opts.dryRun,
+      only,
+    })
+    process.stdout.write(r.output + '\n')
+    if (r.exitCode !== 0) process.exit(r.exitCode)
+  }))
+
+// ─── trigger ───────────────────────────────────────────────────────────────
+// On-demand-only counterpart to `framework:run`. Validates the named
+// framework is `mode: on-demand`, fires it, and exits 0 with the new run id.
+program
+  .command('trigger <framework>')
+  .description('Fire an on-demand framework now (writes ~/.gtm-os/triggers.log)')
+  .action(withDiagnostics(async (framework: string) => {
+    const { runTrigger } = await import('./commands/trigger.js')
+    const r = await runTrigger(framework)
+    if (r.exitCode !== 0) process.exit(r.exitCode)
   }))
 
 // ─── provider:list ─────────────────────────────────────────────────────────

@@ -1,0 +1,102 @@
+# YALC declarative adapter manifest — blank template.
+#
+# Replace every <TODO_*> placeholder with vendor-specific values. Save as
+# /tmp/yalc-builder/<capability>-<provider>.yaml during drafting; the
+# provider-builder skill moves the file to ~/.gtm-os/adapters/ only after
+# `pnpm cli adapters:smoke <path>` exits 0.
+#
+# Schema reference: src/lib/providers/declarative/schema.json
+# Type reference:   src/lib/providers/declarative/types.ts
+# Compiler:         src/lib/providers/declarative/compiler.ts
+
+# Manifest schema version. Always 1 today.
+manifestVersion: 1
+
+# Capability id from `pnpm cli adapters:list`. Must match an existing
+# registered capability (e.g. icp-company-search, people-enrich,
+# email-campaign-create, landing-page-deploy).
+capability: TODO_capability_id
+
+# Provider id, kebab-case, unique per capability (e.g. apollo, brevo,
+# peopledatalabs).
+provider: TODO_provider_id
+
+# Adapter semver. Bump on every manifest edit. Start at 0.1.0.
+version: 0.1.0
+
+# Authentication method. Pick ONE shape:
+#
+#   type: header   + name: <header-name> + value: ${env:VAR}
+#   type: bearer                          + value: ${env:VAR}
+#   type: query    + name: <query-param> + value: ${env:VAR}
+#   type: none                            (no auth — rare)
+#
+# `value` MUST use ${env:VAR_NAME} — never inline a literal key.
+auth:
+  type: header
+  name: X-Api-Key
+  value: ${env:TODO_API_KEY}
+
+# HTTP request: method + URL. URL supports {{var}} interpolation against
+# the merged scope (input.*, env.*, auth.*). For GET endpoints with
+# multiple query params, prefer `queryTemplate` over hand-encoding the URL.
+endpoint:
+  method: POST
+  url: https://api.example.com/v1/TODO_endpoint
+  # queryTemplate:
+  #   q: "{{input.keywords}}"
+  #   limit: "{{input.limit | default: 25}}"
+
+# Optional request body and headers. Omit `request` for GET-only endpoints.
+request:
+  contentType: application/json
+  bodyTemplate: |
+    {
+      "TODO_field": "{{input.TODO_input_field}}"
+    }
+  # headers:
+  #   X-Vendor-Version: "2024-01-01"
+
+# How the vendor's response maps onto the capability's output schema.
+#
+# - rootPath: dotted path (or `$`) to the array / object the mappings walk.
+# - mappings: target → source.
+#     Targets like "items[].field" iterate rootPath as an array.
+#     Targets without "[]" are scalars (read against rootPath itself).
+#     Source "$.x"  reads field x on the current row.
+#     Source null   emits a literal null.
+#     Source "https://$.url" keeps the prefix and substitutes $.url.
+#     Source "$.x == 'y'" returns a boolean equality test.
+# - errorEnvelope: optional. When the vendor returns 200 with an error
+#     body, set `matchPath` to the field that signals an error and
+#     `messagePath` to the human-readable message field.
+response:
+  rootPath: TODO_root_path
+  mappings:
+    "TODO_target_field": "$.TODO_source_field"
+  errorEnvelope:
+    matchPath: $.error
+    messagePath: $.error.message
+
+# Optional pagination. Omit on first draft.
+# pagination:
+#   style: page          # or `cursor`
+#   pageParam: page
+#   limit: 100
+
+# Optional rate limit + retry. Omit on first draft.
+# rateLimit:
+#   rps: 5
+#   retry:
+#     on: [429, 503]
+#     backoff: exponential
+#     maxAttempts: 3
+
+# Smoke test. Runs via `pnpm cli adapters:smoke <path>` before the skill
+# moves the file to ~/.gtm-os/adapters/. `expectNonEmpty` paths are
+# evaluated against the projected response.
+smoke_test:
+  input:
+    TODO_input_field: "TODO_sample_value"
+  expectNonEmpty:
+    - "TODO_target_path"

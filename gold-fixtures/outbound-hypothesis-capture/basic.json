@@ -1,0 +1,16 @@
+{
+  "input": {
+    "icp_segment": "Series A SaaS CTOs in EU",
+    "message_angle": "We compress LLM eval cycles 10x for compliance teams",
+    "signal_trigger": "Posted about SOC 2 / EU AI Act in last 30 days",
+    "expected_reply_rate": 0.06
+  },
+  "expected_output": {
+    "hypothesis": {
+      "icp_segment": "Series A SaaS CTOs in EU",
+      "message_angle": "We compress LLM eval cycles 10x for compliance teams",
+      "signal_trigger": "Posted about SOC 2 / EU AI Act in last 30 days",
+      "expected_reply_rate": 0.06
+    }
+  }
+}

@@ -32,6 +32,36 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import type { AwaitingGateRecord } from './runner.js'
 
+/**
+ * Schema version for on-disk gate sentinels (A6).
+ *
+ * Writes always stamp `_v: CURRENT_SENTINEL_VERSION`. Reads accept missing
+ * `_v` (treat as v1 — pre-A6 records, upgraded transparently on the next
+ * write) and `_v === CURRENT_SENTINEL_VERSION`. Any other value throws so
+ * a future schema bump never silently corrupts a stale record.
+ */
+export const CURRENT_SENTINEL_VERSION = 2
+
+/**
+ * Validate the schema version of a parsed sentinel record. Returns the
+ * record unchanged on success.
+ *
+ * - `_v` missing → v1, accepted (will be upgraded on next write).
+ * - `_v === CURRENT_SENTINEL_VERSION` → accepted.
+ * - any other `_v` → throws with a clear, actionable message.
+ */
+export function parseSentinel<T extends object>(raw: T): T {
+  const v = (raw as { _v?: unknown })._v
+  if (v === undefined) return raw
+  if (typeof v === 'number' && v === CURRENT_SENTINEL_VERSION) return raw
+  throw new Error(`Unknown sentinel version ${String(v)}. Upgrade YALC.`)
+}
+
+/** Stamp the current schema version onto a record about to be written. */
+function withVersion<T extends object>(record: T): T & { _v: number } {
+  return { _v: CURRENT_SENTINEL_VERSION, ...record }
+}
+
 /** Resolve `~/.gtm-os/agents/` at call time so HOME pivots take effect. */
 function agentsDir(): string {
   return join(homedir(), '.gtm-os', 'agents')
@@ -78,27 +108,52 @@ export function findFrameworkByRunId(runId: string): string | null {
   return null
 }
 
-/** Read the awaiting-gate sentinel. Null when not present or unparseable. */
+/**
+ * Read the awaiting-gate sentinel. Null when not present or unparseable as
+ * JSON. Throws (via parseSentinel) if `_v` is set to a value newer than
+ * this build understands.
+ */
 export function readAwaitingGate(
   framework: string,
   runId: string,
 ): AwaitingGateRecord | null {
   const p = awaitingGatePath(framework, runId)
   if (!existsSync(p)) return null
+  let raw: unknown
   try {
-    return JSON.parse(readFileSync(p, 'utf-8')) as AwaitingGateRecord
+    raw = JSON.parse(readFileSync(p, 'utf-8'))
   } catch {
     return null
   }
+  if (!raw || typeof raw !== 'object') return null
+  return parseSentinel(raw as AwaitingGateRecord)
 }
 
 export interface ApprovedGateRecord {
+  /** Schema version (A6). Missing in v1 records persisted before A6. */
+  _v?: number
   run_id: string
   framework: string
   step_index: number
   gate_id: string
   /** The (possibly edited) payload that the runner will resume from. */
   payload: unknown
+  /**
+   * The original (pre-edit) payload from the awaiting-gate sentinel (D3).
+   *
+   * Captured on every new approval so the UI can render a side-by-side
+   * diff of what the operator changed. Optional in the type because
+   * pre-D3 approved records on disk don't carry it; readers MUST treat
+   * `undefined` as "no diff available" rather than as `null`.
+   */
+  original_payload?: unknown
+  /**
+   * True iff the operator edited the payload before approving (D3).
+   *
+   * `undefined` for pre-D3 records (parser does not synthesise a value
+   * to keep the absence detectable).
+   */
+  edits_applied?: boolean
   /** Index into `prior_step_outputs` the payload was sourced from (if any). */
   payload_step_index: number | null
   /** Snapshot of step outputs the gate captured. */
@@ -108,6 +163,8 @@ export interface ApprovedGateRecord {
 }
 
 export interface RejectedGateRecord {
+  /** Schema version (A6). Missing in v1 records persisted before A6. */
+  _v?: number
   run_id: string
   framework: string
   step_index: number
@@ -142,13 +199,17 @@ export function listAwaitingGates(): AwaitingGateRecord[] {
       ) {
         continue
       }
+      let raw: unknown
       try {
-        out.push(
-          JSON.parse(readFileSync(join(dir, f), 'utf-8')) as AwaitingGateRecord,
-        )
+        raw = JSON.parse(readFileSync(join(dir, f), 'utf-8'))
       } catch {
         // skip malformed files
+        continue
       }
+      if (!raw || typeof raw !== 'object') continue
+      // parseSentinel throws on unknown _v; that's intentional — listing
+      // surfaces the same upgrade hint downstream commands would.
+      out.push(parseSentinel(raw as AwaitingGateRecord))
     }
   }
   return out
@@ -163,25 +224,25 @@ export type GateState =
 export function readGateState(framework: string, runId: string): GateState {
   const approved = approvedGatePath(framework, runId)
   if (existsSync(approved)) {
+    let raw: unknown
     try {
-      return {
-        kind: 'approved',
-        record: JSON.parse(readFileSync(approved, 'utf-8')) as ApprovedGateRecord,
-      }
+      raw = JSON.parse(readFileSync(approved, 'utf-8'))
     } catch {
       return { kind: 'missing' }
     }
+    if (!raw || typeof raw !== 'object') return { kind: 'missing' }
+    return { kind: 'approved', record: parseSentinel(raw as ApprovedGateRecord) }
   }
   const rejected = rejectedGatePath(framework, runId)
   if (existsSync(rejected)) {
+    let raw: unknown
     try {
-      return {
-        kind: 'rejected',
-        record: JSON.parse(readFileSync(rejected, 'utf-8')) as RejectedGateRecord,
-      }
+      raw = JSON.parse(readFileSync(rejected, 'utf-8'))
     } catch {
       return { kind: 'missing' }
     }
+    if (!raw || typeof raw !== 'object') return { kind: 'missing' }
+    return { kind: 'rejected', record: parseSentinel(raw as RejectedGateRecord) }
   }
   const awaiting = readAwaitingGate(framework, runId)
   if (awaiting) return { kind: 'awaiting', record: awaiting }
@@ -213,16 +274,17 @@ export function writeApproved(
     throw new GateConflictError('rejected', framework, runId)
   }
   if (existsSync(approvedFile)) {
-    const existing = JSON.parse(
-      readFileSync(approvedFile, 'utf-8'),
-    ) as ApprovedGateRecord
+    const existing = parseSentinel(
+      JSON.parse(readFileSync(approvedFile, 'utf-8')) as ApprovedGateRecord,
+    )
     return { approved: existing, alreadyProcessed: true }
   }
   const awaiting = readAwaitingGate(framework, runId)
   if (!awaiting) {
     throw new GateNotFoundError(framework, runId)
   }
-  let payload = awaiting.payload
+  const originalPayload = awaiting.payload
+  let payload = originalPayload
   if (edits !== undefined) {
     if (
       payload &&
@@ -237,17 +299,24 @@ export function writeApproved(
       payload = edits
     }
   }
-  const record: ApprovedGateRecord = {
+  // D3 — diff persistence. We always capture `original_payload` so the UI
+  // can render a side-by-side diff post-approval. `edits_applied` is true
+  // only when the resolved payload actually differs from the original
+  // (passing edits that happen to be identical is a no-op, not a diff).
+  const editsApplied = !deepEqual(originalPayload, payload)
+  const record: ApprovedGateRecord = withVersion({
     run_id: awaiting.run_id,
     framework: awaiting.framework,
     step_index: awaiting.step_index,
     gate_id: awaiting.gate_id,
     payload,
+    original_payload: originalPayload,
+    edits_applied: editsApplied,
     payload_step_index: awaiting.payload_step_index ?? null,
     prior_step_outputs: awaiting.prior_step_outputs,
     inputs: awaiting.inputs,
     approved_at: new Date().toISOString(),
-  }
+  })
   ensureDir(runsDirFor(framework))
   writeFileSync(approvedFile, JSON.stringify(record, null, 2) + '\n', 'utf-8')
   return { approved: record, alreadyProcessed: false }
@@ -276,16 +345,16 @@ export function writeRejected(
     throw new GateConflictError('approved', framework, runId)
   }
   if (existsSync(rejectedFile)) {
-    const existing = JSON.parse(
-      readFileSync(rejectedFile, 'utf-8'),
-    ) as RejectedGateRecord
+    const existing = parseSentinel(
+      JSON.parse(readFileSync(rejectedFile, 'utf-8')) as RejectedGateRecord,
+    )
     return { rejected: existing, alreadyProcessed: true }
   }
   const awaiting = readAwaitingGate(framework, runId)
   if (!awaiting) {
     throw new GateNotFoundError(framework, runId)
   }
-  const record: RejectedGateRecord = {
+  const record: RejectedGateRecord = withVersion({
     run_id: awaiting.run_id,
     framework: awaiting.framework,
     step_index: awaiting.step_index,
@@ -293,7 +362,7 @@ export function writeRejected(
     reason,
     inputs: awaiting.inputs,
     rejected_at: new Date().toISOString(),
-  }
+  })
   ensureDir(runsDirFor(framework))
   writeFileSync(rejectedFile, JSON.stringify(record, null, 2) + '\n', 'utf-8')
   return { rejected: record, alreadyProcessed: false }
@@ -310,6 +379,41 @@ export function clearAwaitingSentinel(framework: string, runId: string): void {
 
 function ensureDir(dir: string): void {
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+}
+
+/**
+ * Structural equality over JSON-shaped values (D3).
+ *
+ * Used to decide `edits_applied` on approve — a wholesale or per-key edit
+ * that produces the same shape as the original counts as no edit.
+ * Handles primitives, arrays (order-sensitive), and plain objects (key
+ * order independent). NaN / functions / Date / symbols are out of scope
+ * because awaiting-gate payloads round-trip through JSON.
+ */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (a === null || b === null) return false
+  if (typeof a !== 'object' || typeof b !== 'object') return false
+  const aIsArr = Array.isArray(a)
+  const bIsArr = Array.isArray(b)
+  if (aIsArr !== bIsArr) return false
+  if (aIsArr && bIsArr) {
+    if (a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) {
+      if (!deepEqual(a[i], b[i])) return false
+    }
+    return true
+  }
+  const aObj = a as Record<string, unknown>
+  const bObj = b as Record<string, unknown>
+  const aKeys = Object.keys(aObj)
+  const bKeys = Object.keys(bObj)
+  if (aKeys.length !== bKeys.length) return false
+  for (const k of aKeys) {
+    if (!Object.prototype.hasOwnProperty.call(bObj, k)) return false
+    if (!deepEqual(aObj[k], bObj[k])) return false
+  }
+  return true
 }
 
 export class GateConflictError extends Error {

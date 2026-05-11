@@ -1,0 +1,64 @@
+# People Data Labs — people-enrich
+#
+# Vendor docs: https://docs.peopledatalabs.com/docs/bulk-person-enrichment-api
+# Endpoint:    POST /v5/person/bulk
+# Auth:        X-Api-Key header (static API key — no OAuth)
+#
+# PDL's bulk enrich endpoint takes up to 100 person requests in a single
+# call and returns an array of `{status, data:{...person}}` rows. We map
+# each row's `data.work_email` and `data.mobile_phone` onto YALC's
+# people-enrich `results[].email` / `results[].phone` shape so this
+# provider is a drop-in alternative to FullEnrich.
+#
+# v1 manifest scope:
+#   * Honors `input.contacts[0]` for the smoke-test path. The full
+#     bulk-array request body is constructed by the caller (see the
+#     provider-builder skill / template) — PDL bulk takes a structured
+#     `requests[]` array that is hard to generate via Mustache from a
+#     dynamic-length input. Treated as v1.1 follow-up.
+#   * Falls back to the FullEnrich built-in for true bulk runs in the
+#     interim.
+manifestVersion: 1
+capability: people-enrich
+provider: peopledatalabs
+version: 0.1.0
+auth:
+  type: header
+  name: X-Api-Key
+  value: ${env:PEOPLEDATALABS_API_KEY}
+endpoint:
+  method: POST
+  url: https://api.peopledatalabs.com/v5/person/bulk
+request:
+  contentType: application/json
+  bodyTemplate: |
+    {
+      "requests": [
+        {
+          "params": {
+            "first_name": ["{{input.contacts[0].firstname}}"],
+            "last_name": ["{{input.contacts[0].lastname}}"],
+            "company": ["{{input.contacts[0].company_name}}"]
+          }
+        }
+      ]
+    }
+response:
+  rootPath: $
+  mappings:
+    "results[].firstname": "$.data.first_name"
+    "results[].lastname": "$.data.last_name"
+    "results[].email": "$.data.work_email"
+    "results[].phone": "$.data.mobile_phone"
+    "results[].linkedin_url": "$.data.linkedin_url"
+    "results[].company": "$.data.job_company_name"
+  errorEnvelope:
+    matchPath: $.error.message
+smoke_test:
+  input:
+    contacts:
+      - firstname: Marc
+        lastname: Benioff
+        company_name: Salesforce
+  expectNonEmpty:
+    - "results[0].email"

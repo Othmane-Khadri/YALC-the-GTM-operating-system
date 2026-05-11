@@ -259,27 +259,45 @@ function checkEnvironment(): LayerResult {
       })
     }
   } else if (uKey && !uDsn) {
-    checks.push({ name: 'Unipile credentials', status: 'fail', detail: 'UNIPILE_API_KEY set but UNIPILE_DSN missing. Both required.' })
+    checks.push({
+      name: 'Unipile credentials',
+      status: 'fail',
+      detail: `UNIPILE_API_KEY set but UNIPILE_DSN missing. Both required. Fix: ${keysConnectUrlFor('unipile')}`,
+    })
   } else if (!uKey && uDsn) {
-    checks.push({ name: 'Unipile credentials', status: 'fail', detail: 'UNIPILE_DSN set but UNIPILE_API_KEY missing. Both required.' })
+    checks.push({
+      name: 'Unipile credentials',
+      status: 'fail',
+      detail: `UNIPILE_DSN set but UNIPILE_API_KEY missing. Both required. Fix: ${keysConnectUrlFor('unipile')}`,
+    })
   } else {
-    checks.push({ name: 'Unipile credentials', status: 'skip', detail: 'Not configured (optional)' })
+    checks.push({
+      name: 'Unipile credentials',
+      status: 'skip',
+      detail: `Not configured (optional). Connect: ${keysConnectUrlFor('unipile')}`,
+    })
   }
 
   // Optional providers
   const optional = [
-    { key: 'FIRECRAWL_API_KEY', label: 'Firecrawl' },
-    { key: 'NOTION_API_KEY', label: 'Notion' },
-    { key: 'CRUSTDATA_API_KEY', label: 'Crustdata' },
-    { key: 'FULLENRICH_API_KEY', label: 'FullEnrich' },
-    { key: 'INSTANTLY_API_KEY', label: 'Instantly' },
+    { key: 'FIRECRAWL_API_KEY', label: 'Firecrawl', id: 'firecrawl' },
+    { key: 'NOTION_API_KEY', label: 'Notion', id: 'notion' },
+    { key: 'CRUSTDATA_API_KEY', label: 'Crustdata', id: 'crustdata' },
+    { key: 'FULLENRICH_API_KEY', label: 'FullEnrich', id: 'fullenrich' },
+    { key: 'INSTANTLY_API_KEY', label: 'Instantly', id: 'instantly' },
   ]
-  for (const { key, label } of optional) {
+  for (const { key, label, id } of optional) {
     const val = envVars.get(key) ?? process.env[key]
     if (val && val.trim()) {
       checks.push({ name: `${label} (${key})`, status: 'pass', detail: '' })
     } else {
-      checks.push({ name: `${label} (${key})`, status: 'skip', detail: 'Not configured (optional)' })
+      // Optional → skipped, but still surface the connect URL so the user
+      // can opt in without hunting for it.
+      checks.push({
+        name: `${label} (${key})`,
+        status: 'skip',
+        detail: `Not configured (optional). Connect: ${keysConnectUrlFor(id)}`,
+      })
     }
   }
 
@@ -516,6 +534,31 @@ function checkConfiguration(): LayerResult {
   }
 
   return { layer: 'Configuration', checks }
+}
+
+// ─── Keys:connect handoff ────────────────────────────────────────────────────
+//
+// When a provider check FAILs because the API key is missing/invalid, doctor
+// prints a clickable URL pointing at the SPA's `/keys/connect/<provider>`
+// route so the user has an actionable next step. Doctor itself does NOT
+// boot the server — it just prints the URL. The user runs `yalc-gtm
+// dashboard` (A2) separately when they want to click through.
+
+const KEYS_CONNECT_BASE_URL = 'http://localhost:3847/keys/connect'
+
+export function keysConnectUrlFor(provider: string): string {
+  return `${KEYS_CONNECT_BASE_URL}/${encodeURIComponent(provider)}`
+}
+
+/**
+ * Append a `Fix: <url>` hint to a check's detail message. Idempotent — if
+ * the detail already ends with the same URL, returns the original.
+ */
+function appendKeysConnectHint(detail: string, provider: string): string {
+  const url = keysConnectUrlFor(provider)
+  if (detail.includes(url)) return detail
+  const sep = detail.trim() === '' ? '' : ' '
+  return `${detail}${sep}Fix: ${url}`.trim()
 }
 
 // ─── Layer 4: Provider Connectivity ──────────────────────────────────────────
@@ -828,6 +871,25 @@ async function checkProviders(): Promise<LayerResult> {
     }
   } catch {
     // MCP check is best-effort
+  }
+
+  // 0.9.6 / A5: append a `/keys/connect/<provider>` URL to any FAIL/WARN
+  // check whose detail signals a missing or invalid key. The mapping
+  // covers the canonical builtins; MCP entries are intentionally left
+  // alone since the SPA route doesn't manage their config files.
+  const PROVIDER_LABEL_TO_ID: Record<string, string> = {
+    'Crustdata': 'crustdata',
+    'Unipile (LinkedIn)': 'unipile',
+    'Firecrawl': 'firecrawl',
+    'Notion': 'notion',
+    'FullEnrich': 'fullenrich',
+    'Instantly': 'instantly',
+  }
+  for (const c of checks) {
+    if (c.status !== 'fail' && c.status !== 'warn') continue
+    const providerId = PROVIDER_LABEL_TO_ID[c.name]
+    if (!providerId) continue
+    c.detail = appendKeysConnectHint(c.detail, providerId)
   }
 
   return { layer: 'Provider Connectivity', checks }

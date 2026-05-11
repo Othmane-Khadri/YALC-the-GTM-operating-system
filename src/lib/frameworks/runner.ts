@@ -35,6 +35,10 @@ import { resolveSkillAlias, noteRetiredSkill } from '../skills/aliases.js'
 import { getRegistryReady } from '../providers/registry.js'
 import type { FrameworkStep, FrameworkStepEntry } from './types.js'
 import { isGateStep } from './types.js'
+import { CURRENT_SENTINEL_VERSION } from './gates.js'
+import { enforceGateTimeouts } from './gate-timeouts.js'
+import { notifyAwaitingGate, notifyStaleAwaitingGates } from '../notifications/runner-hook.js'
+import { publishTodayEvent } from '../server/event-bus.js'
 import type { Skill, SkillContext } from '../skills/types.js'
 
 /** Resolve the runs directory at call time so HOME-overrides in tests apply. */
@@ -113,6 +117,11 @@ export class FrameworkGatePauseError extends Error {
 
 /** Shape of the awaiting-gate sentinel persisted on disk. */
 export interface AwaitingGateRecord {
+  /**
+   * Schema version (A6). Optional so v1 records on disk (no `_v` field) parse
+   * cleanly; new writes always stamp `CURRENT_SENTINEL_VERSION`.
+   */
+  _v?: number
   run_id: string
   framework: string
   step_index: number
@@ -351,6 +360,31 @@ function persistRun(
   return file
 }
 
+/** Best-effort SSE fan-out for a failed run. */
+function publishRunFailed(
+  framework: string,
+  partial: DashboardRun & { error: { step: number; message: string } },
+  path: string,
+): void {
+  try {
+    publishTodayEvent({
+      type: 'run_failed',
+      item: {
+        type: 'run',
+        framework,
+        title: partial.title,
+        summary: partial.summary,
+        ranAt: partial.ranAt,
+        rowCount: partial.rows.length,
+        error: partial.error.message,
+        path,
+      },
+    })
+  } catch {
+    // best-effort
+  }
+}
+
 /**
  * Execute every step of an installed framework, persisting either a
  * complete run JSON or a partial run JSON on the first failure.
@@ -370,6 +404,22 @@ export async function runFramework(
   const cfg = loadInstalledConfig(name)
   if (!cfg) {
     throw new Error(`Framework "${name}" is not installed`)
+  }
+  // Each runner tick is a good opportunity to flush stale awaiting-gate
+  // sentinels — keeps timed-out gates from piling up forever even when no
+  // SPA / CLI surface ever inspected them.
+  try {
+    enforceGateTimeouts()
+  } catch {
+    // best-effort; never fail a run because the timeout pass blew up
+  }
+  // After the auto-reject sweep, scan remaining awaiting sentinels for
+  // ones that have crossed the 80% stale threshold and dispatch a stale
+  // notification (idempotent — flag file in ~/.gtm-os/notifications/).
+  try {
+    void notifyStaleAwaitingGates()
+  } catch {
+    // best-effort; never fail a run because the stale scan blew up
   }
 
   // Merge resolved install-time inputs with seed overrides when --seed is set.
@@ -405,6 +455,26 @@ export async function runFramework(
   // / rejected sentinels share lineage. New runs use the run timestamp.
   const runId = opts.resume?.runId ?? ranAt.replace(/[:.]/g, '-')
 
+  // Best-effort SSE fan-out — surface that a framework run has begun so the
+  // /today page can show a transient "running" state.
+  try {
+    publishTodayEvent({
+      type: 'run_started',
+      item: {
+        type: 'run',
+        framework: name,
+        title: framework.display_name,
+        summary: '',
+        ranAt,
+        rowCount: 0,
+        error: null,
+        path: '',
+      },
+    })
+  } catch {
+    // best-effort
+  }
+
   for (let i = startAt; i < framework.steps.length; i++) {
     const stepEntry: FrameworkStepEntry = framework.steps[i]
     if (isGateStep(stepEntry)) {
@@ -420,6 +490,7 @@ export async function runFramework(
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
       const awaitingPath = join(dir, `${runId}.awaiting-gate.json`)
       const record: AwaitingGateRecord = {
+        _v: CURRENT_SENTINEL_VERSION,
         run_id: runId,
         framework: name,
         step_index: i,
@@ -432,6 +503,32 @@ export async function runFramework(
         created_at: ranAt,
       }
       writeFileSync(awaitingPath, JSON.stringify(record, null, 2) + '\n', 'utf-8')
+      // Best-effort SSE fan-out — no listeners → no-op.
+      try {
+        publishTodayEvent({
+          type: 'gate_awaiting',
+          item: {
+            type: 'awaiting_gate',
+            framework: record.framework,
+            run_id: record.run_id,
+            step_index: record.step_index,
+            gate_id: record.gate_id,
+            prompt: record.prompt,
+            payload: record.payload,
+            created_at: record.created_at,
+          },
+        })
+      } catch {
+        // best-effort
+      }
+      // Best-effort notification fan-out. Never block or fail the run on
+      // notification errors — flag file dedup keeps us from re-firing on
+      // resume / replay.
+      try {
+        void notifyAwaitingGate(record)
+      } catch {
+        // swallowed; dispatcher handles its own logging
+      }
       throw new FrameworkGatePauseError({
         framework: name,
         runId,
@@ -452,6 +549,7 @@ export async function runFramework(
         error: { step: i, message: `Skill "${step.skill}" not found` },
       }
       const path = persistRun(name, partial)
+      publishRunFailed(name, partial, path)
       throw new FrameworkRunError(i, step.skill, partial.error.message, path)
     }
 
@@ -481,6 +579,7 @@ export async function runFramework(
           },
         }
         const path = persistRun(name, partial)
+        publishRunFailed(name, partial, path)
         throw new FrameworkRunError(i, step.skill, partial.error.message, path)
       }
       stepOutputs.push(out)
@@ -496,6 +595,7 @@ export async function runFramework(
         error: { step: i, message },
       }
       const path = persistRun(name, partial)
+      publishRunFailed(name, partial, path)
       throw new FrameworkRunError(i, step.skill, message, path)
     }
   }
@@ -511,6 +611,25 @@ export async function runFramework(
   }
 
   const path = persistRun(name, finalRun)
+
+  // Best-effort SSE fan-out — run completed.
+  try {
+    publishTodayEvent({
+      type: 'run_completed',
+      item: {
+        type: 'run',
+        framework: name,
+        title: finalRun.title,
+        summary: finalRun.summary,
+        ranAt: finalRun.ranAt,
+        rowCount: finalRun.rows.length,
+        error: null,
+        path,
+      },
+    })
+  } catch {
+    // best-effort
+  }
 
   if (cfg.output.destination === 'notion' && cfg.output.notion_parent_page) {
     try {

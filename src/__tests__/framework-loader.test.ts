@@ -201,4 +201,64 @@ output: { destination_choice: [{ dashboard: { route: "/x" } }] }
     const dir = bundledFrameworksDir()
     expect(dir.endsWith('configs/frameworks')).toBe(true)
   })
+
+  it('parses optional gate_timeout_hours', () => {
+    const yaml = `
+name: tw-framework
+display_name: TW
+description: test
+inputs: []
+schedule:
+  cron: "0 8 * * *"
+gate_timeout_hours: 48
+steps:
+  - skill: x
+output:
+  destination_choice:
+    - dashboard:
+        route: "/frameworks/tw-framework"
+`
+    const f = parseFrameworkYaml('/x/tw.yaml', yaml)
+    expect(f.gate_timeout_hours).toBe(48)
+  })
+
+  it('rejects gate_timeout_hours that is not a positive number', () => {
+    const yaml = `
+name: tw-framework
+display_name: TW
+description: test
+inputs: []
+schedule:
+  cron: "0 8 * * *"
+gate_timeout_hours: -1
+steps:
+  - skill: x
+output:
+  destination_choice:
+    - dashboard:
+        route: "/frameworks/tw-framework"
+`
+    expect(() => parseFrameworkYaml('/x/tw.yaml', yaml)).toThrow(
+      /gate_timeout_hours/,
+    )
+  })
+
+  it('omits gate_timeout_hours when not set', () => {
+    const yaml = `
+name: tw-framework
+display_name: TW
+description: test
+inputs: []
+schedule:
+  cron: "0 8 * * *"
+steps:
+  - skill: x
+output:
+  destination_choice:
+    - dashboard:
+        route: "/frameworks/tw-framework"
+`
+    const f = parseFrameworkYaml('/x/tw.yaml', yaml)
+    expect(f.gate_timeout_hours).toBeUndefined()
+  })
 })

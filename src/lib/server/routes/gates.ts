@@ -33,16 +33,38 @@ import {
   writeApproved,
   writeRejected,
 } from '../../frameworks/gates.js'
+import {
+  enforceGateTimeouts,
+  isGateStale,
+  resolveGateTimeoutHours,
+} from '../../frameworks/gate-timeouts.js'
+import { findFramework } from '../../frameworks/loader.js'
 import { runFrameworkResume } from '../../../cli/commands/framework.js'
+import { publishTodayEvent } from '../event-bus.js'
 
 export const gatesRoutes = new Hono()
 
 // ─── GET /api/gates/awaiting ────────────────────────────────────────────────
 
 gatesRoutes.get('/awaiting', (c) => {
-  const items = listAwaitingGates().sort((a, b) =>
-    String(b.created_at).localeCompare(String(a.created_at)),
-  )
+  // Auto-reject expired sentinels so the list never includes timed-out gates.
+  try {
+    enforceGateTimeouts()
+  } catch {
+    // best-effort
+  }
+  const now = Date.now()
+  const items = listAwaitingGates()
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+    .map((record) => {
+      const def = findFramework(record.framework)
+      const timeoutHours = resolveGateTimeoutHours(def?.gate_timeout_hours)
+      return {
+        ...record,
+        timeout_hours: timeoutHours,
+        stale: isGateStale(record.created_at, timeoutHours, now),
+      }
+    })
   return c.json({ items, total: items.length })
 })
 
@@ -101,6 +123,22 @@ gatesRoutes.post('/:runId/approve', async (c) => {
       run_id: runId,
       approved: approveResult.approved,
     })
+  }
+
+  // Best-effort SSE fan-out — gate moved out of awaiting state.
+  try {
+    publishTodayEvent({
+      type: 'gate_approved',
+      item: {
+        framework,
+        run_id: runId,
+        gate_id: approveResult.approved.gate_id,
+        step_index: approveResult.approved.step_index,
+        approved_at: approveResult.approved.approved_at,
+      },
+    })
+  } catch {
+    // best-effort
   }
 
   // First-time approve: trigger the in-process resume.
@@ -186,6 +224,23 @@ gatesRoutes.post('/:runId/reject', async (c) => {
       run_id: runId,
       rejected: rejectResult.rejected,
     })
+  }
+
+  // Best-effort SSE fan-out — gate moved out of awaiting state.
+  try {
+    publishTodayEvent({
+      type: 'gate_rejected',
+      item: {
+        framework,
+        run_id: runId,
+        gate_id: rejectResult.rejected.gate_id,
+        step_index: rejectResult.rejected.step_index,
+        reason: rejectResult.rejected.reason,
+        rejected_at: rejectResult.rejected.rejected_at,
+      },
+    })
+  } catch {
+    // best-effort
   }
 
   try {

@@ -2,8 +2,9 @@ import { readFileSync } from 'fs'
 import { unipileService } from '../services/unipile'
 import { firecrawlService } from '../services/firecrawl'
 import { getAnthropicClient, QUALIFIER_MODEL } from '../ai/client'
-import { loadFramework, saveFramework } from '../framework/context'
+import { saveFramework } from '../framework/context'
 import type { GTMFramework } from '../framework/types'
+import { RICH_PROFILE_TOOL } from './rich-profile.js'
 
 interface OnboardOptions {
   linkedin?: string
@@ -66,84 +67,7 @@ export async function buildProfile(opts: OnboardOptions): Promise<GTMFramework> 
   const response = await anthropic.messages.create({
     model: QUALIFIER_MODEL,
     max_tokens: 4096,
-    tools: [{
-      name: 'build_framework',
-      description: 'Build a complete GTM framework from the provided business context',
-      input_schema: {
-        type: 'object' as const,
-        properties: {
-          company: {
-            type: 'object',
-            properties: {
-              name: { type: 'string' },
-              website: { type: 'string' },
-              linkedinUrl: { type: 'string' },
-              industry: { type: 'string' },
-              subIndustry: { type: 'string' },
-              stage: { type: 'string', enum: ['pre-seed', 'seed', 'series-a', 'series-b', 'growth', 'enterprise'] },
-              description: { type: 'string' },
-              teamSize: { type: 'string' },
-              foundedYear: { type: 'number' },
-              headquarters: { type: 'string' },
-            },
-            required: ['name', 'website', 'industry', 'description'],
-          },
-          positioning: {
-            type: 'object',
-            properties: {
-              valueProp: { type: 'string' },
-              tagline: { type: 'string' },
-              category: { type: 'string' },
-              differentiators: { type: 'array', items: { type: 'string' } },
-              proofPoints: { type: 'array', items: { type: 'string' } },
-              competitors: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    name: { type: 'string' },
-                    website: { type: 'string' },
-                    positioning: { type: 'string' },
-                    weaknesses: { type: 'array', items: { type: 'string' } },
-                    battlecardNotes: { type: 'string' },
-                  },
-                },
-              },
-            },
-            required: ['valueProp', 'category'],
-          },
-          segments: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                id: { type: 'string' },
-                name: { type: 'string' },
-                description: { type: 'string' },
-                priority: { type: 'string', enum: ['primary', 'secondary', 'exploratory'] },
-                targetRoles: { type: 'array', items: { type: 'string' } },
-                targetCompanySizes: { type: 'array', items: { type: 'string' } },
-                targetIndustries: { type: 'array', items: { type: 'string' } },
-                keyDecisionMakers: { type: 'array', items: { type: 'string' } },
-                painPoints: { type: 'array', items: { type: 'string' } },
-                buyingTriggers: { type: 'array', items: { type: 'string' } },
-                disqualifiers: { type: 'array', items: { type: 'string' } },
-              },
-              required: ['id', 'name', 'priority'],
-            },
-          },
-          signals: {
-            type: 'object',
-            properties: {
-              buyingIntentSignals: { type: 'array', items: { type: 'string' } },
-              monitoringKeywords: { type: 'array', items: { type: 'string' } },
-              triggerEvents: { type: 'array', items: { type: 'string' } },
-            },
-          },
-        },
-        required: ['company', 'positioning', 'segments', 'signals'],
-      },
-    }],
+    tools: [RICH_PROFILE_TOOL],
     tool_choice: { type: 'tool' as const, name: 'build_framework' },
     messages: [{
       role: 'user',

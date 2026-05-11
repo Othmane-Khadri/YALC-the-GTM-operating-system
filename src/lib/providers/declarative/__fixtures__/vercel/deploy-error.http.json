@@ -1,0 +1,9 @@
+{
+  "status": 403,
+  "body": {
+    "error": {
+      "code": "forbidden",
+      "message": "Not authorized to deploy to this team"
+    }
+  }
+}

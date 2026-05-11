@@ -1,0 +1,66 @@
+# Brevo (formerly Sendinblue) — email-campaign-create
+#
+# Vendor docs: https://developers.brevo.com/reference/createemailcampaign
+# Endpoint:    POST /v3/emailCampaigns
+# Auth:        api-key header (static)
+#
+# Brevo's emailCampaigns endpoint creates a draft email campaign tied to
+# one or more contact lists. Lead-level personalisation happens via the
+# list (Brevo's data model differs from Instantly's lead-array model);
+# pass `listIds` after importing leads via `/v3/contacts`. The created
+# campaign id is returned and can be used by `campaign:track` for
+# downstream send-status polling.
+#
+# v1 manifest scope:
+#   * Returns `{campaignId, status: 'draft'}`. Brevo creates campaigns
+#     in `draft` status; trigger send via the separate
+#     POST /v3/emailCampaigns/{id}/sendNow which is out of scope here
+#     (handled by a follow-up adapter or an explicit operator step).
+#   * Required input fields: campaignName, sender{name,email}, subject,
+#     htmlContent, listIds.
+manifestVersion: 1
+capability: email-campaign-create
+provider: brevo
+version: 0.1.0
+auth:
+  type: header
+  name: api-key
+  value: ${env:BREVO_API_KEY}
+endpoint:
+  method: POST
+  url: https://api.brevo.com/v3/emailCampaigns
+request:
+  contentType: application/json
+  bodyTemplate: |
+    {
+      "name": "{{input.campaignName}}",
+      "subject": "{{input.subject}}",
+      "sender": {
+        "name": "{{input.sender.name}}",
+        "email": "{{input.sender.email}}"
+      },
+      "htmlContent": {{input.htmlContent | json}},
+      "recipients": {
+        "listIds": {{input.listIds | json}}
+      }
+    }
+response:
+  rootPath: $
+  mappings:
+    "campaignId": "$.id"
+    "status": "$.status"
+  errorEnvelope:
+    matchPath: $.code
+    messagePath: $.message
+smoke_test:
+  input:
+    campaignName: YALC smoke campaign
+    subject: Hello from YALC
+    sender:
+      name: YALC
+      email: noreply@yalc.test
+    htmlContent: "<p>Hello world</p>"
+    listIds: [1]
+  expectNonEmpty:
+    - campaignId
+    - status

@@ -152,15 +152,15 @@ describe('email-campaign-create-instantly adapter', () => {
   })
 })
 
-describe('asset-rendering-stub adapter', () => {
+describe('asset-rendering-playwright adapter', () => {
   it('writes HTML on disk and falls back gracefully when Playwright is missing for pdf', async () => {
-    const { assetRenderingStubAdapter } = await import(
-      '../lib/providers/adapters/asset-rendering-stub'
+    const { assetRenderingPlaywrightAdapter } = await import(
+      '../lib/providers/adapters/asset-rendering-playwright'
     )
-    expect(assetRenderingStubAdapter.capabilityId).toBe('asset-rendering')
-    expect(assetRenderingStubAdapter.providerId).toBe('builtin')
+    expect(assetRenderingPlaywrightAdapter.capabilityId).toBe('asset-rendering')
+    expect(assetRenderingPlaywrightAdapter.providerId).toBe('playwright')
 
-    const out = (await assetRenderingStubAdapter.execute(
+    const out = (await assetRenderingPlaywrightAdapter.execute(
       { content: '<h1>Hello</h1>', filename: 'test-asset.html', format: 'html', title: 'Hi' },
       { executor: null, registry: null as never },
     )) as { rendered: boolean; path: string; format: string }
@@ -169,7 +169,7 @@ describe('asset-rendering-stub adapter', () => {
     expect(out.format).toBe('html')
 
     // Empty input should produce a useful fallbackReason rather than crashing.
-    const empty = (await assetRenderingStubAdapter.execute(
+    const empty = (await assetRenderingPlaywrightAdapter.execute(
       { content: '' },
       { executor: null, registry: null as never },
     )) as { rendered: boolean; fallbackReason: string }
@@ -178,19 +178,6 @@ describe('asset-rendering-stub adapter', () => {
   })
 })
 
-describe('landing-page-deploy-stub adapter', () => {
-  it('writes a local fallback page and reports deployed=false with a clear hint', async () => {
-    const { landingPageDeployStubAdapter } = await import(
-      '../lib/providers/adapters/landing-page-deploy-stub'
-    )
-    expect(landingPageDeployStubAdapter.capabilityId).toBe('landing-page-deploy')
-
-    const out = (await landingPageDeployStubAdapter.execute(
-      { html: '<h1>CMO Playbook</h1>', slug: 'cmo-playbook', title: 'CMO Playbook' },
-      { executor: null, registry: null as never },
-    )) as { deployed: boolean; url: string; fallbackReason: string }
-    expect(out.deployed).toBe(false)
-    expect(out.url).toMatch(/^file:\/\//)
-    expect(out.fallbackReason).toMatch(/Vercel MCP/)
-  })
-})
+// landing-page-deploy stub removed in 0.12.0 — replaced by the bundled
+// declarative `landing-page-deploy-vercel.yaml` manifest. Stub coverage
+// migrated to `src/lib/providers/declarative/__tests__/bundled-adapters.test.ts`.

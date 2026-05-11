@@ -69,6 +69,7 @@ export function parseFrameworkYaml(sourcePath: string, raw: string): FrameworkDe
   const mode = parseMode(sourcePath, r['mode'])
   const schedule = parseSchedule(sourcePath, r['schedule'], mode)
   const steps = parseSteps(sourcePath, r['steps'])
+  const gate_timeout_hours = parseGateTimeoutHours(sourcePath, r['gate_timeout_hours'])
   const output = parseOutput(sourcePath, r['output'])
   const seed_run = parseSeedRun(sourcePath, r['seed_run'])
   const default_visualization = parseDefaultVisualization(sourcePath, r['default_visualization'])
@@ -93,8 +94,27 @@ export function parseFrameworkYaml(sourcePath: string, raw: string): FrameworkDe
     output,
     seed_run,
     default_visualization,
+    ...(gate_timeout_hours !== undefined ? { gate_timeout_hours } : {}),
     _sourcePath: sourcePath,
   }
+}
+
+/**
+ * Parse the optional `gate_timeout_hours` field. Must be a positive number
+ * (whole or fractional hours). Undefined / null → omit (defer to env / 72h).
+ */
+function parseGateTimeoutHours(
+  sourcePath: string,
+  raw: unknown,
+): number | undefined {
+  if (raw === undefined || raw === null) return undefined
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) {
+    throw new FrameworkDefinitionError(
+      sourcePath,
+      `"gate_timeout_hours" must be a positive number (got ${JSON.stringify(raw)})`,
+    )
+  }
+  return raw
 }
 
 /**

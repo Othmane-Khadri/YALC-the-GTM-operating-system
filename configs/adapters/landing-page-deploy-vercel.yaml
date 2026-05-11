@@ -1,0 +1,91 @@
+# Vercel — landing-page-deploy
+#
+# Vendor docs: https://vercel.com/docs/rest-api/endpoints/deployments#create-a-new-deployment
+# Endpoint:    POST /v13/deployments[?teamId=...]
+# Auth:        Bearer ${VERCEL_TOKEN} (personal or team token)
+#
+# Vercel's "Create a new deployment" endpoint accepts an inline list of
+# files in the JSON body (no separate upload pre-step needed for small
+# single-page assets), making the whole deploy expressible as one POST.
+# That's why this lives as a declarative manifest rather than a TS
+# adapter — the YAML compiler from 0.11.0 covers the full flow:
+# templated body, optional team-scoped query param, JSON-path response
+# mapping, and `errorEnvelope` for vendor errors. No file streaming, no
+# multi-step token exchange, no SDK quirks — POST + map + done.
+#
+# Behavior (matches the deprecated stub's input shape):
+#   * Required input:  `html` (string).
+#   * Optional input:  `slug` (string, used as the project name; defaults
+#                      to "page" so a missing slug never blocks a deploy).
+#   * Optional input:  `title` (carried through for caller bookkeeping —
+#                      Vercel ignores it).
+#
+# Output (matches `LANDING_PAGE_DEPLOY_CAPABILITY.outputSchema` plus the
+# task spec's `deploymentId`):
+#   * `deployed`     — true iff Vercel returned `readyState === 'READY'`.
+#                      Vercel may return earlier states (`QUEUED`,
+#                      `INITIALIZING`, `BUILDING`); the URL is still
+#                      present and pollable, so the caller can decide.
+#   * `url`          — full https URL ("https://" + Vercel's hostname-only
+#                      `url` field). Always set on success.
+#   * `deploymentId` — Vercel's `id` (`dpl_…`).
+#   * `fallbackReason` — always null on success (kept in the schema for
+#                        backwards compatibility with the stub).
+#
+# Errors:
+#   * Missing `VERCEL_TOKEN` → MissingApiKeyError (raised by the
+#     compiler before the fetch, surfaced via `isAvailable()` returning
+#     false in the registry).
+#   * Vendor 4xx/5xx with body `{error:{code,message}}` → ProviderApiError
+#     carrying the vendor message + status. The compiler also runs the
+#     `errorEnvelope` matcher on 2xx bodies to catch documented soft
+#     errors (Vercel embeds these on rare endpoints).
+#
+# Optional `VERCEL_TEAM_ID`:
+#   When set, a `?teamId=…` query parameter is added so the deploy lands
+#   inside the named team scope. When unset, `queryTemplate` skips the
+#   empty value (per compiler.ts line 224-233), so the URL stays clean
+#   for personal accounts. We deliberately use `{{env.VERCEL_TEAM_ID}}`
+#   (template form) rather than `${env:VERCEL_TEAM_ID}` (env-ref form):
+#   the env-ref form would mark VERCEL_TEAM_ID as required and break
+#   personal-account flows.
+manifestVersion: 1
+capability: landing-page-deploy
+provider: vercel
+version: 0.1.0
+auth:
+  type: bearer
+  value: ${env:VERCEL_TOKEN}
+endpoint:
+  method: POST
+  url: https://api.vercel.com/v13/deployments
+  queryTemplate:
+    teamId: "{{env.VERCEL_TEAM_ID}}"
+request:
+  contentType: application/json
+  bodyTemplate: |
+    {
+      "name": "{{input.slug | default: page}}",
+      "files": [
+        {"file": "index.html", "data": {{input.html | json}}}
+      ],
+      "projectSettings": {"framework": null},
+      "target": "production"
+    }
+response:
+  rootPath: $
+  mappings:
+    "deployed": "$.readyState == 'READY'"
+    "url": "https://$.url"
+    "deploymentId": "$.id"
+    "fallbackReason": null
+  errorEnvelope:
+    matchPath: $.error.code
+    messagePath: $.error.message
+smoke_test:
+  input:
+    html: "<!doctype html><h1>yalc-smoke</h1>"
+    slug: "yalc-smoke"
+  expectNonEmpty:
+    - url
+    - deploymentId

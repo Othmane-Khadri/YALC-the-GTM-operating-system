@@ -15,10 +15,12 @@ import { frameworkRoutes } from './routes/frameworks'
 import { setupRoutes } from './routes/setup'
 import { todayRoutes } from './routes/today'
 import { brainRoutes } from './routes/brain'
+import { brainSectionRoutes } from './routes/brain-section'
 import { keysRoutes } from './routes/keys'
 import { skillsRoutes } from './routes/skills'
 import { gatesRoutes } from './routes/gates'
 import { visualizeApiRoutes, visualizePageRoutes } from './routes/visualize'
+import { dashboardRoutes } from './routes/dashboard'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -80,10 +82,12 @@ export function createApp() {
   app.route('/api/setup', setupRoutes)
   app.route('/api/today', todayRoutes)
   app.route('/api/brain', brainRoutes)
+  app.route('/api/brain', brainSectionRoutes)
   app.route('/api/keys', keysRoutes)
   app.route('/api/skills', skillsRoutes)
   app.route('/api/gates', gatesRoutes)
   app.route('/api/visualize', visualizeApiRoutes)
+  app.route('/api/dashboard', dashboardRoutes)
 
   // Generated visualization page — serves saved HTML from
   // `~/.gtm-os/visualizations/<view_id>.html` with the right Content-Type.
@@ -215,5 +219,19 @@ export function startServer(port = 3847) {
   console.log('  /review    — Lead review dashboard')
   console.log('  /frameworks — Installed framework dashboards')
   console.log('  /swipe     — Skill optimization\n')
-  serve({ fetch: app.fetch, port })
+  const server = serve({ fetch: app.fetch, port })
+  // Surface EADDRINUSE (and other listen errors) instead of letting Node
+  // crash with an uncaught exception. Callers that care can attach their
+  // own listener; otherwise we re-emit a clear message and exit non-zero.
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`\nPort ${port} is already in use.`)
+      console.error(`Either stop the existing process (lsof -i :${port}) or run with a different port:`)
+      console.error(`  yalc-gtm start --port ${port + 1}`)
+      process.exit(1)
+    }
+    console.error(`Server error: ${err.message}`)
+    process.exit(1)
+  })
+  return server
 }

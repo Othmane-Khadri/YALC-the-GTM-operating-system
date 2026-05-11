@@ -201,12 +201,30 @@ export interface CommitPreviewResult {
  * place for the user to manually finish or rerun `--regenerate`). All
  * non-section housekeeping (e.g. `_index.md`, `_meta.json`) is dropped from
  * the preview after a successful commit so a stale preview doesn't linger.
+ *
+ * Meta-confidence persistence (A6, Part 2):
+ *   The preview's `_meta.json#sections` carries per-section confidence
+ *   scores seeded by `writeCapturedPreview` and finalized by synthesis.
+ *   Pre-A6 we dropped this data with the preview folder, forcing /brain to
+ *   recompute confidence on every page load. We now copy the per-section
+ *   meta entries for *committed* sections into `<liveRoot>/_meta.json`
+ *   (merging into any pre-existing entry).
+ *
+ *   Why a sidecar at the live root (Option B, not in-band inside
+ *   `company_context.yaml`):
+ *     - Keeps the human-readable yaml clean of metadata noise.
+ *     - Matches the lookup site `brain.ts` already uses
+ *       (`<liveRoot>/_meta.json` was already a fallback path).
+ *     - One file per tenant — no per-section sidecar proliferation.
  */
 export function commitPreview(opts: CommitPreviewOptions = {}): CommitPreviewResult {
   const { tenant, discardSections = [] } = opts
   if (!previewExists(tenant)) {
     throw new Error(`No preview at ${previewRoot(tenant)} to commit.`)
   }
+
+  // Snapshot preview meta upfront — we tear down `_preview/` further below.
+  const previewMetaSnapshot = readPreviewMeta(tenant)
 
   const discardSet = new Set<SectionName>(discardSections)
   const committed: string[] = []
@@ -262,6 +280,43 @@ export function commitPreview(opts: CommitPreviewOptions = {}): CommitPreviewRes
     }
   }
 
+  // ── A6: persist per-section confidence to <liveRoot>/_meta.json ──────────
+  // Only carry forward meta entries for sections that actually committed
+  // (discarded sections still live in `_preview/`, so their meta stays in the
+  // preview's `_meta.json` until that section eventually commits).
+  const previewSections = previewMetaSnapshot?.sections ?? {}
+  const committedSectionIds = new Set<string>()
+  for (const section of SECTION_NAMES) {
+    if (discardSet.has(section)) continue
+    // A section "committed" here when at least one of its canonical paths
+    // landed in the committed list above.
+    if (SECTION_PATHS[section].some((p) => committed.includes(p))) {
+      committedSectionIds.add(section)
+    }
+  }
+  const newMetaEntries: Record<string, PreviewSectionMeta> = {}
+  for (const id of committedSectionIds) {
+    const entry = previewSections[id]
+    if (entry) newMetaEntries[id] = entry
+  }
+  if (Object.keys(newMetaEntries).length > 0) {
+    const liveMetaPath = join(liveRoot(tenant), '_meta.json')
+    let existing: { sections?: Record<string, PreviewSectionMeta> } = {}
+    if (existsSync(liveMetaPath)) {
+      try {
+        existing = JSON.parse(readFileSync(liveMetaPath, 'utf-8'))
+      } catch {
+        existing = {}
+      }
+    }
+    const merged = {
+      ...existing,
+      sections: { ...(existing.sections ?? {}), ...newMetaEntries },
+    }
+    if (!existsSync(liveRoot(tenant))) mkdirSync(liveRoot(tenant), { recursive: true })
+    writeFileSync(liveMetaPath, JSON.stringify(merged, null, 2))
+  }
+
   // Drop preview housekeeping if nothing meaningful is left.
   const remaining = SECTION_NAMES.flatMap((s) => SECTION_PATHS[s]).filter((p) =>
     existsSync(previewPath(p, tenant)),
@@ -269,10 +324,23 @@ export function commitPreview(opts: CommitPreviewOptions = {}): CommitPreviewRes
   if (remaining.length === 0) {
     rmSync(previewRoot(tenant), { recursive: true, force: true })
   } else {
-    // Refresh meta to reflect the partial state.
-    const meta = readPreviewMeta(tenant)
+    // Refresh meta to reflect the partial state — drop the entries we just
+    // persisted to live so the preview's meta only describes leftover
+    // discarded/uncommitted sections.
+    const meta = previewMetaSnapshot
     if (meta) {
-      writePreviewMeta({ ...meta, version: meta.version ?? '0.6.0' }, tenant)
+      const remainingSections: Record<string, PreviewSectionMeta> = {}
+      for (const [k, v] of Object.entries(meta.sections ?? {})) {
+        if (!committedSectionIds.has(k)) remainingSections[k] = v
+      }
+      writePreviewMeta(
+        {
+          ...meta,
+          sections: remainingSections,
+          version: meta.version ?? '0.6.0',
+        },
+        tenant,
+      )
     }
   }
 
