@@ -110,6 +110,10 @@ program
   .option('--dry-run', 'Preview campaign creation without writing to DB')
   .action(withDiagnostics(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', homedir()))
+    const tenantId = getTenant()
+    const { requireClientICP } = await import('../lib/qualification/icp-gate')
+    await requireClientICP('campaign:create', tenantId)
+
     const { runCreator } = await import('../lib/campaign/creator')
     const { buildScheduleFromOptions } = await import('../lib/campaign/schedule')
 
@@ -126,7 +130,7 @@ program
 
     await runCreator({
       config,
-      tenantId: getTenant(),
+      tenantId,
       ...opts,
       autoCopy: opts.autoCopy,
       dryRun: opts.dryRun ?? false,
@@ -226,6 +230,9 @@ program
   .option('--account <name>', 'Unipile account name or ID to use for scraping')
   .action(withDiagnostics(async (opts) => {
     await assertChannelEnabled('linkedin', 'leads:scrape-post')
+    const { requireClientICP } = await import('../lib/qualification/icp-gate')
+    await requireClientICP('leads:scrape-post', getTenant())
+
     const config = loadConfig(program.opts().config.replace('~', homedir()))
     const { scrapePostEngagers } = await import('../lib/scraping/post-engagers')
     const result = await scrapePostEngagers({
@@ -672,6 +679,9 @@ program
   .option('--linkedin-account <id>', 'Unipile LinkedIn account ID')
   .option('--dry-run', 'Preview actions without sending', false)
   .action(async (opts) => {
+    const { requireClientICP } = await import('../lib/qualification/icp-gate')
+    await requireClientICP('campaign:create-sequence', getTenant())
+
     const { readFileSync } = await import('fs')
 
     // Parse leads
@@ -1009,11 +1019,19 @@ program
   .option('--dry-run', 'Preview qualification without writing results')
   .option('--no-dedup', 'Skip dedup gate entirely')
   .option('--slack-confirm', 'Enable Slack confirmation for ambiguous dedup matches')
+  .option('--no-verify-experience', 'Skip mandatory LinkedIn experience-section enrichment, drift check, and verified-employer ICP match. Default is ON — every qualify run verifies leads against their actual current LinkedIn role and rejects company-disqualifier matches deterministically.')
   .option('--enrich-signals', 'After qualify, pull PredictLeads company signals for surviving leads')
   .option('--signals-types <types>', 'Comma-separated signal types (jobs,funding,tech,news)')
   .option('--no-cache', 'Force re-fetch even if cached within TTL (used with --enrich-signals)')
   .action(withDiagnostics(async (opts) => {
     const config = loadConfig(program.opts().config.replace('~', homedir()))
+    const tenantId = getTenant()
+    // commander auto-sets opts.verifyExperience = true unless --no-verify-experience is passed
+    const verifyExperience = opts.verifyExperience !== false
+
+    const { requireClientICP } = await import('../lib/qualification/icp-gate')
+    const clientICP = await requireClientICP('qualify', tenantId)
+
     const { runQualify } = await import('../lib/qualification/pipeline')
     await runQualify({
       config,
@@ -1023,6 +1041,9 @@ program
       dryRun: opts.dryRun ?? false,
       noDedup: opts.noDedup === true || opts.dedup === false,
       slackConfirm: opts.slackConfirm ?? false,
+      tenantId,
+      verifyExperience,
+      clientICP,
     })
 
     if (opts.enrichSignals) {

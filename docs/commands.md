@@ -38,6 +38,21 @@ Set GTM goals and configure skills based on your framework. Requires `onboard` t
 yalc-gtm configure
 ```
 
+### `update`
+Pull the latest YALC changes, install any new dependencies, and re-run scaffolding — without touching `~/.gtm-os/`.
+
+From source (git clone): switches to `main`, pulls, runs `npx pnpm install` if the lockfile changed, then re-runs `yalc-gtm start --non-interactive` to scaffold any new config fields.
+
+```bash
+npx tsx src/cli/index.ts update
+# or, if installed globally:
+yalc-gtm update
+```
+
+Works on macOS, Linux, and Windows.
+
+---
+
 ### `doctor`
 5-layer health check: environment, database, providers, context, framework.
 

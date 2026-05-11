@@ -10,8 +10,15 @@
 // 6. Deduplicate before enrichment.
 // 7. Maximize results per credit — use full limit (up to 1000 for DB).
 // 8. Cached over realtime for enrichment (1 credit vs 4).
+//
+// All paid endpoints route through `cachedFetch` so partial results survive a
+// mid-run crash or credit exhaustion. The credit-balance endpoint stays on the
+// live `fetch` because executeWithTracking depends on real-time deltas.
+
+import { cachedFetch } from '../cache/cached-fetch'
 
 const BASE_URL = 'https://api.crustdata.com'
+const CACHE_SCOPE = 'crustdata'
 
 /** Required env vars for the Crustdata provider. */
 export const envVarSchema = {
@@ -104,6 +111,11 @@ export interface CrustdataCompany {
   website: string
   industry: string
   employee_count: number
+  employee_count_range?: string
+  hq_country?: string
+  largest_headcount_country?: string
+  company_type?: string
+  acquisition_status?: string
   location: string
   description: string
   funding_stage: string
@@ -173,7 +185,10 @@ export class CrustdataService {
     const balance = await this.checkCredits()
     const needed = Math.ceil(estimatedCost * 1.5) // 1.5x safety margin
     if (balance < 0) {
-      return { ok: false, balance, message: 'Unable to check credit balance' }
+      // Credits endpoint /screener/credits/check returns 404 in the current Crustdata API.
+      // Don't block real calls on a broken health check — log a warning and continue.
+      console.warn(`[crustdata] credits endpoint unavailable; proceeding without preflight (estimated ${estimatedCost} credits)`)
+      return { ok: true, balance, message: 'credit check unavailable; proceeding' }
     }
     if (balance < needed) {
       return { ok: false, balance, message: `Insufficient credits: need ~${estimatedCost} (with 1.5x margin = ${needed}) but only ${balance} available` }
@@ -208,11 +223,11 @@ export class CrustdataService {
     if (filters.keywords) body.keywords = filters.keywords
     body.limit = filters.limit ?? _defaultMaxResults
 
-    const res = await fetch(`${BASE_URL}/v1/companies/search`, {
+    const res = await cachedFetch(`${BASE_URL}/v1/companies/search`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(body),
-    })
+    }, { scope: CACHE_SCOPE })
 
     if (!res.ok) {
       const text = await res.text()
@@ -224,17 +239,23 @@ export class CrustdataService {
   }
 
   async enrichCompany(domain: string): Promise<CrustdataCompany> {
-    const res = await fetch(`${BASE_URL}/v1/companies/enrich?domain=${encodeURIComponent(domain)}`, {
+    // Crustdata's previous /v1/companies/enrich path 404s; the working endpoint
+    // is /screener/company?company_domain=<d>, which returns an array of matches.
+    const res = await cachedFetch(`${BASE_URL}/screener/company?company_domain=${encodeURIComponent(domain)}`, {
       headers: getHeaders(),
-    })
+    }, { scope: CACHE_SCOPE })
 
     if (!res.ok) {
       const text = await res.text()
       throw new Error(`Crustdata enrichCompany failed (${res.status}): ${text}`)
     }
 
-    const data = await res.json() as Record<string, unknown>
-    return normalizeCompany(data)
+    const data = await res.json() as Record<string, unknown>[] | Record<string, unknown>
+    const first = Array.isArray(data) ? data[0] : data
+    if (!first) {
+      throw new Error(`Crustdata enrichCompany returned empty result for ${domain}`)
+    }
+    return normalizeCompany(first)
   }
 
   async searchPeople(filters: SearchPeopleFilters): Promise<CreditTrackResult<PeopleSearchResult>> {
@@ -305,11 +326,11 @@ export class CrustdataService {
       body.cursor = filters.cursor
     }
 
-    const res = await fetch(`${BASE_URL}/screener/persondb/search/`, {
+    const res = await cachedFetch(`${BASE_URL}/screener/persondb/search/`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(body),
-    })
+    }, { scope: CACHE_SCOPE })
 
     if (!res.ok) {
       const text = await res.text()
@@ -333,14 +354,19 @@ export class CrustdataService {
 function normalizeCompany(raw: Record<string, unknown>): CrustdataCompany {
   return {
     name: String(raw.name ?? raw.company_name ?? ''),
-    website: String(raw.website ?? raw.domain ?? ''),
+    website: String(raw.website ?? raw.company_website ?? raw.company_website_domain ?? raw.domain ?? ''),
     industry: String(raw.industry ?? ''),
     employee_count: Number(raw.employee_count ?? raw.employees ?? 0),
+    employee_count_range: raw.employee_count_range ? String(raw.employee_count_range) : undefined,
+    hq_country: raw.hq_country ? String(raw.hq_country) : undefined,
+    largest_headcount_country: raw.largest_headcount_country ? String(raw.largest_headcount_country) : undefined,
+    company_type: raw.company_type ? String(raw.company_type) : undefined,
+    acquisition_status: raw.acquisition_status ? String(raw.acquisition_status) : undefined,
     location: String(raw.location ?? raw.headquarters ?? ''),
-    description: String(raw.description ?? raw.summary ?? ''),
+    description: String(raw.description ?? raw.linkedin_company_description ?? raw.summary ?? ''),
     funding_stage: String(raw.funding_stage ?? raw.last_funding_round ?? ''),
-    linkedin_url: raw.linkedin_url ? String(raw.linkedin_url) : undefined,
-    founded_year: raw.founded_year ? Number(raw.founded_year) : undefined,
+    linkedin_url: raw.linkedin_url ? String(raw.linkedin_url) : raw.linkedin_profile_url ? String(raw.linkedin_profile_url) : undefined,
+    founded_year: raw.year_founded ? Number(raw.year_founded) : raw.founded_year ? Number(raw.founded_year) : undefined,
   }
 }
 

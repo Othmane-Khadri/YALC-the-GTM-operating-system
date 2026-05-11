@@ -15,6 +15,12 @@ Applies to: `src/lib/campaign/`, `src/lib/skills/builtin/track-campaign.ts`
 5. **A/B testing** uses chi-squared with Wilson-Hilferty approximation, p < 0.05. See `src/lib/campaign/significance.ts`.
 6. **Never send DMs to prospects who already replied.** Check reply status before every send action.
 
+## List-build Rules
+1. **5 leads per company hard-cap** by default for any campaign list-build. Over-source 3-5×, rank, keep top 5. Ranking signals (priority order): exact title match → seniority level → tenure at company → HQ-country office → recent LinkedIn activity. Confirm with user at campaign start before sourcing if a different cap is needed.
+2. **Sourcing method preference:** Crustdata `searchPeople` first (structured B2B database, 1 credit per result, current-employer guaranteed), Clay `find-and-enrich-contacts-at-company` second (multi-source, returns emails), Firecrawl Google + Unipile verify as fallback only. Align on tool at campaign start before running anything.
+3. **Persona-specific filters** must be agreed up-front and saved in the campaign's source script. Examples: "global payroll only, never bare Head of Payroll" (datascalehr) — see `feedback_global_payroll_roles.md`.
+4. **Pre-flight credit display + caching** — every list-build script must, on startup, print credit balances for all providers it will touch (Crustdata, Clay, Firecrawl, Unipile, etc.) and flag any below ~3× estimated burn. Every external API response must be cached on the first call into `data/scrapes/<campaign>/<provider>-cache/<key>.json`. `FORCE=1` env bypasses cache. See `feedback_credit_check_and_caching.md`.
+
 ## Key Files
 | File | Purpose |
 |------|---------|

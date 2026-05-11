@@ -2,6 +2,93 @@ import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, Provi
 import type { ColumnDef } from '../../ai/types'
 import { unipileService } from '../../services/unipile'
 import { SEARCH_COLUMNS } from '../../execution/columns'
+import type { VerifiedFields } from '../../qualification/types'
+
+type LinkedInSection =
+  | 'experience'
+  | 'education'
+  | 'languages'
+  | 'skills'
+  | 'certifications'
+  | 'about'
+
+export type LinkedInSectionsConfig = LinkedInSection | LinkedInSection[] | '*'
+
+/**
+ * Resolve which Unipile account ID to use for read/enrich operations.
+ *
+ * Per project hard rule: David Small's account is messaging-only and Doug Pearson's
+ * account is reading/scraping-only. The `UNIPILE_READ_ACCOUNT_ID` env routes reads
+ * to a specific account (typically Doug's). When unset we fall back to the existing
+ * "first connected account" behavior to preserve backward compatibility.
+ */
+export async function resolveReadAccountId(): Promise<string> {
+  const envAccountId = process.env.UNIPILE_READ_ACCOUNT_ID
+  if (envAccountId) return envAccountId
+  const accountsResponse = await unipileService.getAccounts()
+  const accounts = accountsResponse?.items ?? []
+  if (accounts.length === 0) {
+    throw new Error('No LinkedIn account connected in Unipile. Connect one first.')
+  }
+  return String((accounts[0] as Record<string, unknown>).id)
+}
+
+/**
+ * Normalize a `sections` config value to a flat list of requested LinkedIn sections.
+ * '*' expands to all known sections. Returns [] when sections is undefined.
+ */
+export function normalizeSectionsConfig(sections: LinkedInSectionsConfig | undefined): LinkedInSection[] {
+  if (sections === undefined) return []
+  if (sections === '*') return ['experience', 'education', 'languages', 'skills', 'certifications', 'about']
+  if (Array.isArray(sections)) return sections
+  return [sections]
+}
+
+/**
+ * Extract structured "verified" fields from a Unipile LinkedIn profile response.
+ *
+ * Throttle heuristic: when sections=experience was requested but `work_experience`
+ * came back missing/empty, set `throttled=true` so caller's downstream gates skip
+ * this lead instead of rejecting it. (No `throttled_sections` exists on the SDK
+ * response — this is a heuristic.)
+ */
+export function extractVerifiedFields(
+  profile: unknown,
+  sectionsRequested: { experience: boolean },
+): VerifiedFields {
+  const p = (profile && typeof profile === 'object') ? (profile as Record<string, unknown>) : {}
+  const work_experience = Array.isArray(p.work_experience)
+    ? (p.work_experience as Array<Record<string, unknown>>)
+    : []
+  const active = work_experience.filter((e) => !e.end)
+  const primary = active[0] // most recent active role
+
+  const all_active_roles = active.map((e) => ({
+    position: typeof e.position === 'string' ? e.position : null,
+    company: typeof e.company === 'string' ? e.company : null,
+  }))
+
+  // Prior companies = work_experience entries that are not the primary active role.
+  const priorEntries = primary
+    ? work_experience.filter((e) => e !== primary)
+    : work_experience
+  const prior_companies = priorEntries
+    .map((e) => (typeof e.company === 'string' ? e.company : null))
+    .filter((c): c is string => !!c)
+
+  const throttled = sectionsRequested.experience && work_experience.length === 0
+
+  return {
+    headline: typeof p.headline === 'string' ? p.headline : null,
+    primary_company: primary && typeof primary.company === 'string' ? primary.company : null,
+    primary_position: primary && typeof primary.position === 'string' ? primary.position : null,
+    primary_company_industry: primary && typeof primary.industry === 'string' ? primary.industry : null,
+    prior_companies,
+    current_role_start_date: primary && typeof primary.start === 'string' ? primary.start : null,
+    all_active_roles,
+    throttled,
+  }
+}
 
 const LINKEDIN_COLUMNS: ColumnDef[] = [
   ...SEARCH_COLUMNS,
@@ -76,13 +163,9 @@ export class UnipileProvider implements StepExecutor {
   }
 
   async *execute(step: WorkflowStepInput, context: ExecutionContext): AsyncIterable<RowBatch> {
-    // Get first LinkedIn account
-    const accountsResponse = await unipileService.getAccounts()
-    const accounts = accountsResponse?.items ?? []
-    if (accounts.length === 0) {
-      throw new Error('No LinkedIn account connected in Unipile. Connect one first.')
-    }
-    const accountId = String((accounts[0] as Record<string, unknown>).id)
+    // Resolve account ID — prefer UNIPILE_READ_ACCOUNT_ID env (Doug Pearson's read-only
+    // account), fall back to first connected account.
+    const accountId = await resolveReadAccountId()
 
     // linkedin_send — sub-discriminator on payload.kind: 'connect' | 'dm'
     if (step.stepType === 'linkedin_send') {
@@ -132,6 +215,12 @@ export class UnipileProvider implements StepExecutor {
       const batchSize = context.batchSize || 10
       let totalSoFar = 0
 
+      const sections = (step.config as Record<string, unknown> | undefined)?.sections as
+        | LinkedInSectionsConfig
+        | undefined
+      const sectionsAsked = normalizeSectionsConfig(sections)
+      const experienceRequested = sectionsAsked.includes('experience')
+
       for (let i = 0; i < context.previousStepRows.length; i += batchSize) {
         const slice = context.previousStepRows.slice(i, i + batchSize)
         const enriched = await Promise.all(
@@ -139,8 +228,14 @@ export class UnipileProvider implements StepExecutor {
             const linkedinUrl = String(row.linkedin_url ?? row.linkedin ?? '')
             if (!linkedinUrl) return row
             try {
-              const profile = await unipileService.getProfile(accountId, linkedinUrl)
-              return { ...row, ...this.normalizeProfile(profile) }
+              const profile = sections === undefined
+                ? await unipileService.getProfile(accountId, linkedinUrl)
+                : await unipileService.getProfile(accountId, linkedinUrl, sections)
+              const enrichedRow: Record<string, unknown> = { ...row, ...this.normalizeProfile(profile) }
+              if (experienceRequested) {
+                enrichedRow.verified = extractVerifiedFields(profile, { experience: true })
+              }
+              return enrichedRow
             } catch {
               return row
             }
