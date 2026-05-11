@@ -1,6 +1,6 @@
 ---
 name: fullenrich-plg-reverse-lookup
-description: Use when the user says "set up FullEnrich reverse lookup for trial signups", "PLG enrichment webhook", "identify free trial signups via FullEnrich", "reverse email lookup for these signups", "who are these emails", "deploy a Vercel webhook for trial signups", or any variant indicating they want to identify the person and company behind a signup email. Two install paths: (a) CLI batch over a CSV/JSON of recent signups, (b) hosted Vercel webhook that receives signup events live and routes identified prospects to Slack/HubSpot/Notion.
+description: Use when the user says "set up FullEnrich reverse lookup for trial signups", "PLG enrichment webhook", "identify free trial signups via FullEnrich", "reverse email lookup for these signups", "who are these emails", "deploy a hosted webhook for trial signups", or any variant indicating they want to identify the person and company behind a signup email. Two install paths: (a) CLI batch over a CSV/JSON of recent signups, (b) hosted webhook that receives signup events live, runs FullEnrich reverse lookup, and outputs the enriched record as a JSONL log plus an optional generic forward webhook the user wires to whatever downstream they run.
 version: 1.0.0
 ---
 
@@ -10,7 +10,7 @@ When a free trial signup hits your product, you have ~5 minutes before they cool
 
 Two install paths in one repo:
 - **Path A (CLI batch):** point it at a `signups.csv`, get an enriched JSON back. Cron-friendly.
-- **Path B (Vercel webhook):** deploy `api/webhook.ts` to Vercel. Receives POST `{ email }`, runs reverse lookup, posts to Slack / HubSpot / Notion (configurable).
+- **Path B (hosted webhook):** deploy the included `api/` folder to any Vercel-compatible host. Receives POST `{ email }`, runs reverse lookup, writes the enriched record to a JSONL log and optionally forwards it to any URL you specify. Pure FullEnrich output; wire downstream to whatever stack you run.
 
 ## When This Skill Applies
 
@@ -57,12 +57,10 @@ FULLENRICH_API_KEY=  # https://app.fullenrich.com/app/api
 
 For webhook mode (Path B):
 ```
-SLACK_WEBHOOK_URL=        # optional, https://hooks.slack.com/services/...
-HUBSPOT_API_TOKEN=        # optional
-NOTION_API_KEY=           # optional
-NOTION_LEAD_DB_ID=        # optional
-MAX_CREDITS_PER_DAY=200   # webhook safeguard
-WEBHOOK_DRY_RUN=          # set to 1 for first 24h after deploy
+MAX_CREDITS_PER_DAY=200    # hard daily credit ceiling
+WEBHOOK_DRY_RUN=1          # set to 1 for first 24h after deploy
+PLG_LOG_PATH=              # optional, default /tmp/plg-enriched.jsonl
+FORWARD_WEBHOOK_URL=       # optional, POSTs the enriched record to any URL
 ```
 
 ## Path A — CLI batch
@@ -76,7 +74,7 @@ node scripts/batch.mjs --input signups.csv --out enriched.json
 
 The input file can be CSV (with an `email` column) or JSON (array of `{ email }` objects).
 
-## Path B — Vercel webhook
+## Path B — Hosted webhook
 
 ```
 cd YALC-the-GTM-operating-system/.claude/skills/fullenrich-plg-reverse-lookup
@@ -86,8 +84,8 @@ vercel deploy
 Then POST to `https://<your-deploy>.vercel.app/api/webhook` with body `{ email: "user@example.com", custom?: { ... } }`. The endpoint:
 
 1. Calls FullEnrich `POST /contact/reverse/email/bulk` with one email
-2. Receives the webhook callback (within ~30s) — wires this back via a separate `/api/fullenrich-callback` endpoint
-3. Pushes the identified contact to whichever destinations are configured
+2. Receives the webhook callback (within ~30s) via a separate `/api/fullenrich-callback` endpoint
+3. Appends the enriched record to a JSONL log file. Optionally POSTs it to a forwarding URL set in `FORWARD_WEBHOOK_URL`. Pipe the log or the forward URL to whatever downstream stack you run.
 
 ## Reference
 

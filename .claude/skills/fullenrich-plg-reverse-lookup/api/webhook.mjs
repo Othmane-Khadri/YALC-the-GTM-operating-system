@@ -47,28 +47,36 @@ async function readJson(req) {
   });
 }
 
-async function postSlack(text) {
-  const url = process.env.SLACK_WEBHOOK_URL;
+/**
+ * Forward the enriched record to a user-defined webhook (optional).
+ * Generic POST with the full enriched JSON body. Wire it to whatever you want.
+ */
+async function forwardToWebhook(enriched) {
+  const url = process.env.FORWARD_WEBHOOK_URL;
   if (!url) return;
-  await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(enriched),
+    });
+  } catch (e) {
+    console.error(`[plg-callback] forward webhook failed: ${e.message}`);
+  }
 }
 
-async function postHubspot(contact) {
-  const token = process.env.HUBSPOT_API_TOKEN;
-  if (!token) return;
-  await fetch('https://api.hubapi.com/crm/v3/objects/contacts', {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ properties: {
-      email: contact.email,
-      firstname: contact.first_name,
-      lastname: contact.last_name,
-      jobtitle: contact.title,
-      company: contact.company_name,
-      lifecyclestage: 'lead',
-      hs_lead_status: 'NEW',
-    }}),
-  });
+/**
+ * Append the enriched record to a JSONL log file. Default: /tmp/plg-enriched.jsonl.
+ * Override with PLG_LOG_PATH env var. Set to empty string to disable.
+ */
+async function appendLog(enriched) {
+  const logPath = process.env.PLG_LOG_PATH ?? '/tmp/plg-enriched.jsonl';
+  if (!logPath) return;
+  try {
+    await fs.appendFile(logPath, JSON.stringify(enriched) + '\n');
+  } catch (e) {
+    console.error(`[plg-callback] log append failed: ${e.message}`);
+  }
 }
 
 export async function handleSignup(req, res) {
@@ -155,12 +163,14 @@ export async function handleFullenrichCallback(req, res) {
       continue;
     }
 
-    const text = `:bust_in_silhouette: PLG signup identified\n*${enriched.full_name || (enriched.first_name + ' ' + enriched.last_name)}* — ${enriched.title || 'unknown role'} @ ${enriched.company_name || 'unknown company'}\n${enriched.linkedin_url}\nEmail: ${enriched.email} · ${enriched.location}`;
+    // Pure FullEnrich output: structured log + optional generic forward webhook.
+    // No third-party SaaS integrations baked in. Pipe the JSONL/log/webhook to
+    // whatever stack you run (CRM, data warehouse, BI, messaging, automation).
     await Promise.all([
-      postSlack(text),
-      postHubspot(enriched),
+      appendLog(enriched),
+      forwardToWebhook(enriched),
     ]);
-    console.log(`[plg-callback] processed ${enriched.email} -> ${enriched.full_name} @ ${enriched.company_name}`);
+    console.log(`[plg-callback] enriched: ${JSON.stringify(enriched)}`);
   }
 
   res.statusCode = 200; res.end('ok');

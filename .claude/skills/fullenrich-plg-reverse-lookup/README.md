@@ -38,26 +38,26 @@ The input file can be a CSV with an `email` column or a JSON array of `{email, c
 
 JSON array of FullEnrich reverse-lookup results, one per email — identified contact info plus the original `custom` payload echoed back so you can correlate.
 
-## Path B — Vercel webhook (real-time)
+## Path B — Hosted webhook (real-time)
 
-Deploy a hosted endpoint that turns signup events into Slack pings and HubSpot contacts within ~30 seconds.
+Deploy a hosted endpoint that identifies signup emails in ~30 seconds. Pure FullEnrich output: a structured JSONL log plus an optional generic forward webhook. Pipe wherever you want.
 
 ### Deploy
 
 ```bash
 cd YALC-the-GTM-operating-system/.claude/skills/fullenrich-plg-reverse-lookup
 vercel deploy
-# Set env vars in Vercel dashboard:
+# Set env vars on your host:
 #   FULLENRICH_API_KEY=<your key>
-#   WEBHOOK_DRY_RUN=1   <-- IMPORTANT for the first 24h
+#   WEBHOOK_DRY_RUN=1            <-- IMPORTANT for the first 24h
 #   MAX_CREDITS_PER_DAY=200
-#   SLACK_WEBHOOK_URL=<optional>
-#   HUBSPOT_API_TOKEN=<optional>
+#   PLG_LOG_PATH=<optional, default /tmp/plg-enriched.jsonl>
+#   FORWARD_WEBHOOK_URL=<optional, any URL the enriched record gets POSTed to>
 ```
 
 ### Wire your product
 
-POST signup events to your deploy URL:
+POST signup events to your deploy URL right after a user signs up:
 
 ```
 POST https://<your-deploy>.vercel.app/api/webhook
@@ -65,12 +65,6 @@ Content-Type: application/json
 
 { "email": "user@example.com", "custom": { "plan": "free-trial" } }
 ```
-
-Common integrations:
-- **Stripe** — webhook on `customer.created` event
-- **Loops** — outbound webhook on signup audience
-- **Mintlify** — `/api/track` outbound
-- **Your backend** — call this URL right after `INSERT INTO users`
 
 ### Flow
 
@@ -83,9 +77,11 @@ Your product ──POST email──▶ /api/webhook
                                   ▼
                        /api/fullenrich-callback (~30s later)
                                   │
-                                  ├──▶ Slack ping
-                                  └──▶ HubSpot contact create
+                                  ├──▶ Appended to JSONL log (PLG_LOG_PATH)
+                                  └──▶ Optional POST to FORWARD_WEBHOOK_URL
 ```
+
+You wire the log or the forward URL to whatever downstream stack you run.
 
 ## Credit safety
 
