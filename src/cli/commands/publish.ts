@@ -72,11 +72,13 @@ export async function runPublish() {
 
   let prExists = false
   try {
-    const existing = run(`gh pr view ${branch!} --json url -q .url`)
-    if (existing) {
+    const json = run(`gh pr view ${branch!} --json url,state`)
+    const { url, state } = JSON.parse(json) as { url: string; state: string }
+    if (state === 'OPEN') {
       prExists = true
-      console.log(`[publish] PR already exists: ${existing}`)
+      console.log(`[publish] PR already open: ${url}`)
     }
+    // MERGED or CLOSED → create a fresh PR
   } catch {
     // no existing PR — continue
   }
