@@ -2009,6 +2009,15 @@ program
     await runUpdate()
   })
 
+// ─── publish ─────────────────────────────────────────────────────────────────
+program
+  .command('publish')
+  .description('Stage, commit, push current branch and open a PR into main')
+  .action(async () => {
+    const { runPublish } = await import('./commands/publish')
+    await runPublish()
+  })
+
 // ─── doctor ────────────────────────────────────────────────────────────────
 program
   .command('doctor')
