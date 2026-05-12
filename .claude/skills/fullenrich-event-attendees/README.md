@@ -4,6 +4,14 @@ Turn LinkedIn event attendees into an SDR-ready CSV with verified work emails an
 
 Part of the [Yalc x FullEnrich](https://yalc.ai/skills/fullenrich/) skill family.
 
+## What you need
+
+| Provider | When | Cost | Where to get it |
+|----------|------|------|-----------------|
+| FullEnrich API key | Always | ~1 credit per work email, 2 per phone | https://app.fullenrich.com/app/api |
+| Attendees CSV | Mode A (recommended) | Free (manual) or ~$0.005/attendee (PhantomBuster / Evaboot) | See "Get an attendees CSV" below |
+| Apify account + LinkedIn cookies | Mode B (URL → CSV) | $5–$49/mo Apify plan, ~$0.30–$1 per event run | See "Mode B — Apify setup" below |
+
 ## Install
 
 ```bash
@@ -12,6 +20,14 @@ cd YALC-the-GTM-operating-system/.claude/skills/fullenrich-event-attendees
 cp .env.example .env
 # Fill FULLENRICH_API_KEY (always required)
 ```
+
+This skill is self-contained. Everything it needs lives in this folder. Zero npm dependencies.
+
+## Set up FullEnrich
+
+1. Sign up at https://fullenrich.com and pick a plan (or start the free trial).
+2. Open https://app.fullenrich.com/app/api and copy the API key.
+3. Paste into `.env` as `FULLENRICH_API_KEY=...`.
 
 ## Two ways to run it
 
@@ -29,14 +45,27 @@ node scripts/run.mjs --input attendees.csv --dry-run
 node scripts/run.mjs --input attendees.csv --out enriched.csv
 ```
 
-**Where to get the CSV:**
+#### Get an attendees CSV
 
-| Source | How |
-|--------|-----|
-| Manual | Open the LinkedIn event page, copy the attendee list, paste into a spreadsheet, export CSV |
-| [PhantomBuster](https://phantombuster.com/) | "LinkedIn Event Attendees Export" Phantom, ~$0.005 per attendee |
-| [Evaboot](https://evaboot.com/) | Sales Navigator → filter by event registrants → export |
-| Anything else | Apify, custom scraper, friend with a Sales Navigator subscription |
+**Option 1 — Manual paste (free, 5 min).**
+1. Open the LinkedIn event page in a browser.
+2. Click the "Attendees" tab or the event-attendee count link.
+3. Scroll until everyone has loaded.
+4. Use a browser extension like [Data Miner](https://data-miner.io/) or [Instant Data Scraper](https://www.webrobots.io/) to grab the visible names + profile URLs into a spreadsheet.
+5. Save as CSV with at minimum the columns `First Name`, `Last Name`, `Profile URL`.
+
+**Option 2 — PhantomBuster (paid, ~$0.005/attendee).**
+1. Sign up at https://phantombuster.com.
+2. Find the "LinkedIn Event Attendees Export" Phantom in the store.
+3. Click "Use this Phantom" → paste your LinkedIn event URL → connect your LinkedIn session (PhantomBuster has a Chrome extension for this).
+4. Launch the Phantom. Download the result CSV when it completes.
+
+**Option 3 — Evaboot (paid, Sales Navigator required).**
+1. Open https://evaboot.com and connect Sales Navigator.
+2. Use a Sales Navigator search filtered to "Attended event: <event name>" (a LinkedIn Sales Nav feature).
+3. Export the filtered list via Evaboot.
+
+**Option 4 — Any other source.** Manual research, a colleague's export, a custom scraper. The skill accepts any CSV with one of the common header variants below.
 
 **Accepted CSV column headers** (case-insensitive, the script tries common variants):
 
@@ -55,16 +84,27 @@ Missing columns are tolerated; FullEnrich works best with at least name + Linked
 
 If you want a one-shot URL → CSV pipeline, set up an Apify account, pick an actor that scrapes LinkedIn event attendees, and pass it to the skill. The skill does NOT bundle a specific actor — pick one in the [Apify Store](https://apify.com/store?search=linkedin+event+attendees).
 
-Most actors require LinkedIn session cookies. To extract them:
+#### Mode B — Apify setup
 
-1. Log into LinkedIn in Chrome
-2. DevTools → Application → Cookies → `linkedin.com`
-3. Copy the values of `li_at` and `JSESSIONID`
-4. Get your User-Agent from `chrome://version`
-5. Paste all three into `.env` (LINKEDIN_LI_AT, LINKEDIN_JSESSIONID, LINKEDIN_USER_AGENT)
-6. Add your `APIFY_TOKEN`
+1. **Sign up at https://apify.com.** Free tier is fine for testing.
+2. **Get your API token.** Account → Settings → Integrations → API token. Paste into `.env` as `APIFY_TOKEN=...`.
+3. **Pick an actor.** Search the Apify Store for "linkedin event attendees". Reliable choices we've tested: `giovannibiancia/linkedin-events-partecipants-scraper`. Each actor has its own pricing (usually $5–$49/mo platform + per-run cost).
+4. **Extract LinkedIn cookies.** Most actors need an authenticated LinkedIn session via your `li_at` and `JSESSIONID` cookies:
+   1. Log into LinkedIn in Chrome.
+   2. Open DevTools (⌘⌥I / Ctrl+Shift+I) → Application → Cookies → `linkedin.com`.
+   3. Copy the **value** of the cookies named `li_at` and `JSESSIONID`.
+   4. Get your User-Agent from `chrome://version` (the line labeled "User Agent").
+5. **Paste all four into `.env`:**
+   ```
+   APIFY_TOKEN=apify_api_xxxxxxxxxx
+   LINKEDIN_LI_AT=AQEDAR...
+   LINKEDIN_JSESSIONID=ajax:1234567890
+   LINKEDIN_USER_AGENT=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)...
+   ```
 
-Then:
+Cookies rotate every few weeks; re-extract when the actor starts returning 0 results.
+
+#### Run with Apify
 
 ```bash
 # Always preview first
@@ -98,8 +138,8 @@ A CSV with columns:
 
 ## Cost
 
-- **CSV mode:** zero scrape cost (you bring the file)
-- **Apify mode:** depends on the actor (usually $0.30–$1 per event)
+- **CSV mode:** zero scrape cost (you bring the file), or ~$0.005 per attendee if you use PhantomBuster.
+- **Apify mode:** depends on the actor (usually $0.30–$1 per event).
 - **FullEnrich:** 1 credit per `contact.work_emails` + 2 per `contact.phones`. A 200-attendee event ≈ 600 credits.
 
 Check balance before running:
