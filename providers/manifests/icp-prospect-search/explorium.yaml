@@ -1,0 +1,104 @@
+# Explorium AgentSource — icp-prospect-search
+#
+# Vendor docs: https://docs.explorium.ai/reference/prospects/fetch_prospects
+# Endpoint:    POST /v1/prospects
+# Auth:        api_key header (static — no OAuth)
+#
+# Searches Explorium's people database using job- and company-level ICP
+# filters. Returns prospect records with name, title, company, and LinkedIn
+# URL. Contact details (email, phone) are not returned by this endpoint —
+# use the people-enrich adapter to resolve prospect_ids, then call the
+# contacts_information endpoint for verified contact data.
+#
+# NOTE: This manifest targets the proposed `icp-prospect-search` capability
+# which is not yet declared in the YALC engine. This PR is intentionally
+# opened as a DRAFT. A companion engine PR must:
+#   1. Register the `icp-prospect-search` capability in
+#      src/lib/providers/adapters/index.ts with the input/output schema
+#      described below.
+#   2. Add `explorium` to that capability's defaultPriority list.
+#
+# Proposed capability schema (for the engine PR):
+#
+#   id: icp-prospect-search
+#   description: >
+#     Find prospects by job-level, department, company criteria, and
+#     location. Returns a list of people with name, title, company,
+#     and LinkedIn URL. Does not return contact details.
+#   inputSchema:
+#     company_name: string   — target company (free text, fuzzy matched)
+#     job_level:    string   — seniority: "c-suite", "director", "manager",
+#                              "vice president", "founder", "senior manager",
+#                              "owner", "partner", "board member"
+#     department:   string   — dept: "engineering", "sales", "marketing",
+#                              "finance", "operations", "human resources", etc.
+#     country_code: string   — prospect country, ISO Alpha-2 (e.g. "US")
+#     company_country_code: string — company HQ country, ISO Alpha-2
+#     has_email:    boolean  — filter to prospects with a known email address
+#     limit:        number   — max prospects to return
+#   outputSchema:
+#     prospects[].firstname
+#     prospects[].lastname
+#     prospects[].title
+#     prospects[].company
+#     prospects[].linkedin_url
+#     prospects[].prospect_id  — Explorium internal ID for downstream enrichment
+#
+# Field mapping notes:
+#   * input.company_name    → company_name filter (fuzzy matched by Explorium)
+#   * input.job_level       → job_level filter (use Explorium-documented values)
+#   * input.department      → job_department filter
+#   * input.country_code    → country_code filter (prospect's own location, ISO-2)
+#   * input.company_country_code → company_country_code filter (company HQ, ISO-2)
+#   * input.has_email       → has_email filter (true/false)
+manifestVersion: 1
+capability: icp-prospect-search
+provider: explorium
+version: 0.1.0
+auth:
+  type: header
+  name: api_key
+  value: ${env:EXPLORIUM_API_KEY}
+endpoint:
+  method: POST
+  url: https://api.explorium.ai/v1/prospects
+request:
+  contentType: application/json
+  bodyTemplate: |
+    {
+      "mode": "full",
+      "page_size": 25,
+      "size": 25,
+      "filters": {
+        "company_name": {"values": ["{{input.company_name}}"]},
+        "job_level": {"values": ["{{input.job_level}}"]},
+        "job_department": {"values": ["{{input.department}}"]},
+        "country_code": {"values": ["{{input.country_code}}"]},
+        "company_country_code": {"values": ["{{input.company_country_code}}"]},
+        "has_email": {"value": {{input.has_email}}}
+      }
+    }
+response:
+  rootPath: data
+  mappings:
+    "prospects[].firstname": "$.first_name"
+    "prospects[].lastname": "$.last_name"
+    "prospects[].title": "$.job_title"
+    "prospects[].company": "$.company_name"
+    "prospects[].linkedin_url": "$.linkedin_url"
+    "prospects[].prospect_id": "$.prospect_id"
+  errorEnvelope:
+    matchPath: $.details
+    messagePath: $.details
+smoke_test:
+  input:
+    company_name: "Salesforce"
+    job_level: "c-suite"
+    department: "sales"
+    country_code: "US"
+    company_country_code: "US"
+    has_email: true
+    limit: 5
+  expectNonEmpty:
+    - "prospects[0].prospect_id"
+    - "prospects[0].title"
