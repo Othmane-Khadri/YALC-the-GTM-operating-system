@@ -2009,6 +2009,15 @@ program
     await runUpdate()
   })
 
+// ─── describe-change ─────────────────────────────────────────────────────────
+program
+  .command('describe-change <pr-url>')
+  .description('Generate a plain-English CHANGES.md from a GitHub PR URL')
+  .action(async (prUrl: string) => {
+    const { runDescribeChange } = await import('./commands/describe-change')
+    await runDescribeChange(prUrl)
+  })
+
 // ─── publish ─────────────────────────────────────────────────────────────────
 program
   .command('publish')

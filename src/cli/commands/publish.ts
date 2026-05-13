@@ -80,12 +80,14 @@ export async function runPublish() {
   // ── gh pr create ───────────────────────────────────────────────────────────
   console.log('[publish] Creating pull request into main...')
 
+  let prUrl: string | undefined
   let prExists = false
   try {
     const json = run(`gh pr view ${branch!} --repo ${repoSlug!} --json url,state`)
     const { url, state } = JSON.parse(json) as { url: string; state: string }
     if (state === 'OPEN') {
       prExists = true
+      prUrl = url
       console.log(`[publish] PR already open: ${url}`)
     }
     // MERGED or CLOSED → create a fresh PR
@@ -97,15 +99,22 @@ export async function runPublish() {
     const pr = spawnSync(
       'gh',
       ['pr', 'create', '--repo', repoSlug!, '--base', 'main', '--head', branch!, '--title', commitMsg, '--fill'],
-      { stdio: 'inherit', shell: IS_WIN },
+      { stdio: ['inherit', 'pipe', 'inherit'], shell: IS_WIN, encoding: 'utf-8' },
     )
     if (pr.status !== 0) {
       console.error('[publish] Could not create the pull request.')
       process.exit(1)
     }
+    // gh pr create prints the PR URL as the last line of stdout
+    prUrl = (pr.stdout as string).trim().split('\n').pop()
   }
 
   console.log(`\n[publish] Done. Branch "${branch!}" is up and a PR is open against main.`)
+
+  if (prUrl) {
+    const { runDescribeChange } = await import('./describe-change')
+    await runDescribeChange(prUrl)
+  }
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
