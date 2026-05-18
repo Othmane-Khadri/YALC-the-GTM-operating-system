@@ -247,18 +247,23 @@ Conversational entry points. Activate from a Claude Code session with the trigge
 
 **16 more skills shipping in 0.13.0** — see [CHANGELOG.md](CHANGELOG.md) and [docs/skills-architecture.md](docs/skills-architecture.md).
 
-### Lemlist Claude Code skills (`.claude/skills/lemlist/`)
+### Lemlist Claude Code skills (`.claude/skills/lemlist/` + `.claude/skills/lemlist-campaign-from-icp/`)
 
-A curated subset of [lemlist's 38 open-source Claude Code skills](https://www.lemlist.com/claude-skills), bundled so YALC can run an end-to-end outbound loop inside Claude Code using lemlist as the underlying platform. Paired with the lemlist MCP server declared in `.mcp.json`, this lets you source leads, run agentic enrichment, draft seniority-aware sequences, push campaigns into lemlist, and handle replies — all from a single Claude Code prompt.
+24 atomic skills from [lemlist's 38-skill open-source library](https://www.lemlist.com/claude-skills), plus the **flagship orchestration skill `lemlist-campaign-from-icp`** that chains them into one end-to-end loop. Paired with the lemlist MCP server declared in `.mcp.json`, this lets you turn one natural-language ICP prompt into a paused lemlist campaign in ~5 minutes — sourcing, agentic enrichment, seniority-routed sequencing, quality gate, and the MCP push, all behind a hard human-approval gate.
 
-| Layer | Skills |
-|-------|--------|
-| Source | `people-finder`, `list-builder`, `company-finder` |
-| Reason | `icp-definer`, `persona-definer`, `linkedin-outbound-angle` |
-| Write | `copywriting-first-touch`, `copywriting-follow-up`, `copywriting-vp-sequence`, `copywriting-manager-sequence`, `copywriting-ic-sequence`, `cta-designer`, `outbound-campaign-architect` |
-| Loop | `reply-handler` |
+**Flagship — `lemlist-campaign-from-icp`:** `create a lemlist campaign for VPs of Sales at Series B SaaS in Europe hiring AEs` → paused campaign live in lemlist with 50 enriched leads and a VP-routed 3-email sequence. Landing page with video + breakdown: <https://yalc.ai/skills/lemlist-campaign-from-icp/>.
 
-Setup is one environment variable (`LEMLIST_API_KEY`) or one OAuth command — see [CLAUDE.md](CLAUDE.md#lemlist-integration). Full walkthrough at [yalc.ai/tools/lemlist/](https://yalc.ai/tools/lemlist/).
+| Layer | Atomic skills |
+|---|---|
+| Strategic foundation | `icp-definer`, `persona-definer`, `pain-identifier`, `value-prop-lister`, `offer-definer`, `competitor-finder`, `trigger-finder` |
+| Sourcing | `people-finder`, `list-builder`, `company-finder` |
+| Per-lead angle | `linkedin-outbound-angle` |
+| Campaign design | `campaign-angle-finder`, `outbound-campaign-architect` |
+| Writing | `copywriting-first-touch`, `copywriting-follow-up`, `copywriting-vp-sequence`, `copywriting-manager-sequence`, `copywriting-ic-sequence`, `cta-designer` |
+| Quality gate | `copywriting-refiner`, `copywriting-analyzer`, `gtm-action-thinker` |
+| Loop (companion) | `reply-handler`, `outbound-analyst` |
+
+Setup is one environment variable (`LEMLIST_API_KEY`) or one OAuth command — see [CLAUDE.md](CLAUDE.md#lemlist-integration). New to lemlist? Free trial via the partner link: <https://get.lemlist.com/skrtwnkxw60i>.
 
 ### Legacy TypeScript skill registry (`src/lib/skills/builtin/`)
 

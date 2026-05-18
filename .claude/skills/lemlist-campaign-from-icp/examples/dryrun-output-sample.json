@@ -1,0 +1,92 @@
+{
+  "generated_at": "2026-05-18T14:23:11Z",
+  "input_prompt": "create a lemlist campaign for VPs of Sales at Series B SaaS companies in Europe that are hiring Account Executives. Our product helps RevOps teams cut quota ramp time from 6 months to 3. 50 leads, paused.",
+  "icp": {
+    "industries": ["B2B SaaS"],
+    "stage": "Series B",
+    "geo": ["United Kingdom", "France", "Germany", "Netherlands", "Spain", "Ireland"],
+    "size_range_employees": [50, 500],
+    "active_signals": ["hiring Account Executive in last 30 days"]
+  },
+  "personas": [
+    {
+      "title_patterns": ["VP of Sales", "VP Sales", "SVP Sales"],
+      "seniority_tier": "VP+",
+      "routed_to": "copywriting-vp-sequence",
+      "pains_identified": [
+        "AE quota ramp eats 6 months of runway",
+        "Inconsistent enablement playbooks across new hires",
+        "CRO scrutiny on cost per ramped AE"
+      ]
+    }
+  ],
+  "value_props": [
+    "Cut AE quota ramp from 6 months to 3",
+    "Enablement playbooks that compound across hires",
+    "Lower cost per ramped AE — measured, not promised"
+  ],
+  "offer": "We compress new AE quota ramp from 6 months to 3 by automating the enablement playbook and surfacing the 5 deal-stage moves your top reps actually make.",
+  "competitors": [
+    {"name": "Mindtickle", "differentiation": "We instrument the actual deal-stage moves, not just curriculum completion."},
+    {"name": "Gong", "differentiation": "We act on the call data, not just surface it."}
+  ],
+  "triggers": [
+    "Active AE job posting on LinkedIn in last 30 days",
+    "Recent Series B announcement"
+  ],
+  "leads_summary": {
+    "count": 50,
+    "sourced_via": "lemleads_search",
+    "agentically_enriched": true,
+    "dedupe_keys_used": ["linkedin_url", "email"]
+  },
+  "leads_preview_first_3": [
+    {"name": "Alex Berger", "title": "VP Sales", "company": "Acme Cloud", "country": "DE", "trigger": "Hiring 4 AEs (posted 12 days ago)"},
+    {"name": "Marie Laurent", "title": "VP of Sales EMEA", "company": "Northwind Data", "country": "FR", "trigger": "Series B closed Mar 2026"},
+    {"name": "Tomás Ruiz", "title": "SVP Sales", "company": "Aurora Labs", "country": "ES", "trigger": "Hiring 2 AEs + new sales enablement lead"}
+  ],
+  "sequence": {
+    "track": "vp",
+    "touches": 3,
+    "emails": [
+      {
+        "step": 1,
+        "channel": "email",
+        "delay_days": 0,
+        "subject_options": ["AE ramp at {{companyName}}", "{{firstName}} — quota ramp question"],
+        "body_outline": "Open on the AE hiring trigger. Name the 6-month quota ramp pain. Position the playbook approach in 2 lines. Value-based CTA (designed by cta-designer)."
+      },
+      {
+        "step": 2,
+        "channel": "email",
+        "delay_days": 4,
+        "subject_options": ["Quick follow up", "{{firstName}} — 1 more thought"],
+        "body_outline": "Fresh angle (designed by copywriting-follow-up). Cite the Series B trigger or the competitor differentiation. New CTA shape."
+      },
+      {
+        "step": 3,
+        "channel": "linkedin",
+        "delay_days": 7,
+        "body_outline": "Short, casual LinkedIn DM. Reference the email thread once, pivot to a one-line ask."
+      }
+    ]
+  },
+  "quality_gate": {
+    "copywriting_analyzer_score": 87,
+    "benchmark_dataset_size": "244K campaigns",
+    "top_improvement_notes": [
+      "Step 2 subject is borderline curiosity-bait — replace with a more specific reference to the trigger.",
+      "Step 1 CTA could be more action-oriented; consider 'open to comparing notes?' instead of 'worth a chat?'"
+    ],
+    "gtm_action_thinker_challenge": "Weakest assumption: that VPs read cold email at all. Mitigation: the LinkedIn step 3 catches the LinkedIn-first VPs."
+  },
+  "estimated_lemlist_credits": {
+    "sourcing": 50,
+    "agentic_enrichment": 50,
+    "total": 100
+  },
+  "campaign_title_proposed": "[Yalc] VP Sales Series B SaaS EU – AE hiring trigger",
+  "state_on_push": "PAUSED",
+  "approval_required": true,
+  "instruction": "Type 'approve' in chat to push this campaign to lemlist. Type anything else to abort."
+}

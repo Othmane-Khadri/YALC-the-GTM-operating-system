@@ -48,14 +48,19 @@ Env loaded from `.env.local`. Use `--tenant <slug>` or `GTM_OS_TENANT` env var f
 
 ## Lemlist integration
 
-YALC ships with 14 curated [lemlist Claude Code skills](https://www.lemlist.com/claude-skills) under `.claude/skills/lemlist/` and a lemlist MCP server pre-declared in `.mcp.json`. Together they cover the full outbound loop inside Claude Code: source → enrich → reason → write → send → loop.
+YALC ships with 24 curated [lemlist Claude Code skills](https://www.lemlist.com/claude-skills) under `.claude/skills/lemlist/`, plus a flagship orchestration skill at `.claude/skills/lemlist-campaign-from-icp/` and a lemlist MCP server pre-declared in `.mcp.json`. Together they cover the full outbound loop inside Claude Code: ICP → personas → sourcing → agentic enrichment → seniority-routed sequencing → quality gate → paused campaign in lemlist.
 
-| Layer | Lemlist skills | Used in |
-|---|---|---|
-| Source | `people-finder`, `list-builder`, `company-finder` | Building targeted lists against lemlist's People Database |
-| Reason | `icp-definer`, `persona-definer`, `linkedin-outbound-angle` | Qualifying and routing by seniority |
-| Write | `copywriting-first-touch`, `copywriting-follow-up`, `copywriting-vp-sequence`, `copywriting-manager-sequence`, `copywriting-ic-sequence`, `cta-designer`, `outbound-campaign-architect` | Seniority-routed sequencing |
-| Loop | `reply-handler` | Drafting responses to incoming replies |
+**Flagship skill:** `lemlist-campaign-from-icp` — turn one natural-language ICP prompt into a paused live lemlist campaign in ~5 minutes. Chains 24 atomic lemlist skills + the lemlist MCP. Hard approval gate before push. Landing page: <https://yalc.ai/skills/lemlist-campaign-from-icp/>.
+
+| Layer | Lemlist atomic skills |
+|---|---|
+| Strategic foundation | `icp-definer`, `persona-definer`, `pain-identifier`, `value-prop-lister`, `offer-definer`, `competitor-finder`, `trigger-finder` |
+| Sourcing | `company-finder`, `list-builder`, `people-finder` (+ MCP `lemleads_search`) |
+| Per-lead angle | `linkedin-outbound-angle` |
+| Campaign design | `campaign-angle-finder`, `outbound-campaign-architect` |
+| Writing (seniority-routed) | `copywriting-vp-sequence`, `copywriting-manager-sequence`, `copywriting-ic-sequence`, `copywriting-first-touch`, `copywriting-follow-up`, `cta-designer` |
+| Quality gate | `copywriting-refiner`, `copywriting-analyzer`, `gtm-action-thinker` |
+| Loop (companion) | `reply-handler`, `outbound-analyst` |
 
 **MCP setup (one time, per machine):**
 
