@@ -104,6 +104,40 @@ export class NotionService {
     })
   }
 
+  /**
+   * Create a Notion database under a parent page.
+   *
+   * Notion API caveat: the API can only create the default Table view. Kanban
+   * and Gallery views must be added by the user in the Notion UI afterwards.
+   */
+  async createDatabase(args: {
+    parentPageId: string
+    title: string
+    properties: Record<string, unknown>
+    /** Render the DB inline inside the parent page instead of as a full sub-page. */
+    isInline?: boolean
+  }): Promise<{ id: string; url: string }> {
+    const c = getClient()
+    const createArgs: Parameters<typeof c.databases.create>[0] = {
+      parent: { type: 'page_id', page_id: args.parentPageId },
+      title: [{ type: 'text', text: { content: args.title } }],
+      properties: args.properties as Parameters<typeof c.databases.create>[0]['properties'],
+    }
+    if (args.isInline) {
+      ;(createArgs as { is_inline?: boolean }).is_inline = true
+    }
+    const res = await c.databases.create(createArgs)
+    const r = res as { id: string; url?: string }
+    return { id: r.id, url: r.url ?? `https://www.notion.so/${r.id.replace(/-/g, '')}` }
+  }
+
+  /** Retrieve a database by ID. Throws if not accessible. */
+  async retrieveDatabase(databaseId: string): Promise<{ id: string; archived?: boolean }> {
+    const c = getClient()
+    const res = await c.databases.retrieve({ database_id: databaseId })
+    return res as { id: string; archived?: boolean }
+  }
+
   async bulkCreateLeads(
     databaseId: string,
     leads: Record<string, unknown>[],

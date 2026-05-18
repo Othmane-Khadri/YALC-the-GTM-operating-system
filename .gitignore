@@ -82,3 +82,6 @@ scripts/c8-*
 scripts/c9-*
 scripts/claude-code-attendee-*
 scripts/seo-hire-*
+
+# generated changesets (NEVER commit)
+CHANGES.md

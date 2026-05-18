@@ -20,11 +20,12 @@ vi.mock('../icp-source', () => ({
 }))
 
 const { resolveClientICP, ICPSchemaError } = await import('../icp-source')
-const { requireClientICP } = await import('../icp-gate')
+const { requireClientICP, warnIfMissingClientICP } = await import('../icp-gate')
 
 let exitSpy: ReturnType<typeof vi.spyOn>
 let errSpy: ReturnType<typeof vi.spyOn>
 let logSpy: ReturnType<typeof vi.spyOn>
+let warnSpy: ReturnType<typeof vi.spyOn>
 
 beforeEach(() => {
   // Cast process.exit to never to satisfy the spy, then throw so control flow
@@ -34,6 +35,7 @@ beforeEach(() => {
   }) as never)
   errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
   logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+  warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
 
 afterEach(() => {
@@ -113,5 +115,49 @@ describe('requireClientICP', () => {
     expect(logs).toContain('[campaign:create]')
     expect(logs).toContain("ICP loaded for 'acme'")
     expect(logs).toContain('source: tenant_framework')
+  })
+})
+
+describe('warnIfMissingClientICP', () => {
+  it('returns the resolved ICP when one is configured (no warning)', async () => {
+    vi.mocked(resolveClientICP).mockResolvedValue({
+      client_slug: 'acme',
+      source: 'repo_yaml',
+      primary_segment: {
+        name: 'p',
+        target_roles: ['CRO'],
+        target_industries: ['SaaS'],
+        target_company_sizes: [],
+        target_geographies: [],
+        disqualifiers: ['Insurance'],
+        pain_points: [],
+      },
+    })
+
+    const icp = await warnIfMissingClientICP('leads:scrape-post', 'acme')
+    expect(icp?.client_slug).toBe('acme')
+    expect(warnSpy).not.toHaveBeenCalled()
+    expect(exitSpy).not.toHaveBeenCalled()
+  })
+
+  it('returns null and warns when no ICP is configured (does NOT exit)', async () => {
+    vi.mocked(resolveClientICP).mockResolvedValue(null)
+
+    const icp = await warnIfMissingClientICP('leads:scrape-post', 'unknown-tenant')
+    expect(icp).toBeNull()
+    expect(exitSpy).not.toHaveBeenCalled()
+    const warnings = warnSpy.mock.calls.flat().join('\n')
+    expect(warnings).toContain('WARN: no ICP configured')
+    expect(warnings).toContain('downstream qualify will fail')
+    expect(warnings).toContain('clients/unknown-tenant.yml')
+  })
+
+  it('still hard-exits on schema errors (malformed ICP is a config bug)', async () => {
+    vi.mocked(resolveClientICP).mockRejectedValue(
+      new (ICPSchemaError as unknown as new (...a: unknown[]) => Error)('acme', ['target_industries'], 'repo_yaml'),
+    )
+
+    await expect(warnIfMissingClientICP('leads:scrape-post', 'acme')).rejects.toThrow('process.exit called')
+    expect(exitSpy).toHaveBeenCalledWith(1)
   })
 })

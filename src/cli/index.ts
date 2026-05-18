@@ -230,8 +230,11 @@ program
   .option('--account <name>', 'Unipile account name or ID to use for scraping')
   .action(withDiagnostics(async (opts) => {
     await assertChannelEnabled('linkedin', 'leads:scrape-post')
-    const { requireClientICP } = await import('../lib/qualification/icp-gate')
-    await requireClientICP('leads:scrape-post', getTenant())
+    // Soft gate: a post can be scraped just to study its engagers, with no
+    // tenant in mind. Downstream qualify still hard-fails without ICP, but the
+    // scrape itself is allowed to run.
+    const { warnIfMissingClientICP } = await import('../lib/qualification/icp-gate')
+    await warnIfMissingClientICP('leads:scrape-post', getTenant())
 
     const config = loadConfig(program.opts().config.replace('~', homedir()))
     const { scrapePostEngagers } = await import('../lib/scraping/post-engagers')
@@ -1522,6 +1525,232 @@ program
     }
   })
 
+// ─── campaign:improve ───────────────────────────────────────────────────────
+// Three modes:
+//   --data-only           load campaigns + filtered intelligence, emit JSON. No LLM. Free.
+//   --from-file <path>    persist a structured improvement JSON to data/intelligence/. No LLM.
+//   (no flag)             unattended fallback: call Anthropic + write the result. Pays per run.
+program
+  .command('campaign:improve')
+  .description('Retro-analyse one or more past campaigns and propose changes for the next iteration')
+  .option('--campaign-id <id>', 'Improve one specific campaign')
+  .option('--last <n>', 'Improve based on the last N campaigns (default 3)', '3')
+  .option('--target <target>', 'Propose changes to "draft" (next campaign) or "running" (live campaign)', 'draft')
+  .option('--data-only', 'Skip the LLM. Print campaign data + filtered intelligence as JSON for chat-side reasoning.')
+  .option('--from-file <path>', 'Persist a pre-authored improvement JSON file (skips LLM, just validates + writes).')
+  .option('--notion', 'Also write a Notion page (requires NOTION_API_KEY)')
+  .option('--json', 'Print the parsed improvement result as JSON')
+  .action(withDiagnostics(async (opts) => {
+    if (opts.dataOnly && opts.fromFile) {
+      console.error('--data-only and --from-file are mutually exclusive.')
+      process.exit(1)
+    }
+    const target = (opts.target ?? 'draft') as 'draft' | 'running'
+    if (target !== 'draft' && target !== 'running') {
+      console.error(`Invalid --target: ${opts.target}. Expected "draft" or "running".`)
+      process.exit(1)
+    }
+    const last = parseInt(opts.last, 10)
+    if (!opts.fromFile && !opts.campaignId && (!Number.isFinite(last) || last < 1)) {
+      console.error('Invalid --last: must be a positive integer.')
+      process.exit(1)
+    }
+
+    // ─── Mode: --from-file ───────────────────────────────────────────────
+    if (opts.fromFile) {
+      const { runImproveWrite } = await import('../lib/campaign/improve')
+      const out = await runImproveWrite({
+        filePath: opts.fromFile,
+        campaignId: opts.campaignId,
+        notion: opts.notion ?? false,
+      })
+      if (opts.json) {
+        console.log(JSON.stringify({ path: out.path, supersededId: out.supersededId, ...out.result }, null, 2))
+        return
+      }
+      console.log(`\n✓ Wrote ${out.path}`)
+      if (out.supersededId) console.log(`  supersedes ${out.supersededId}`)
+      console.log(`Campaign: ${out.result.campaign_id}`)
+      console.log(`Summary:  ${out.result.summary}`)
+      return
+    }
+
+    // ─── Mode: --data-only ───────────────────────────────────────────────
+    if (opts.dataOnly) {
+      const { runImproveData } = await import('../lib/campaign/improve')
+      const data = await runImproveData({
+        tenantId: getTenant(),
+        campaignId: opts.campaignId,
+        last,
+        target,
+      })
+      // Always JSON in this mode — it's intended to be consumed by a tool/skill.
+      console.log(JSON.stringify(data, null, 2))
+      return
+    }
+
+    // ─── Mode: unattended (LLM fallback) ─────────────────────────────────
+    const { runImprove } = await import('../lib/campaign/improve')
+    const out = await runImprove({
+      tenantId: getTenant(),
+      campaignId: opts.campaignId,
+      last,
+      target,
+      notion: opts.notion ?? false,
+    })
+
+    if (opts.json) {
+      console.log(JSON.stringify({
+        path: out.path,
+        supersededId: out.supersededId,
+        ...out.result,
+      }, null, 2))
+      return
+    }
+
+    console.log(`\n✓ Wrote ${out.path}`)
+    if (out.supersededId) console.log(`  supersedes ${out.supersededId}`)
+    console.log(`\nSummary: ${out.result.summary}`)
+    console.log(`\nWhat worked (${out.result.what_worked.length}):`)
+    for (const w of out.result.what_worked) console.log(`  • [${w.confidence}] ${w.observation}`)
+    console.log(`\nWhat didn't (${out.result.what_didnt.length}):`)
+    for (const w of out.result.what_didnt) console.log(`  • [${w.confidence}] ${w.observation}`)
+    for (const dim of ['copy', 'targeting', 'timing', 'channel'] as const) {
+      const list = out.result.proposed_changes[dim] ?? []
+      if (list.length === 0) continue
+      console.log(`\nProposed ${dim} changes:`)
+      for (const c of list) console.log(`  • [${c.confidence}] ${c.change} — ${c.rationale}`)
+    }
+  }))
+
+// ─── campaign:import-heyreach ───────────────────────────────────────────────
+// Pulls David's (or any sender's) HeyReach campaigns into the local YALC DB
+// so retro / dashboard / monthly-report skills can read them. Idempotent —
+// re-running upserts the same rows. Default sender = David Small (160491).
+program
+  .command('campaign:import-heyreach')
+  .description('Import HeyReach campaigns (for a single sender) into the local YALC DB')
+  .option('--sender-account-id <id>', 'HeyReach LinkedIn account id to scope by (default: 160491 = David Small)', '160491')
+  .option('--dry-run', 'Print what would be imported without writing to the DB')
+  .option('--force', 'Bypass the HTTP cache (forces fresh HeyReach API responses)')
+  .action(withDiagnostics(async (opts) => {
+    const senderAccountId = parseInt(opts.senderAccountId, 10)
+    if (!Number.isFinite(senderAccountId) || senderAccountId <= 0) {
+      console.error(`Invalid --sender-account-id: ${opts.senderAccountId}`)
+      process.exit(1)
+    }
+    const { importHeyReachCampaigns } = await import('../lib/campaign/import-heyreach')
+    const summary = await importHeyReachCampaigns({
+      tenantId: getTenant(),
+      senderAccountId,
+      dryRun: opts.dryRun ?? false,
+      bypassCache: opts.force ?? false,
+    })
+
+    console.log(`\nHeyReach import (sender=${senderAccountId}, tenant=${getTenant()})${opts.dryRun ? ' [dry-run]' : ''}`)
+    console.log(`  scanned:        ${summary.scanned}`)
+    console.log(`  matched sender: ${summary.matchedSender}`)
+    console.log(`  imported:       ${summary.imported.length}`)
+    console.log(`  skipped:        ${summary.skipped.length}`)
+    for (const row of summary.imported) {
+      const verb = row.inserted ? 'inserted' : row.updated ? 'updated ' : 'dry-run '
+      const copy = row.copyExtracted ? 'copy:✓' : 'copy:—'
+      const attr = row.replyAttribution.length
+        ? `attr=[${row.replyAttribution.map((a) => `after_step_${a.after_step}:${a.replies}`).join(', ')}]`
+        : 'attr=—'
+      console.log(
+        `  ${verb} ${row.campaignRowId} (${row.status}) "${row.name}" — leads=${row.leadsWritten} sent=${row.funnel.sent} accepted=${row.funnel.accepted} dms=${row.funnel.dms} replies=${row.funnel.replies}  ${copy}  ${attr}`,
+      )
+    }
+    for (const s of summary.skipped) {
+      console.log(`  skipped #${s.heyreachId} "${s.name}" — ${s.reason}`)
+    }
+  }))
+
+// ─── campaign:annotate ──────────────────────────────────────────────────────
+// Backfill hypothesis + outbound copy on a campaign row that was created
+// without them — typically a campaign imported from HeyReach where the API
+// didn't expose the sequence. Strategy / retro skills read this data so
+// these backfills are load-bearing for the qualitative side of analysis.
+program
+  .command('campaign:annotate')
+  .description('Backfill hypothesis + outbound copy on an imported campaign')
+  .requiredOption('--campaign-id <id>', 'Local campaign id (e.g. heyreach:412427)')
+  .option('--hypothesis <text>', 'Campaign hypothesis (the bet you are making with this targeting+copy)')
+  .option('--variant-name <text>', 'Override variant name (e.g. "Hiring v1")')
+  .option('--connect-note <text>', 'Connect-request copy')
+  .option('--dm1 <text>', 'DM1 template (post-accept)')
+  .option('--dm2 <text>', 'DM2 template (follow-up)')
+  .action(withDiagnostics(async (opts) => {
+    const { annotateCampaign } = await import('../lib/campaign/annotate')
+    const r = await annotateCampaign({
+      tenantId: getTenant(),
+      campaignId: opts.campaignId,
+      hypothesis: opts.hypothesis,
+      variantName: opts.variantName,
+      connectNote: opts.connectNote,
+      dm1Template: opts.dm1,
+      dm2Template: opts.dm2,
+    })
+    if (!r.campaignFound) {
+      console.error(`Campaign not found: ${opts.campaignId} (tenant=${getTenant()})`)
+      process.exit(1)
+    }
+    console.log(`✓ ${opts.campaignId}`)
+    if (r.hypothesisUpdated) console.log('  hypothesis updated')
+    if (r.variantUpdated) console.log(`  variant copy updated (variantId=${r.variantId})`)
+    if (!r.hypothesisUpdated && !r.variantUpdated) {
+      console.log('  (no fields provided — nothing changed)')
+    }
+  }))
+
+// ─── campaign:strategy ──────────────────────────────────────────────────────
+// Forward-looking strategist. Pair with campaign:improve (the retro).
+// Three modes mirror campaign:improve:
+//   --data-only           load past campaigns + retros + intelligence; emit JSON
+//   --from-file <path>    persist a strategy brief authored in chat
+//   (no flag)             unattended fallback that calls Anthropic
+program
+  .command('campaign:strategy')
+  .description('Pre-flight strategy advisor: analyse past campaigns + retros to inform the next launch')
+  .option('--concept <text>', 'One-line concept for the new campaign (e.g. "Reddit GEO Specialists hire")')
+  .option('--data-only', 'Skip the LLM. Print past-campaign data + retros + intelligence as JSON for chat-side reasoning.')
+  .option('--from-file <path>', 'Persist a pre-authored strategy brief JSON (skips LLM, just validates + writes).')
+  .option('--json', 'Print the parsed strategy brief as JSON')
+  .action(withDiagnostics(async (opts) => {
+    if (opts.dataOnly && opts.fromFile) {
+      console.error('--data-only and --from-file are mutually exclusive.')
+      process.exit(1)
+    }
+
+    if (opts.fromFile) {
+      const { runStrategyWrite } = await import('../lib/campaign/strategy')
+      const out = await runStrategyWrite({ filePath: opts.fromFile })
+      if (opts.json) {
+        console.log(JSON.stringify({ path: out.path, supersededId: out.supersededId, ...out.result }, null, 2))
+        return
+      }
+      console.log(`\n✓ Wrote ${out.path}`)
+      console.log(`Concept: ${out.result.proposed_campaign_concept}`)
+      console.log(`Summary: ${out.result.summary}`)
+      return
+    }
+
+    if (opts.dataOnly) {
+      if (!opts.concept) {
+        console.error('--concept is required with --data-only.')
+        process.exit(1)
+      }
+      const { runStrategyData } = await import('../lib/campaign/strategy')
+      const data = await runStrategyData({ tenantId: getTenant(), concept: opts.concept })
+      console.log(JSON.stringify(data, null, 2))
+      return
+    }
+
+    console.error('campaign:strategy requires --data-only or --from-file. Unattended mode is not yet wired.')
+    process.exit(1)
+  }))
+
 // ─── orchestrate ────────────────────────────────────────────────────────────
 program
   .command('orchestrate')
@@ -2007,6 +2236,24 @@ program
   .action(async () => {
     const { runUpdate } = await import('./commands/update')
     await runUpdate()
+  })
+
+// ─── describe-change ─────────────────────────────────────────────────────────
+program
+  .command('describe-change <pr-url>')
+  .description('Generate a plain-English CHANGES.md from a GitHub PR URL')
+  .action(async (prUrl: string) => {
+    const { runDescribeChange } = await import('./commands/describe-change')
+    await runDescribeChange(prUrl)
+  })
+
+// ─── publish ─────────────────────────────────────────────────────────────────
+program
+  .command('publish')
+  .description('Stage, commit, push current branch and open a PR into main')
+  .action(async () => {
+    const { runPublish } = await import('./commands/publish')
+    await runPublish()
   })
 
 // ─── doctor ────────────────────────────────────────────────────────────────
@@ -3580,6 +3827,82 @@ program
       open: !!options.open,
       port: Number.isFinite(port) ? port : 3847,
     })
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
+// ─── review:setup ──────────────────────────────────────────────────────────
+program
+  .command('review:setup')
+  .description('Create a paired Batches+Items Notion review surface for an output type (qualified_lead, qualified_visitor, qualified_engager, lead_magnet_reply, content_draft).')
+  .option('--output-type <type>', 'Output type to register')
+  .option('--parent-page-id <id>', 'Notion parent page ID (UUID, with or without dashes)')
+  .option('--parent-page <title>', 'Notion parent page title to search (alternative to --parent-page-id)')
+  .option('--category-name <name>', 'Display name for the category (defaults to type-specific name)')
+  .option('--mode <mode>', 'hard (default) | autonomous — gate behaviour')
+  .option('--rebuild', 'Force new DBs even if one is already registered for this type', false)
+  .action(withDiagnostics(async (opts) => {
+    const { runReviewSetup } = await import('./commands/review')
+    const result = await runReviewSetup({
+      outputType: opts.outputType,
+      parentPageId: opts.parentPageId,
+      parentPage: opts.parentPage,
+      categoryName: opts.categoryName,
+      mode: opts.mode,
+      rebuild: !!opts.rebuild,
+    })
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
+// ─── review:reconfigure ────────────────────────────────────────────────────
+program
+  .command('review:reconfigure')
+  .description('Change category name, approve_mode, or gate_mode on an existing review surface (keeps the existing DBs).')
+  .option('--output-type <type>', 'Output type to reconfigure')
+  .option('--category-name <name>', 'New display name for the category')
+  .option('--mode <mode>', 'hard | autonomous')
+  .action(withDiagnostics(async (opts) => {
+    const { runReviewReconfigure } = await import('./commands/review')
+    const result = await runReviewReconfigure({
+      outputType: opts.outputType,
+      categoryName: opts.categoryName,
+      mode: opts.mode,
+    })
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
+// ─── review:gate ───────────────────────────────────────────────────────────
+program
+  .command('review:gate')
+  .description('Flip a registered output type between hard (halt downstream) and autonomous (push + continue).')
+  .option('--output-type <type>', 'Output type to update')
+  .option('--mode <mode>', 'hard | autonomous')
+  .action(withDiagnostics(async (opts) => {
+    const { runReviewGate } = await import('./commands/review')
+    const result = await runReviewGate({
+      outputType: opts.outputType,
+      mode: opts.mode,
+    })
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
+// ─── review:status ─────────────────────────────────────────────────────────
+program
+  .command('review:status')
+  .description('Show all registered Notion review surfaces with parent page, both DB IDs, gate mode, and approve mode.')
+  .action(withDiagnostics(async () => {
+    const { runReviewStatus } = await import('./commands/review')
+    const result = await runReviewStatus()
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
+// ─── review:doctor ─────────────────────────────────────────────────────────
+program
+  .command('review:doctor')
+  .description('Verify a review surface: checks the four load-bearing contract properties are present, lists user-added columns.')
+  .option('--output-type <type>', 'Output type to verify')
+  .action(withDiagnostics(async (opts) => {
+    const { runReviewDoctor } = await import('./commands/review')
+    const result = await runReviewDoctor({ outputType: opts.outputType })
     if (result.exitCode !== 0) process.exit(result.exitCode)
   }))
 
