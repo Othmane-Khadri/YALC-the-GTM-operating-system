@@ -47,6 +47,33 @@ This skill creates a campaign in a real lemlist account using paid lemlist credi
 3. WAIT for explicit user `approve` before calling any campaign-creation or lead-add MCP tool.
 4. Only proceed past dryrun after the user has approved the spend in this conversation.
 
+## Stage handoff contract (what to extract and carry forward)
+
+Each substrate skill returns prose. Claude must extract the listed fields at each stage and persist them in a working memory object that the orchestrator threads forward. If a field cannot be extracted, apply the fallback. Never proceed past stage 17 with empty `emails[]`.
+
+| Stage | Substrate skill | Field(s) to extract | Fallback if missing |
+|---|---|---|---|
+| 1 | `icp-definer` | `industries[]`, `geo[]`, `size_range_employees[]`, `active_signals[]` | Ask user to confirm before stage 2 |
+| 2 | `persona-definer` | `personas[].title_patterns[]`, `personas[].seniority_tier` (must be `VP+` / `Manager` / `IC`), `personas[].pains_identified[]` | If `seniority_tier` ambiguous, map titles: `VP*/SVP*/Chief*` → VP+; `Manager*/Head of*/Director*` → Manager; else IC. |
+| 3 | `pain-identifier` | `pains[]` (text) | Continue without; mark as `pains: []` in dryrun |
+| 4 | `value-prop-lister` | `value_props[]` | Ask user once |
+| 5 | `offer-definer` | `offer` (text) | Derive from `value_props[0]` |
+| 6 | `competitor-finder` | `competitors[].{name, differentiation}` | Skip; mark `competitors: []` |
+| 7 | `trigger-finder` | `triggers[]` | Skip; mark `triggers: []` |
+| 8 | `company-finder` | `firmographic_filters[]` (as filterId+in/out triplets) | Map from ICP fields with the active filter registry from stage 11a |
+| 9 | `list-builder` | `combined_filters[]` | Equal to `firmographic_filters` if no extra signals |
+| 10 | `people-finder` | `persona_filters[]` (currentTitle, seniority) | Derive from `persona.title_patterns` |
+| 13 | `linkedin-outbound-angle` | `lead.angle` (text, per-lead) | Default to generic offer-led angle |
+| 14 | `campaign-angle-finder` | `chosen_angle` | Pick first if user does not respond |
+| 15 | `outbound-campaign-architect` | `sequence_shape: { steps: [{delay_days, channel}] }` | Default: 3 emails, delays [0, 3, 6] |
+| 17 | `copywriting-{vp,manager,ic}-sequence` | `emails[].{subject, body}` (length 3) | Block; do not proceed without |
+| 18 | `copywriting-first-touch` | `emails[0]` rewrite | Keep original if no rewrite |
+| 19 | `copywriting-follow-up` | `emails[1..2]` rewrites | Keep originals |
+| 20 | `cta-designer` | `emails[].cta` overrides | Keep originals |
+| 21 | `copywriting-refiner` | `emails[].refined` | Keep originals |
+| 22 | `copywriting-analyzer` | `score` (0-100), `improvement_notes[]` | Mark `score: null`; surface to user |
+| 23 | `gtm-action-thinker` | `weakest_assumption` (text) | Skip |
+
 ## End-to-end orchestration (25 stages)
 
 The skill walks Claude Code through the following chain. Each stage names the lemlist atomic skill or MCP operation it invokes.
