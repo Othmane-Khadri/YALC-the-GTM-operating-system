@@ -220,13 +220,14 @@ function csvRowToContact(row) {
     }
   }
   const linkedin_url = pickField(row, [
-    'linkedin_url', 'linkedin', 'profile_url', 'linkedinurl',
+    'linkedin_url', 'linkedin', 'profile_url', 'profileurl',
+    'profile_link', 'profilelink', 'profile link', 'linkedinurl',
     'linkedin profile', 'linkedin_profile_url', 'linkedinprofileurl',
     'profile url', 'linkedin url',
   ]);
   const title = pickField(row, [
     'title', 'job_title', 'jobtitle', 'headline', 'position',
-    'current_position', 'job title',
+    'current_position', 'job title', 'occupation',
   ]);
   const company_name = pickField(row, [
     'company', 'company_name', 'companyname', 'current_company',
