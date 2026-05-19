@@ -247,15 +247,22 @@ function csvRowToContact(row) {
 }
 
 /**
- * Dedupe by linkedin_url when present, otherwise by name+company.
- * Drops rows without first_name OR without both linkedin_url and company_name
- * (FullEnrich needs at least one of those anchors to enrich).
+ * A contact is enrichable iff it has a first_name AND at least one of
+ * linkedin_url or company_name — FullEnrich needs at least one of those
+ * anchors to attempt enrichment.
+ */
+function isEnrichable(c) {
+  return Boolean(c.first_name && (c.linkedin_url || c.company_name));
+}
+
+/**
+ * Dedupe by linkedin_url when present, otherwise by name+company. Caller
+ * is responsible for filtering to isEnrichable() first, so this function
+ * can be used solely to measure duplicates (not duplicates+invalids).
  */
 function dedupeContacts(contacts) {
   const seen = new Map();
   for (const c of contacts) {
-    if (!c.first_name) continue;
-    if (!c.linkedin_url && !c.company_name) continue;
     const key = c.linkedin_url
       ? c.linkedin_url.toLowerCase()
       : `${c.first_name}|${c.last_name}|${c.company_name}`.toLowerCase();
@@ -281,14 +288,19 @@ async function main() {
   if (flags.csv) {
     console.log(`[csv] reading ${flags.csv}...`);
     const rows = await readCsv(flags.csv);
-    engagers = dedupeContacts(rows.map(csvRowToContact));
+    const mapped = rows.map(csvRowToContact);
+    const valid = mapped.filter(isEnrichable);
+    const droppedMissing = rows.length - valid.length;
+    let unique = dedupeContacts(valid);
+    const droppedDupes = valid.length - unique.length;
     const maxCap = parseInt(flags.max, 10);
-    if (maxCap && engagers.length > maxCap) {
-      console.log(`[csv] --max=${maxCap} cap: trimming ${engagers.length} -> ${maxCap}`);
-      engagers = engagers.slice(0, maxCap);
+    let cappedOff = 0;
+    if (maxCap && unique.length > maxCap) {
+      cappedOff = unique.length - maxCap;
+      unique = unique.slice(0, maxCap);
     }
-    const skipped = rows.length - engagers.length;
-    console.log(`[csv] ${rows.length} rows -> ${engagers.length} usable contacts (${skipped} skipped — need first_name + (linkedin_url or company))`);
+    engagers = unique;
+    console.log(`[csv] ${rows.length} rows -> ${engagers.length} usable contacts (dropped: ${droppedMissing} missing first_name+(url|company), ${droppedDupes} duplicates, ${cappedOff} cap-trimmed)`);
     sourceLabel = `CSV ${flags.csv}`;
   } else {
     const postArg = positional[0];
@@ -307,7 +319,7 @@ async function main() {
     ]);
     console.log(`[unipile] ${reactions.length} reactions + ${comments.length} comments`);
 
-    engagers = dedupeContacts([...reactions, ...comments].map(engagerToContact));
+    engagers = dedupeContacts([...reactions, ...comments].map(engagerToContact).filter(isEnrichable));
     console.log(`[unipile] ${reactions.length + comments.length} engagements -> ${engagers.length} unique engagers`);
     sourceLabel = `post ${social_id}`;
   }
