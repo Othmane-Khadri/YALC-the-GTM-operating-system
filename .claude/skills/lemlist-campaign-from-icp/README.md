@@ -14,6 +14,7 @@ Landing page with the video, the lemlist credit, and the full breakdown: <https:
 - **Claude Code** installed
 - **A lemlist account** ([trial via partner link](https://get.lemlist.com/skrtwnkxw60i))
 - **`LEMLIST_API_KEY` exported in your shell BEFORE starting Claude Code** (generate in lemlist → Settings → Integrations). The env var is consumed when the MCP process boots, not on each request. Restart Claude Code after exporting.
+- **At least one email sender connected in your lemlist account.** lemlist → Settings → Senders. Without a connected sender, `validate_campaign_readiness` returns `has_errors: "No senders configured"` and the campaign cannot launch even after manual review. The orchestrator surfaces this error at stage 25e but cannot resolve it for you.
 
 ### Copy the skill into your project
 
@@ -89,11 +90,21 @@ Detailed stage-by-stage breakdown in [SKILL.md](./SKILL.md).
 
 ## Safety contract
 
-- PAUSED state hard-coded — never auto-sends.
+- DRAFT state by default — the orchestrator never calls `set_campaign_state` with action `start`. Never auto-sends.
 - Dryrun JSON written before any MCP push.
 - Default lead ceiling: 50 (raise with an explicit instruction).
 - Explicit `approve` blocks the push.
 - No silent retries on MCP errors.
+
+## Email enrichment for leads without `potential_email`
+
+`lemleads_search` returns a `potential_email` field for most but not all leads (typically 70-85% coverage). For the missing-email subset, the orchestrator surfaces an `email_coverage_percent` figure in the dryrun and offers three paths:
+
+1. **Skip** — drop leads without email. Default.
+2. **Use a Yalc enrichment skill via the fullenrich MCP** — recommended. Yalc bundles `fullenrich-plg-reverse-lookup`, `fullenrich-content-engagers`, `fullenrich-network-activation`, `fullenrich-event-attendees`, and `enrich-with-signals`. Run the appropriate one on the missing-email subset (LinkedIn URL + name + company → verified email), then re-merge before stage 25d.
+3. **Toggle `findEmail: true` on `add_lead_to_campaign`** — fastest but spends one lemlist credit per lead per flag. Only when the user explicitly opts in.
+
+This separation keeps lemlist credits scoped to sourcing + sequence orchestration, while email enrichment runs through whichever enrichment provider is cheapest/most reliable for the specific use case.
 
 ## Cost
 

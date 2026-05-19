@@ -39,7 +39,7 @@ This skill creates a campaign in a real lemlist account using paid lemlist credi
 2. **Dryrun first.** Render the full sequence text, the lead list summary, the persona routing breakdown, and the estimated lemlist credit usage to a local JSON file at `~/.gtm-os/lemlist-campaign-from-icp/dryrun-{timestamp}.json`. Quote the file path back to the user.
 3. **Lead count ceiling.** Default cap is 50 leads per run. The user can raise it with an explicit instruction, but the skill always quotes the number back before sourcing.
 4. **Hard approval prompt.** After the dryrun, the skill asks `"Approve creating campaign '{title}' in lemlist with {N} leads and the sequence above? Type 'approve' to push, anything else to abort."` Block on the user response. Do not call any campaign-creation or lead-add MCP tool until the user types `approve`.
-5. **No silent retries.** If any MCP creation/add call fails, surface the error and stop. Do not retry without explicit user instruction.
+5. **No silent retries.** If any MCP creation/add call fails, surface the error and stop. Do not retry without explicit user instruction. Known unstable endpoint (verified live, 2026-05-19): `set_campaign_state` action `archive` can return HTTP 500 intermittently — never retry blindly; surface the error and let the user clean up via the lemlist UI.
 
 **When Claude invokes this skill on a user's behalf:**
 1. ALWAYS produce the dryrun output first.
@@ -97,12 +97,28 @@ Lemlist's filter registry can change. Always discover filterIds at runtime rathe
 8. `company-finder` — translate the ICP into a lemlist firmographic search configuration (industry, size, geography, technographics).
 9. `list-builder` — combine the firmographic config with signal filters (e.g., active hiring, funding signals) into a single search shape.
 10. `people-finder` — translate persona seniority + role into lemlist People Database search filters.
-11a. **MCP call: `get_lemleads_filters`** — fetch the active filter registry. Use the returned `filterId` values to shape the search filters array. UI-only filters (`notInContacts`, `notInCampaign`) are not available over this transport — drop them if surfaced by upstream skills.
+11a. **MCP call: `get_lemleads_filters`** — fetch the active filter registry.
+
+    **Payload size warning (verified live, 2026-05-19):** the response is ~93K chars / 3,091 lines and cannot fit in an LLM context window in a single tool result. When the MCP returns "result exceeds maximum allowed tokens, output saved to <path>", grep that file for the specific filterIds you need (`currentTitle`, `seniority`, `country`, `region`, `currentCompanyHeadcount`, `department`, `currentCompanySubIndustry`, etc.) plus their `values` arrays. Do NOT attempt to load the full registry into chat.
+
+    Use the returned `filterId` values to shape the search filters array. UI-only filters (`notInContacts`, `notInCampaign`) are not available over this transport — drop them if surfaced by upstream skills.
+
 11b. **MCP call: `lemleads_search`** with `mode: "people"` (or `"companies"`, never `"leads"`) and a `filters` array of `{filterId, in, out}` objects derived from stage 11a. Cap `size` at the lead count ceiling (default 50, max 100 per page). Dedupe results by `linkedin_url` and `email` before storing in working memory.
+
+    **Payload size warning (verified live, 2026-05-19):** each lead returns ~24K chars; a 5-lead call already exceeds 122K chars, a 50-lead call would exceed 1MB. Two mitigations the orchestrator MUST apply:
+    1. **Pass `excludes`** to drop heavyweight nested objects you don't need at this stage (recommended baseline: `excludes: ["experiences", "interests", "languages", "inferred_skills", "lead_logo_url", "company_description", "techno_used_array"]`).
+    2. **Expect the response to be saved to a file** by the MCP host when over the context limit. Grep/parse that file with a small script to extract only the per-lead fields needed for stage 12 forward: `full_name`, `potential_email`, `lead_linkedin_url`, `current_exp_company_name`, `country`, `headline`, `seniority`, `department`. Do NOT attempt to load the full response into chat.
 
 ### Stage 3 — Enrichment posture
 
-12. `lemleads_search` returns search results, not imported leads. Enrichment happens at lead-add time (stage 25d) and via lemlist's server-side agentic enrichment pipeline once a lead is part of a campaign. The orchestrator does NOT toggle the per-call enrichment flags (`findEmail`, `verifyEmail`, `linkedinEnrichment`, `findPhone`) on `add_lead_to_campaign` by default — those cost credits per flag per lead. The user can opt in via an explicit instruction like "enrich phones too" before approval, which switches the matching flag(s) ON for that run only. Quote the projected credit cost back to the user during the dryrun.
+12. `lemleads_search` returns search results, not imported leads. Search results include a `potential_email` field for most (but not all) leads. The orchestrator does NOT toggle the per-call enrichment flags (`findEmail`, `verifyEmail`, `linkedinEnrichment`, `findPhone`) on `add_lead_to_campaign` by default — those cost credits per flag per lead.
+
+    **Lead email coverage (verified live):** in real searches, 70-85% of leads ship with a `potential_email`; the rest have `null` or missing. The orchestrator must compute and surface an `email_coverage_percent` figure in the dryrun (stage 24) so the user can decide what to do with the gap.
+
+    **Three paths to fill the gap, in order of preference:**
+    1. **Skip leads without email.** Cheapest; reduces effective list size.
+    2. **Use a Yalc enrichment skill** (`fullenrich-plg-reverse-lookup`, `fullenrich-content-engagers`, `fullenrich-network-activation`, `fullenrich-event-attendees`, or `enrich-with-signals`) — these run through the fullenrich MCP server and resolve emails from LinkedIn URL + name + company. Recommended path: enrich the missing-email subset via the appropriate fullenrich skill BEFORE stage 25d, then re-merge.
+    3. **Toggle lemlist's `findEmail: true`** on `add_lead_to_campaign` — fastest but per-lead-per-flag credit cost. Only use when the user explicitly opts in via an instruction like "enrich emails through lemlist" before approval. Quote the projected credit cost back to the user during the dryrun.
 
 ### Stage 4 — Per-lead personalization angle
 
@@ -142,7 +158,10 @@ Lemlist's filter registry can change. Always discover filterIds at runtime rathe
     - `leads[]` — each with `linkedin_url`, `email`, `email_status`, `enrichment_planned: bool`, `angle` (per-lead text from stage 13), `persona_tier`
     - `sequence_steps[]` — 3 emails with `delay_days`, `subject`, `body` per step
     - `copywriting_analyzer_score` (0-100, may be `null` if stage 22 failed)
-    - `estimated_lemlist_credits` — `{sourcing, enrichment}` breakdown
+    - `email_coverage_percent` — (count of leads with `potential_email`) / total × 100, rounded to nearest int
+    - `leads_without_email[]` — list of `{full_name, linkedin_url, company}` for leads missing `potential_email`
+    - `enrichment_plan` — `"skip" | "fullenrich" | "lemlist_findEmail"`; default `"skip"` unless user opts in
+    - `estimated_lemlist_credits` — `{sourcing, enrichment}` breakdown (enrichment cost is zero unless `enrichment_plan = "lemlist_findEmail"`)
     - `mcp_call_plan[]` — ordered list of the exact MCP calls + payloads that will fire on approval (campaignId and sequenceId shown as placeholders; real IDs only known after stage 25a fires)
 
     Quote the file path back to the user. Print a one-paragraph summary in chat: `N leads sourced, M personas, X-touch sequence, score Y/100. Approve to push as draft campaign '{title}'?`
@@ -156,6 +175,8 @@ Lemlist's filter registry can change. Always discover filterIds at runtime rathe
     Capture: `campaignId` (cam_xxx), `sequenceId` (seq_xxx)
     Result: campaign created in DRAFT state with step 1 in place.
 
+    **Response field warning (verified live, 2026-05-19):** the response includes a `campaign.status` field that may return `"running"` even though the campaign is actually stored as `draft`. DO NOT trust the status field from the create response. The actual stored state is `draft` by default. To verify, you can call `set_campaign_state` with `action: "pause"` — if the response is `{"success": false, "previousStatus": "draft", ...}`, that confirms the campaign is already in draft. The `add_sequence_step` responses (stages 25b/c below) DO include an accurate `campaignStatus: "draft"` field — trust those instead.
+
     **25b. MCP call: `add_sequence_step`** (for step 2)
     Payload: `{ campaignId, sequenceId, type: "email", delay: <sequence_steps[1].delay_days>, delayType: "within", message: <sequence_steps[1].body>, subject: <omit to send as thread reply>, userConfirmed: true }`
 
@@ -163,7 +184,21 @@ Lemlist's filter registry can change. Always discover filterIds at runtime rathe
     Payload: `{ campaignId, sequenceId, type: "email", delay: <sequence_steps[2].delay_days>, delayType: "within", message: <sequence_steps[2].body>, subject: <omit to send as thread reply>, userConfirmed: true }`
 
     **25d. For each lead in `leads[]`: MCP call: `add_lead_to_campaign`**
-    Payload: `{ campaignId, email, firstName, lastName, linkedinUrl, companyName, customVariables: { angle, persona_tier }, deduplicate: true }`. Enrichment flags (`findEmail`, `verifyEmail`, `linkedinEnrichment`, `findPhone`) are OFF by default — agentic enrichment via the platform's own pipeline happens server-side regardless of these flags.
+    Payload: `{ campaignId, email, firstName, lastName, linkedinUrl, companyName, customVariables: { angle, persona_tier, headline, country }, deduplicate: true }`. Enrichment flags (`findEmail`, `verifyEmail`, `linkedinEnrichment`, `findPhone`) are OFF by default — see stage 12 enrichment posture.
+
+    **Field naming translation (verified live, 2026-05-19):** `lemleads_search` returns snake_case fields; `add_lead_to_campaign` expects camelCase. Map them explicitly:
+
+    | From `lemleads_search` result (snake_case) | To `add_lead_to_campaign` (camelCase) | Transform |
+    |---|---|---|
+    | `full_name` | `firstName` + `lastName` | Split on first space; if no space, `firstName = full_name` and omit `lastName` |
+    | `potential_email` | `email` | May be `null` or missing for ~15-30% of leads — see stage 12 |
+    | `lead_linkedin_url` | `linkedinUrl` | URL-encoded special chars (e.g. `é`) round-trip OK |
+    | `current_exp_company_name` | `companyName` | If contains `®`, `™`, etc., consider stripping (lemlist tolerates but UI display can be ugly) |
+    | `headline` | `customVariables.headline` | Useful Liquid variable for personalization |
+    | `country` | `customVariables.country` | Same |
+    | `seniority` | `customVariables.persona_tier` | Map: `"Executive Leadership"` → `"VP+"`, `"Department Leadership"` → `"VP+"`, `"People Management / Leadership"` → `"Manager"`, else `"IC"` |
+
+    Leads with missing `potential_email`: still call `add_lead_to_campaign` (the API requires at least one field, not specifically email) but flag them in the dryrun `leads_without_email[]` array. Email steps will silently skip for those leads at send time.
 
     Rate-limit and partial-failure handling:
     - Process leads sequentially, not in parallel (lemlist API is rate-limited).
