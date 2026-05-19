@@ -3906,4 +3906,20 @@ program
     if (result.exitCode !== 0) process.exit(result.exitCode)
   }))
 
+// ─── calls:sync ─────────────────────────────────────────────────────────────
+program
+  .command('calls:sync')
+  .description('Backfill recent Claap call recordings + transcripts into local SQLite.')
+  .option('--lookback-days <n>', 'Days of call history to scan', (v) => parseInt(v, 10), 7)
+  .option('--limit <n>', 'Maximum number of calls to fetch', (v) => parseInt(v, 10))
+  .action(withDiagnostics(async (opts) => {
+    const { runCallsSync } = await import('./commands/calls')
+    const result = await runCallsSync({
+      lookbackDays: opts.lookbackDays,
+      limit: opts.limit,
+      tenant: program.opts().tenant,
+    })
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
 program.parse()
