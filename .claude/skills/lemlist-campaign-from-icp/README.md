@@ -58,17 +58,62 @@ Restart Claude Code. Verify with `/mcp` — you should see lemlist tools includi
 
 If you prefer not to manage an API key, you can connect via OAuth: `claude mcp add --transport http lemlist https://app.lemlist.com/mcp`. This works for interactive sessions but does not survive in headless/CI contexts. Tool surface is otherwise identical.
 
+## Before you start
+
+The skill chains 24 substrate skills, several of which need real context to produce a useful campaign. The richer your prompt, the better the output. The orchestrator will ask interactively if you skip something, but the chain runs cleaner when you front-load these inputs.
+
+**Gather these before you type the prompt:**
+
+1. **Your company + one-line description of what you sell.** Example: "Earleads — we run Reddit GEO and outbound for B2B SaaS founders, $4.5K/mo retainer + CPM."
+2. **Your offer / outcome.** What changes for the buyer after they use you? Example: "Cut AE quota ramp from 6 months to 3."
+3. **Price point.** (Maps directly to buyer seniority — IC/Manager/Director/VP/C-level.)
+4. **ICP firmographics.** Industry, headcount range, geography, growth stage (Series A/B/C/PE/bootstrapped).
+5. **ICP persona.** Title patterns, seniority tier, what they're measured on, who they report to.
+6. **Trigger / signal.** What recent event makes this lead worth contacting now? (hiring spike, funding round, exec hire, tool change, etc.)
+7. **Lead count + region constraints.** Default ceiling is 50; raise it explicitly if you want more.
+
+If you have a Notion page, battlecard, or pitch deck with this context, paste the relevant excerpts inline. Claude reads it once and threads it through every stage.
+
 ## Usage
 
 In Claude Code, in any project that has this skill installed:
 
+### Rich prompt (recommended — exercises the full chain)
+
 ```
-create a lemlist campaign for VPs of Sales at Series B SaaS companies in Europe
-that are hiring Account Executives. Our product helps RevOps teams cut quota
-ramp time from 6 months to 3. 50 leads, paused.
+Create a lemlist campaign for me.
+
+Company: Earleads. We run Reddit GEO and outbound ops for B2B SaaS
+founders — full-stack: thread mapping, content strategy, monitoring agents,
+and campaign execution via our GTM-OS open-source stack. €4,500/mo retainer
++ €8 CPM on impressions. We pitch the strategic brain, the AM handles
+execution.
+
+Offer: We turn Reddit + LinkedIn + cold email into a single GTM engine
+for founder-led companies that have product-market fit but no GTM hire yet.
+
+ICP (firmographics): B2B SaaS, Series A or Seed-extension, 10-80 employees,
+Western Europe + UK. No GTM hire yet (CEO is still the sales motion).
+
+ICP (persona): Founder/CEO or Head of Growth. Seniority tier: VP+ for
+founders, Manager for Head of Growth.
+
+Trigger: Recent product launch (last 60 days) OR Series A close (last 90
+days) OR active hiring for first AE/SDR.
+
+Constraints: 25 leads, Western Europe only, paused. Default enrichment
+(no per-lead findEmail flag — we'll use Yalc's fullenrich skills if leads
+are missing email).
 ```
 
-The skill triggers, walks through the 25-stage chain (visible in chat), and produces a dryrun output at `~/.gtm-os/lemlist-campaign-from-icp/dryrun-{timestamp}.json`. It then asks for your `approve` before calling any campaign-creation or lead-add MCP tool.
+### Minimal prompt (chain will ask for the gaps)
+
+```
+create a lemlist campaign for B2B SaaS founders in Europe who recently
+launched a product. ~20 leads.
+```
+
+The chain triggers, walks through the 25-stage flow (visible in chat), and produces a dryrun output at `~/.gtm-os/lemlist-campaign-from-icp/dryrun-{timestamp}.json`. It then asks for your `approve` before calling any campaign-creation or lead-add MCP tool.
 
 After approval, the campaign appears in your lemlist UI in **DRAFT** state — review and start it manually. The orchestrator never calls `set_campaign_state` with action `start`.
 
