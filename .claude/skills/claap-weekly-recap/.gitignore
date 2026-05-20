@@ -1,0 +1,5 @@
+# Secrets and per-user runtime state. Never commit any of this.
+
+.claap-config.json
+.env
+*.local.json

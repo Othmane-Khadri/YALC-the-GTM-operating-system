@@ -6,7 +6,10 @@
 # Fires `claude -p` headless with the claap-weekly-recap skill loaded
 # and writes the run output to a log file.
 #
-# Replace every <PLACEHOLDER> below before installing.
+# Replace every <PLACEHOLDER> below before installing. The skill itself
+# reads its inputs from .claap-config.json (created by SETUP MODE on first
+# interactive run) — this wrapper only needs to know where the skill folder
+# and credentials live.
 # ─────────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -17,23 +20,12 @@ WORKSPACE="<ABSOLUTE_PATH_TO_YOUR_CLAUDE_CODE_WORKSPACE>"
 # This is where your .mcp.json lives that registers the Claap MCP.
 
 SKILL_DIR="$WORKSPACE/.claude/skills/claap-weekly-recap"
+CONFIG_FILE="$SKILL_DIR/.claap-config.json"
 LOG_DIR="$WORKSPACE/logs"
 STATE_DIR="$HOME/.gtm-os/state"
 HISTORY_FILE="$STATE_DIR/claap-recap-history.md"
 LOG_FILE="$LOG_DIR/claap-weekly-recap-$(date +%F).log"
 CLAUDE_BIN="$HOME/.local/bin/claude"
-
-# ── REQUIRED — your skill inputs ─────────────────────────────────
-GTM_ACTION_ITEMS_DS_ID="collection://<YOUR_NOTION_DS_UUID>"
-SLACK_RECIPIENT="<U_YOUR_SLACK_USER_ID>"   # or @handle if MCP supports it
-LOOKBACK_DAYS=7
-MAX_TURNS=50
-MODEL="claude-opus-4-6"                     # or claude-sonnet-4-6 for cost
-
-# ── OPTIONAL — Slack webhook fallback (no MCP path) ──────────────
-# Set this if your Slack MCP isn't available in headless mode.
-# Leave blank to require the Slack MCP.
-SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL:-}"
 
 mkdir -p "$LOG_DIR" "$STATE_DIR"
 
@@ -42,6 +34,20 @@ STOP_FILE="$WORKSPACE/STOP_CLAAP_WEEKLY_RECAP"
 if [[ -f "$STOP_FILE" ]]; then
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] STOPPED — kill switch active. Remove $STOP_FILE to re-enable." >> "$LOG_FILE"
   exit 0
+fi
+
+# ── Config-driven defaults (overridable via .claap-config.json) ──
+MAX_TURNS_DEFAULT=100
+MODEL_DEFAULT="claude-sonnet-4-6"   # Opus is fine (claude-opus-4-6) but ~5x cost.
+
+MAX_TURNS="$MAX_TURNS_DEFAULT"
+MODEL="$MODEL_DEFAULT"
+
+if [[ -f "$CONFIG_FILE" ]] && command -v jq >/dev/null 2>&1; then
+  CFG_MAX_TURNS=$(jq -r '.max_turns // empty' "$CONFIG_FILE" 2>/dev/null || true)
+  CFG_MODEL=$(jq -r '.model // empty' "$CONFIG_FILE" 2>/dev/null || true)
+  [[ -n "$CFG_MAX_TURNS" && "$CFG_MAX_TURNS" != "null" ]] && MAX_TURNS="$CFG_MAX_TURNS"
+  [[ -n "$CFG_MODEL"     && "$CFG_MODEL"     != "null" ]] && MODEL="$CFG_MODEL"
 fi
 
 # ── Credentials ──────────────────────────────────────────────────
@@ -60,7 +66,15 @@ if [[ -z "${CLAAP_API_KEY:-}" ]]; then
 fi
 
 export CLAAP_API_KEY
-[[ -n "$SLACK_WEBHOOK_URL" ]] && export SLACK_WEBHOOK_URL
+
+# Slack webhook is optional — only set this path if SETUP MODE recorded
+# `slack_delivery.mode == "webhook"`. The skill will resolve the env var
+# name in config and abort if it's empty.
+if [[ -z "${SLACK_WEBHOOK_URL:-}" && -f "$CLAAP_ENV_FILE" ]]; then
+  CANDIDATE=$(grep -E '^SLACK_WEBHOOK_URL=' "$CLAAP_ENV_FILE" | head -1 | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+  [[ -n "$CANDIDATE" ]] && export SLACK_WEBHOOK_URL="$CANDIDATE"
+fi
+[[ -n "${SLACK_WEBHOOK_URL:-}" ]] && export SLACK_WEBHOOK_URL
 
 # Ensure headless claude uses Claude Code subscription, not API credits
 unset ANTHROPIC_API_KEY
@@ -72,8 +86,11 @@ cd "$WORKSPACE"
 WEEK_LABEL=$(date +%G-W%V)
 TODAY=$(date +%F)
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting Claap Weekly Recap for ${WEEK_LABEL} (lookback: ${LOOKBACK_DAYS}d)" >> "$LOG_FILE"
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] DS: $GTM_ACTION_ITEMS_DS_ID · Slack: $SLACK_RECIPIENT · Model: $MODEL" >> "$LOG_FILE"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting Claap Weekly Recap for ${WEEK_LABEL}" >> "$LOG_FILE"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Model: $MODEL · Max turns: $MAX_TURNS" >> "$LOG_FILE"
+if [[ ! -f "$CONFIG_FILE" ]]; then
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING — $CONFIG_FILE missing. The skill will enter SETUP MODE, which expects an interactive session. Scheduled run will likely no-op." >> "$LOG_FILE"
+fi
 
 # ── Prompt assembly ──────────────────────────────────────────────
 TMPDIR_LOCAL=$(mktemp -d)
@@ -83,13 +100,9 @@ PROMPT_FILE="$TMPDIR_LOCAL/prompt.txt"
 {
   cat "$SKILL_DIR/SKILL.md"
   printf '\n---\n\n## Task\n\n'
-  printf 'gtm_action_items_data_source_id: %s\n' "$GTM_ACTION_ITEMS_DS_ID"
-  printf 'slack_recipient: %s\n' "$SLACK_RECIPIENT"
   printf 'week_label: %s\n' "$WEEK_LABEL"
-  printf 'lookback_days: %s\n' "$LOOKBACK_DAYS"
-  printf 'prior_recap_history_path: %s\n' "$HISTORY_FILE"
-  printf "today: %s\n\n" "$TODAY"
-  printf 'Execute the full 8-step workflow. Use Claap MCP for call data, Notion MCP for the GTM Action Items DB, Slack MCP (or the SLACK_WEBHOOK_URL env var via Bash + curl) for the summary DM. Append focus block titles to the history file.\n'
+  printf 'today: %s\n\n' "$TODAY"
+  printf 'Load .claap-config.json from the skill folder. Execute the full 8-step NORMAL MODE workflow. Use the Claap MCP prefix recorded in config, the Notion MCP prefix recorded in config, and the Slack delivery mode recorded in config. Append focus block titles to the history file.\n'
 } > "$PROMPT_FILE"
 
 # ── Run ──────────────────────────────────────────────────────────
@@ -99,7 +112,7 @@ cat "$PROMPT_FILE" | "$CLAUDE_BIN" -p \
   --model "$MODEL" \
   --max-turns "$MAX_TURNS" \
   --dangerously-skip-permissions \
-  --allowedTools "ToolSearch,Read,Write,Bash,Glob,Grep,ReadMcpResourceTool,ListMcpResourcesTool,mcp__claap__*,mcp__claude_ai_Notion__notion-fetch,mcp__claude_ai_Notion__notion-create-pages,mcp__claude_ai_Notion__notion-update-data-source,mcp__notion__notion-fetch,mcp__notion__notion-create-pages,mcp__notion__notion-update-data-source,mcp__claude_ai_Slack__slack_send_message,mcp__claude_ai_Slack__slack_search_users" \
+  --allowedTools "ToolSearch,Read,Write,Bash,Glob,Grep,ReadMcpResourceTool,ListMcpResourcesTool,mcp__claap__*,mcp__claude_ai_Claap__*,mcp__claude_ai_Notion__notion-fetch,mcp__claude_ai_Notion__notion-create-pages,mcp__claude_ai_Notion__notion-update-data-source,mcp__claude_ai_Notion__notion-create-database,mcp__claude_ai_Notion__notion-create-view,mcp__notion__notion-fetch,mcp__notion__notion-create-pages,mcp__notion__notion-update-data-source,mcp__notion__notion-create-database,mcp__notion__notion-create-view,mcp__claude_ai_Slack__slack_send_message,mcp__claude_ai_Slack__slack_search_users,mcp__claude_ai_Slack__slack_search_channels" \
   --output-format text \
   >> "$LOG_FILE" 2>&1
 
