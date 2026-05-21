@@ -1,7 +1,7 @@
 ---
 name: lemlist-campaign-from-icp
 description: Use when the user says "create a lemlist campaign for X", "build a lemlist campaign from this ICP", "spin a lemlist campaign for Y", "ICP to lemlist", "natural language to lemlist campaign", "draft a lemlist campaign", "lemlist campaign for VPs/Managers/ICs at Z", or any variant indicating they want to turn a natural-language ICP description into a paused, ready-to-review lemlist campaign with sourced leads and a seniority-routed sequence. Orchestrates 24 lemlist atomic skills (ICP, persona, sourcing, copywriting, QA) and the lemlist MCP server (`get_lemleads_filters`, `lemleads_search`, `create_campaign_with_sequence`, `add_sequence_step`, `add_lead_to_campaign`, `validate_campaign_readiness`) into one end-to-end loop. Hard approval gate before the MCP push — never auto-sends. Depends on the 24 lemlist atomic skills under `.claude/skills/lemlist/` and the lemlist MCP server declared in `.mcp.json` — fails fast if either is missing.
-version: 1.1.0
+version: 1.2.0
 ---
 
 # Lemlist Campaign From ICP
@@ -103,7 +103,11 @@ Lemlist's filter registry can change. Always discover filterIds at runtime rathe
 
     Use the returned `filterId` values to shape the search filters array. UI-only filters (`notInContacts`, `notInCampaign`) are not available over this transport — drop them if surfaced by upstream skills.
 
+    **Industry-filter leak warning (verified live, 2026-05-20):** `currentCompanySubIndustry` has no clean "B2B SaaS" bucket. The two closest values are `Software Development` and `Technology, Information and Internet`, but the latter contains marketplace and consumer-internet companies. When the user's ICP says "B2B SaaS" (or "B2B software"), the orchestrator MUST layer a `keywordInCompany` filter on top of the subindustry filter — recommended seed terms: `["B2B", "SaaS", "B2B software", "B2B platform"]`. Without this layer, non-SaaS leads will leak through and waste sourcing credits.
+
 11b. **MCP call: `lemleads_search`** with `mode: "people"` (or `"companies"`, never `"leads"`) and a `filters` array of `{filterId, in, out}` objects derived from stage 11a. Cap `size` at the lead count ceiling (default 50, max 100 per page). Dedupe results by `linkedin_url` and `email` before storing in working memory.
+
+    **Company-level dedup (verified live, 2026-05-20):** for VP+ persona targeting where the buyer is the only decision-maker per company, also dedupe by `current_exp_company_name`. This is governed by the `dedupe_by_company` knob, defaulted ON for `seniority_tier: VP+` and OFF for `Manager` and `IC` tiers (where multiple champions per company are useful). When the knob drops a lead, surface the dropped lead in the dryrun's `deduped_leads[]` array with the kept lead's id so the user can override.
 
     **Payload size warning (verified live, 2026-05-19):** each lead returns ~24K chars; a 5-lead call already exceeds 122K chars, a 50-lead call would exceed 1MB. Two mitigations the orchestrator MUST apply:
     1. **Pass `excludes`** to drop heavyweight nested objects you don't need at this stage (recommended baseline: `excludes: ["experiences", "interests", "languages", "inferred_skills", "lead_logo_url", "company_description", "techno_used_array"]`).
@@ -146,6 +150,8 @@ Lemlist's filter registry can change. Always discover filterIds at runtime rathe
 22. `copywriting-analyzer` — score the final copy against lemlist's 244K-campaign benchmark. Surface the score and the top 2 improvement notes to the user.
 23. `gtm-action-thinker` — final challenge pass: "what's the weakest assumption in this campaign? what would break the reply rate?" Surface the answer; rewrite if the user agrees.
 
+    **Optional auto-apply (verified live, 2026-05-20):** the skill input accepts a `gtm_thinker_autoapply: true` flag. When set, the orchestrator inspects the critique and applies the strongest mechanical fix automatically — typically dropping a saturated filter value (e.g. `currentCompanyLastFundingRoundAt: "Less than 1 month"` is inbound-saturated and reduces reply rate), tightening a leaky keyword, or removing a duplicated angle from the sequence. Surface the applied change in the dryrun's `gtm_thinker_auto_applied[]` array (with the original vs. new payload diff). Default is `false` — the critique stays advisory unless the user opts in.
+
 ### Stage 8 — Approval gate
 
 24. **Render the full dryrun** to `~/.gtm-os/lemlist-campaign-from-icp/dryrun-{timestamp}.json`:
@@ -163,8 +169,12 @@ Lemlist's filter registry can change. Always discover filterIds at runtime rathe
     - `enrichment_plan` — `"skip" | "fullenrich" | "lemlist_findEmail"`; default `"skip"` unless user opts in
     - `estimated_lemlist_credits` — `{sourcing, enrichment}` breakdown (enrichment cost is zero unless `enrichment_plan = "lemlist_findEmail"`)
     - `mcp_call_plan[]` — ordered list of the exact MCP calls + payloads that will fire on approval (campaignId and sequenceId shown as placeholders; real IDs only known after stage 25a fires)
+    - `coverage_warnings[]` — top-line array of ICP→registry-bucket mismatches the user must see before approving. Promoted from buried `filter_caveats[]` so the user knows which slices of the ICP got lost. Each entry: `{axis, requested, registry_bucket_used, lost_segment, est_impact}`. Example: `{axis: "headcount", requested: "10-80", registry_bucket_used: "11-50", lost_segment: "50-80 (companies in this range will not be sourced)", est_impact: "~25% of TAM excluded"}`.
+    - `deduped_leads[]` — leads dropped by the `dedupe_by_company` knob (stage 11b). Each entry: `{dropped_lead_id, dropped_full_name, kept_lead_id, reason}`. Empty array if knob is off or no duplicates found.
+    - `gtm_thinker_auto_applied[]` — populated when `gtm_thinker_autoapply: true`. Each entry: `{change_type, before, after, rationale_from_thinker}`. Empty array if knob is off.
+    - `post_push_manual_steps[]` — required user actions in the lemlist UI AFTER the MCP push completes but BEFORE the campaign can launch. The MCP transport does not reliably expose every campaign-config endpoint, so some setup must happen in the UI. Standard entries: `["attach a sender (Settings → Senders on the campaign page) — without one, validate_campaign_readiness fails with 'No senders configured on this campaign'"]`. Surface this array prominently in the chat summary, NOT buried in the JSON.
 
-    Quote the file path back to the user. Print a one-paragraph summary in chat: `N leads sourced, M personas, X-touch sequence, score Y/100. Approve to push as draft campaign '{title}'?`
+    Quote the file path back to the user. Print a one-paragraph summary in chat: `N leads sourced, M personas, X-touch sequence, score Y/100. Approve to push as draft campaign '{title}'?` Below the summary, list `post_push_manual_steps[]` and `coverage_warnings[]` verbatim so the user sees both before typing `approve`.
 
 ### Stage 9 — Push (real MCP chain)
 

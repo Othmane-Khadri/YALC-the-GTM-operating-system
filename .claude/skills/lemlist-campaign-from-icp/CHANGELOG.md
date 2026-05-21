@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.2.0 — 2026-05-21
+
+Second holistic QA pass against the real lemlist MCP. The 1.1.0 chain held end-to-end — approval gate, DRAFT enforcement, snake→camel mapping, `excludes` baseline, the documented `status: "running"` lie on create and the accurate `campaignStatus: "draft"` on step adds all reproduced cleanly. Five gaps surfaced and closed in this release.
+
+### Gaps closed
+
+- **Sender attachment is now visible at approval time, not after the push.** Stage 24 dryrun spec now includes a `post_push_manual_steps[]` array and the orchestrator must list it prominently in the chat summary above the approval prompt — not buried in the JSON. The MCP transport does not reliably expose `set_campaign_senders`, so this step stays manual in the lemlist UI; the dryrun makes that explicit before the user types `approve`.
+- **Industry filter no longer silently leaks non-SaaS companies.** Stage 11a now mandates layering a `keywordInCompany` filter (`["B2B", "SaaS", "B2B software", "B2B platform"]` recommended seed) on top of the `currentCompanySubIndustry` filter whenever the user's ICP says "B2B SaaS" or "B2B software". The `Technology, Information and Internet` subindustry bucket includes marketplace and consumer-internet companies — the keyword layer is the only way to tighten over the API today.
+- **Company-level dedup added.** Stage 11b now also dedupes by `current_exp_company_name` for VP+ personas, governed by a new `dedupe_by_company` knob (default ON for `seniority_tier: VP+`, OFF for `Manager` and `IC`). Dropped leads surface in the dryrun's `deduped_leads[]` array so the user can override before pushing.
+- **Headcount-bucket mismatch promoted to a top-line warning.** Stage 24 dryrun now includes a `coverage_warnings[]` array that quantifies the segment of the ICP lost to registry bucketing (e.g., ICP requested `10-80`, registry forced `11-50`, lost `50-80` segment). The orchestrator must list it in the chat summary alongside `post_push_manual_steps[]`.
+- **`gtm-action-thinker` now supports optional auto-apply.** Stage 23 accepts a `gtm_thinker_autoapply: true` flag on the skill input. When set, the orchestrator applies the strongest mechanical fix from the critique (typically dropping a saturated filter value, tightening a leaky keyword, or removing a duplicated angle) and surfaces the before→after diff in the dryrun's `gtm_thinker_auto_applied[]` array. Default remains `false` — the critique stays advisory unless the user opts in.
+
+### Locked-in behaviors (do not change)
+
+- Approval gate refuses everything except the literal `approve`. Spec defined `yes` / `go` / `confirm` / `ok` as refusals; only `approve` triggers the push chain.
+- `excludes` baseline on `lemleads_search` kept the sandbox-size payload inside context budget.
+- snake_case → camelCase field mapping at `add_lead_to_campaign` time produced full success rate on the QA batch.
+- DRAFT state held across the whole chain; `set_campaign_state` was never called with `start`.
+- Both known-bad MCP behaviors (`status: "running"` lie on create, accurate `campaignStatus: "draft"` on step adds) reproduced exactly as documented in 1.1.0 — spec language is correct, keep it verbatim.
+
+### Verified live
+
+- Sandbox campaign created against the real lemlist MCP on 2026-05-20.
+- Final state: DRAFT (verified via `add_sequence_step` campaignStatus on 25b and 25c).
+- 5 leads added, 5/5 with email (`email_coverage_percent: 100`), 0 failed, 0 retries needed.
+- Zero enrichment credits spent. Sourcing cost: 5 credits.
+- Orchestrator never called `set_campaign_state` with action `start`.
+- `validate_campaign_readiness` returned `has_errors` on missing sender, as expected (gap 1 above).
+
 ## 1.1.0 — 2026-05-20
 
 Runtime correctness pass. Original 1.0.0 was committed without any live testing and contained MCP tool references that don't exist on the real lemlist server. This release fixes 17 bugs across the orchestrator, the README, the standalone install path, and adds QA scaffolding. Verified end-to-end against the real lemlist MCP on 2026-05-19.
