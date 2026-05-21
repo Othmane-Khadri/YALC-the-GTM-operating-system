@@ -54,6 +54,20 @@ function parseArgs(argv) {
 function die(msg) { console.error(`ERROR: ${msg}`); process.exit(1); }
 
 /**
+ * Dedupe by linkedin_url when present, otherwise by name+company.
+ */
+function dedupeContacts(contacts) {
+  const seen = new Map();
+  for (const c of contacts) {
+    const key = c.linkedin_url
+      ? c.linkedin_url.toLowerCase()
+      : `${c.first_name}|${c.last_name}|${c.company_name}`.toLowerCase();
+    seen.set(key, c);
+  }
+  return [...seen.values()];
+}
+
+/**
  * LinkedIn's Connections.csv has a "Notes:" preamble before the actual header row.
  * Strip everything until the line that starts with "First Name".
  */
@@ -100,9 +114,13 @@ async function main() {
   console.log(`[csv] parsed ${rows.length} connections`);
 
   const all = rows.map(rowToContact).filter(c => c.first_name && c.last_name);
+  const unique = dedupeContacts(all);
+  if (unique.length < all.length) {
+    console.log(`[csv] ${unique.length} unique contacts (${all.length - unique.length} duplicates dropped)`);
+  }
   const icp = await loadIcp(flags.icp);
   const threshold = parseInt(flags.threshold, 10) || 50;
-  const scored = all.map(e => ({ ...e, ...scoreRow(e, icp, { threshold }) }));
+  const scored = unique.map(e => ({ ...e, ...scoreRow(e, icp, { threshold }) }));
   const passed = scored.filter(s => s.passed).sort((a, b) => b.score - a.score);
   const failed = scored.filter(s => !s.passed);
   console.log(`[icp] ${passed.length} passed, ${failed.length} dropped (threshold=${threshold})`);
@@ -176,12 +194,24 @@ async function main() {
     }
   }
 
-  if (results.length) {
-    await writeCsv(flags.out, results, [
+  const alreadyHadEmail = passed
+    .filter(c => c.existing_email)
+    .map(c => ({
+      first_name: c.first_name,
+      last_name: c.last_name,
+      linkedin_url: c.linkedin_url,
+      email: c.existing_email,
+      email_status: 'LINKEDIN_EXPORT',
+      phone: '',
+      company_domain: '',
+    }));
+  const allOut = [...results, ...alreadyHadEmail];
+  if (allOut.length) {
+    await writeCsv(flags.out, allOut, [
       'first_name', 'last_name', 'linkedin_url',
       'email', 'email_status', 'phone', 'company_domain',
     ]);
-    console.log(`[fullenrich] wrote ${results.length} enriched rows to ${flags.out}`);
+    console.log(`[fullenrich] wrote ${allOut.length} rows to ${flags.out} (${results.length} enriched, ${alreadyHadEmail.length} from LinkedIn export)`);
   }
 }
 

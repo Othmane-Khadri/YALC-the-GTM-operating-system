@@ -83,10 +83,12 @@ export function* chunk(rows, size = 100) {
 
 /**
  * Estimate FullEnrich credit cost for a contact list.
- * Per-contact cost depends on which enrich_fields are requested.
- * Defaults reflect FullEnrich's documented pricing as of 2026-05; verify in dashboard.
+ * Weights are empirical: a [work_emails, phones] contact measured at ~10.5
+ * credits per contact in live runs (FullEnrich queries multiple data sources
+ * before settling, charging on each attempt — not just on successful hits).
+ * The prior 1/1/2 weights underestimated by ~3.5x. Override per call if needed.
  */
-export function estimateCost(contacts, weights = { 'contact.work_emails': 1, 'contact.personal_emails': 1, 'contact.phones': 2 }) {
+export function estimateCost(contacts, weights = { 'contact.work_emails': 4, 'contact.personal_emails': 4, 'contact.phones': 6 }) {
   let total = 0;
   for (const c of contacts) {
     const fields = c.enrich_fields || ['contact.work_emails'];

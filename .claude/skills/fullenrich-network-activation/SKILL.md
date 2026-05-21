@@ -1,7 +1,7 @@
 ---
 name: fullenrich-network-activation
 description: Use when the user says "activate co-founder network with FullEnrich", "enrich LinkedIn connections export", "qualify my LinkedIn connections CSV", "turn Connections.csv into a lead list", "FullEnrich network activation", or any variant indicating they want to convert a LinkedIn personal-network CSV export into ICP-qualified leads with FullEnrich-verified emails and phones. Reads the LinkedIn Data Export Connections.csv, applies an ICP filter, then enriches missing contact info via FullEnrich v2 with webhook callback delivery.
-version: 1.0.0
+version: 2.0.0
 ---
 
 # FullEnrich Network Activation
