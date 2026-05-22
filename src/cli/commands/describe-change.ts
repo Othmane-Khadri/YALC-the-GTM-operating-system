@@ -72,7 +72,6 @@ async function ensureClaude() {
 
 function ensureClaudeAuth() {
   try {
-    // A fast, low-cost probe — succeeds only when auth is valid
     execSync('claude -p "ping" --dangerously-skip-permissions 2>&1', {
       stdio: "pipe",
       timeout: 15_000,

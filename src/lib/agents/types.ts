@@ -12,6 +12,8 @@ export interface AgentSchedule {
   minute?: number
   dayOfWeek?: number // 0=Sunday
   intervalMinutes?: number
+  /** Raw 5-field cron expression for type:'cron' passthrough. */
+  expression?: string
 }
 
 export interface AgentConfig {

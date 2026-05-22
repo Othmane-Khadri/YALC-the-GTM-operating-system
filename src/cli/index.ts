@@ -2171,25 +2171,110 @@ program
 // ─── agent:install ─────────────────────────────────────────────────────────
 program
   .command('agent:install')
-  .description('Install a background agent as a launchd service')
+  .description('Register a background agent for scheduled execution (cross-platform)')
   .requiredOption('--agent <id>', 'Agent ID to install')
-  .option('--hour <n>', 'Hour to run (0-23)', '8')
-  .option('--minute <n>', 'Minute to run (0-59)', '0')
+  .option('--hour <n>', 'Hour to run (0-23) — used for macOS launchd plist only', '8')
+  .option('--minute <n>', 'Minute to run (0-59) — used for macOS launchd plist only', '0')
   .action(async (opts) => {
-    const { execSync } = await import('child_process')
+    const { platform } = await import('os')
     const { join: pathJoin } = await import('path')
     const { existsSync: pathExists } = await import('fs')
-    const { PKG_ROOT } = await import('../lib/paths')
-    // Resolution order: cwd (dev checkout) → PKG_ROOT (installed tarball)
-    const cwdPath = pathJoin(process.cwd(), 'scripts', 'install-agent.sh')
-    const pkgPath = pathJoin(PKG_ROOT, 'scripts', 'install-agent.sh')
-    const scriptPath = pathExists(cwdPath) ? cwdPath : pkgPath
-    try {
-      const output = execSync(`bash "${scriptPath}" "${opts.agent.replace(/[^a-zA-Z0-9_-]/g, '')}" "${String(parseInt(opts.hour, 10))}" "${String(parseInt(opts.minute, 10))}"`, { encoding: 'utf-8' })
-      console.log(output)
-    } catch (err) {
-      console.error('Installation failed:', err instanceof Error ? err.message : err)
+    const { loadAgentFromYaml } = await import('../lib/agents/yaml-loader.js')
+
+    const agentId = opts.agent.replace(/[^a-zA-Z0-9_-]/g, '')
+    const config = loadAgentFromYaml(agentId)
+    if (!config) {
+      console.error(`Agent "${agentId}" not found in ~/.gtm-os/agents/. Create it first with agent:create.`)
+      process.exit(1)
     }
+
+    if (platform() === 'darwin') {
+      // macOS: keep existing launchd plist path for backward compat
+      const { execSync } = await import('child_process')
+      const { PKG_ROOT } = await import('../lib/paths')
+      const cwdPath = pathJoin(process.cwd(), 'scripts', 'install-agent.sh')
+      const pkgPath = pathJoin(PKG_ROOT, 'scripts', 'install-agent.sh')
+      const scriptPath = pathExists(cwdPath) ? cwdPath : pkgPath
+      if (pathExists(scriptPath)) {
+        try {
+          const output = execSync(
+            `bash "${scriptPath}" "${agentId}" "${String(parseInt(opts.hour, 10))}" "${String(parseInt(opts.minute, 10))}"`,
+            { encoding: 'utf-8' },
+          )
+          console.log(output)
+        } catch (err) {
+          console.error('launchd install failed:', err instanceof Error ? err.message : err)
+        }
+        console.log('\nAlternatively, use the cross-platform scheduler:')
+      }
+    }
+
+    console.log(`\nAgent "${agentId}" is ready. Start the cross-platform scheduler to activate it:\n`)
+    console.log('  yalc-gtm scheduler:start          ← run once, stays alive in the terminal')
+    console.log('  pm2 start "yalc-gtm scheduler:start" --name yalc-scheduler')
+    console.log('  pm2 save && pm2 startup            ← persist across reboots (any OS)\n')
+  })
+
+// ─── scheduler:start ───────────────────────────────────────────────────────
+program
+  .command('scheduler:start')
+  .description('Start the cross-platform background agent scheduler (long-lived process)')
+  .action(async () => {
+    const { CrossPlatformScheduler } = await import('../lib/agents/cross-platform-scheduler.js')
+    const scheduler = new CrossPlatformScheduler()
+    console.log('\n── YALC Scheduler ──────────────────────────────────\n')
+    const count = scheduler.start()
+    if (count === 0) {
+      process.exit(0)
+    }
+    console.log(`\nScheduler running (${count} agent(s)). Press Ctrl+C to stop.\n`)
+    process.on('SIGINT', () => {
+      console.log('\nShutting down scheduler...')
+      scheduler.stop()
+      process.exit(0)
+    })
+    process.on('SIGTERM', () => {
+      scheduler.stop()
+      process.exit(0)
+    })
+    // Keep the process alive
+    setInterval(() => {}, 1 << 30)
+  })
+
+// ─── scheduler:status ──────────────────────────────────────────────────────
+program
+  .command('scheduler:status')
+  .description('Show registered agents and their next scheduled run times')
+  .action(async () => {
+    const { listYamlAgents, loadAgentFromYaml } = await import('../lib/agents/yaml-loader.js')
+    const { agentScheduleToCron } = await import('../lib/agents/cross-platform-scheduler.js')
+    const { validate } = await import('node-cron')
+    const { CronExpressionParser } = await import('cron-parser')
+
+    const ids = listYamlAgents()
+    if (ids.length === 0) {
+      console.log('No agents found in ~/.gtm-os/agents/.')
+      return
+    }
+
+    console.log('\n── YALC Scheduler Status ───────────────────────────\n')
+    for (const agentId of ids) {
+      const config = loadAgentFromYaml(agentId)
+      if (!config) continue
+      try {
+        const expr = agentScheduleToCron(config.schedule)
+        let nextRun = 'unknown'
+        if (validate(expr)) {
+          try {
+            nextRun = CronExpressionParser.parse(expr).next().toDate().toLocaleString()
+          } catch { /* leave as unknown */ }
+        }
+        console.log(`  ${agentId.padEnd(34)} ${expr.padEnd(16)} next: ${nextRun}`)
+      } catch (err) {
+        console.log(`  ${agentId.padEnd(34)} [invalid schedule: ${err instanceof Error ? err.message : err}]`)
+      }
+    }
+    console.log()
   })
 
 // ─── agent:list ────────────────────────────────────────────────────────────
