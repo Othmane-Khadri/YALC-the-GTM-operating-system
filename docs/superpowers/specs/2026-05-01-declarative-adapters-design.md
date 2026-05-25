@@ -22,14 +22,15 @@ Manifests live at `~/.gtm-os/adapters/<capability>-<provider>.yaml`. One file pe
 - `provider`: provider id, unique per capability.
 - `version`: adapter semver, bumped on each manifest edit.
 - `auth`: `{ type: header|query|bearer, name, value }`. `value` uses `${env:VAR}` interpolation.
-- `endpoint`: `{ method, url, queryTemplate? }`. URL supports `{{var}}` from a merged scope.
-- `request` (optional): `{ headers?, bodyTemplate?, contentType? }`. Body is JSON with placeholders. Omit for GET.
-- `response`: `{ rootPath, mappings, errorEnvelope }`. `mappings` projects raw fields onto the capability's output schema.
-- `pagination` (optional): `{ style: cursor|page, pageParam, cursorPath, limit }`. Compiler walks pages until `limit` items collected.
+- `endpoint`: `{ method, url, queryTemplate? }`. URL supports `{{var}}` from a merged scope. Required for single-step manifests; mutually exclusive with `steps`.
+- `request` (optional): `{ headers?, bodyTemplate?, contentType? }`. Body is JSON with placeholders. Omit for GET. Mutually exclusive with `steps`.
+- `response`: `{ rootPath, mappings, errorEnvelope }`. `mappings` projects raw fields onto the capability's output schema. Required for single-step manifests; mutually exclusive with `steps`.
+- `steps` (optional): `[{ id, endpoint, request?, response }]`. **Multi-step manifests** chain HTTP calls; each step's projected output is exposed to subsequent steps via `{{steps.<id>.<path>}}`. Required when the vendor flow needs match-then-enrich (e.g. Explorium prospect contact lookup). Mutually exclusive with top-level `endpoint`/`request`/`response`. Pagination is not supported on multi-step manifests in v1.
+- `pagination` (optional, single-step only): `{ style: cursor|page, pageParam, cursorPath, limit }`. Compiler walks pages until `limit` items collected.
 - `rateLimit` (optional): `{ rps?, retry: { on: [429, 503], backoff: exponential, maxAttempts: 3 } }`.
 - `smoke_test`: `{ input, expectNonEmpty: [paths] }`. Run by the provider-builder skill before registration.
 
-Templates use Mustache-flavour `{{var}}` against a merged scope: `input.*`, `env.*` (whitelisted), `auth.*`. Unknown placeholders are a compile error.
+Templates use Mustache-flavour `{{var}}` against a merged scope: `input.*`, `env.*` (whitelisted), `auth.*`, and — inside multi-step manifests — `steps.<id>.*` for prior step output. Unknown placeholders are a compile error.
 
 ### Example A — `icp-company-search` via Apollo
 
@@ -153,6 +154,69 @@ smoke_test:
     slug: "yalc-smoke"
   expectNonEmpty: [url]
 ```
+
+### Example D — `people-enrich` via Explorium (multi-step: match → enrich)
+
+Vendors like Explorium split person resolution into two endpoints: `POST /v1/prospects/match` returns an internal `prospect_id`, and `POST /v1/prospects/contacts_information/enrich` returns email + phone for that id. The `steps` array threads the first step's output into the second via `{{steps.match.prospect_id}}`. The final step's projected output is what `invoke()` returns.
+
+```yaml
+manifestVersion: 1
+capability: people-enrich
+provider: explorium
+version: 0.2.0
+auth:
+  type: header
+  name: api_key
+  value: ${env:EXPLORIUM_API_KEY}
+steps:
+  - id: match
+    endpoint:
+      method: POST
+      url: https://api.explorium.ai/v1/prospects/match
+    request:
+      contentType: application/json
+      bodyTemplate: |
+        {
+          "prospects_to_match": [
+            { "email": "{{input.contacts[0].email}}",
+              "linkedin": "{{input.contacts[0].linkedin_url}}" }
+          ]
+        }
+    response:
+      rootPath: matched_prospects[0]
+      mappings:
+        "prospect_id": "$.prospect_id"
+      errorEnvelope:
+        matchPath: $.details
+        messagePath: $.details
+  - id: enrich
+    endpoint:
+      method: POST
+      url: https://api.explorium.ai/v1/prospects/contacts_information/enrich
+    request:
+      contentType: application/json
+      bodyTemplate: |
+        { "prospect_id": "{{steps.match.prospect_id}}" }
+    response:
+      rootPath: data
+      mappings:
+        "results[].email": "$.professional_email"
+        "results[].phone": "$.mobile_phone"
+smoke_test:
+  input:
+    contacts:
+      - email: marc@salesforce.com
+  expectNonEmpty: ["results[0].email"]
+```
+
+**Multi-step semantics:**
+
+- Steps execute sequentially. Each step's projection is stored at `scope.steps.<id>` and is visible to all later steps (and only later steps).
+- The auth block applies to every step. There is one auth header set; per-step auth overrides are not supported in v1.
+- If any step's HTTP response is non-2xx OR matches its `errorEnvelope`, the chain aborts with `ProviderApiError` and no later steps run.
+- Step ids must be unique within a manifest (`^[a-zA-Z_][a-zA-Z0-9_]*$`). Duplicate ids fail at runtime with a clear error.
+- `pagination` is incompatible with `steps` in v1 — paginate the final fetch with cursors in your application code if needed.
+- Loops, conditionals, and `Promise.all`-style fan-out are out of scope. The DSL is a linear chain.
 
 ## 2. Runtime compilation
 

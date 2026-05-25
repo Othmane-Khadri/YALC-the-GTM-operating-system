@@ -1,0 +1,114 @@
+# Explorium AgentSource — business-enrich
+#
+# Vendor docs:
+#   https://docs.explorium.ai/reference/businesses/match_businesses
+#   https://docs.explorium.ai/reference/businesses/enrichments/firmographics
+# Endpoints:
+#   1. POST /v1/businesses/match                                → business_id
+#   2. POST /v1/businesses/firmographics/enrich                 → firmographics
+# Auth:    api_key header (static — no OAuth)
+#
+# Resolves a company (by name + domain) to an Explorium business_id, then
+# fetches the firmographic profile (industry, headcount, revenue range, HQ
+# location, description, LinkedIn URL, ticker, NAICS).
+#
+# Uses the multi-step DSL: the match step's projected `business_id` is
+# threaded into the firmographics step via {{steps.match.business_id}}.
+#
+# NOTE: This manifest targets the proposed `business-enrich` capability,
+# which is not yet declared in the YALC engine. This PR is opened as a
+# DRAFT pending a companion engine PR that:
+#   1. Registers `business-enrich` in src/lib/providers/adapters/index.ts
+#      with the input/output schema described below.
+#   2. Adds `explorium` to its defaultPriority list.
+#
+# Proposed capability schema:
+#
+#   id: business-enrich
+#   description: >
+#     Resolve a company name (and optional domain) to a rich firmographic
+#     profile: industry, headcount, revenue range, HQ country, description,
+#     and Explorium business_id for downstream enrichment calls.
+#   inputSchema:
+#     name:   string  — company name (required)
+#     domain: string  — company website/domain (optional, improves accuracy)
+#   outputSchema:
+#     company.name
+#     company.domain
+#     company.linkedin_url
+#     company.industry
+#     company.headcount
+#     company.revenue_range
+#     company.country
+#     company.description
+#     company.naics
+#     company.ticker
+#     company.business_id   — Explorium ID for downstream enrichment calls
+manifestVersion: 1
+capability: business-enrich
+provider: explorium
+version: 0.2.0
+auth:
+  type: header
+  name: api_key
+  value: ${env:EXPLORIUM_API_KEY}
+steps:
+  # Step 1: resolve the company name + domain to an Explorium business_id.
+  - id: match
+    endpoint:
+      method: POST
+      url: https://api.explorium.ai/v1/businesses/match
+    request:
+      contentType: application/json
+      bodyTemplate: |
+        {
+          "businesses_to_match": [
+            {
+              "name": "{{input.name}}",
+              "domain": "{{input.domain}}"
+            }
+          ]
+        }
+    response:
+      rootPath: matched_businesses[0]
+      mappings:
+        "business_id": "$.business_id"
+      errorEnvelope:
+        matchPath: $.details
+        messagePath: $.details
+
+  # Step 2: fetch firmographics for the resolved business_id.
+  - id: enrich
+    endpoint:
+      method: POST
+      url: https://api.explorium.ai/v1/businesses/firmographics/enrich
+    request:
+      contentType: application/json
+      bodyTemplate: |
+        {
+          "business_id": "{{steps.match.business_id}}"
+        }
+    response:
+      rootPath: data[0]
+      mappings:
+        "company.name": "$.name"
+        "company.domain": "$.website"
+        "company.linkedin_url": "$.linkedin_profile"
+        "company.industry": "$.linkedin_industry_category"
+        "company.headcount": "$.number_of_employees_range"
+        "company.revenue_range": "$.yearly_revenue_range"
+        "company.country": "$.country_name"
+        "company.description": "$.business_description"
+        "company.naics": "$.naics"
+        "company.ticker": "$.ticker"
+        "company.business_id": "$.business_id"
+      errorEnvelope:
+        matchPath: $.details
+        messagePath: $.details
+smoke_test:
+  input:
+    name: "Salesforce"
+    domain: "salesforce.com"
+  expectNonEmpty:
+    - "company.name"
+    - "company.business_id"

@@ -271,4 +271,179 @@ pagination:
     // limit=5 means we collect 3 from page 1 + 2 from page 2 = 5
     expect(out.companies.map((c) => c.name)).toEqual(['a', 'b', 'c', 'd', 'e'])
   })
+
+  // ─── Multi-step manifests ─────────────────────────────────────────────────
+
+  describe('multi-step manifests', () => {
+    const MATCH_THEN_ENRICH = `
+manifestVersion: 1
+capability: people-enrich
+provider: explorium
+version: 0.1.0
+auth:
+  type: header
+  name: api_key
+  value: \${env:APOLLO_API_KEY}
+steps:
+  - id: match
+    endpoint:
+      method: POST
+      url: https://api.example.com/v1/match
+    request:
+      contentType: application/json
+      bodyTemplate: |
+        {"email": "{{input.email}}"}
+    response:
+      rootPath: matched[0]
+      mappings:
+        "prospect_id": "$.id"
+  - id: enrich
+    endpoint:
+      method: POST
+      url: https://api.example.com/v1/enrich
+    request:
+      contentType: application/json
+      bodyTemplate: |
+        {"id": "{{steps.match.prospect_id}}"}
+    response:
+      rootPath: data
+      mappings:
+        "results[].email": "$.professional_email"
+        "results[].phone": "$.mobile_phone"
+`
+
+    it('chains two HTTP calls and threads step output into the next request', async () => {
+      const calls: Array<{ url: string; body: any }> = []
+      const fetchImpl = (async (url: string, init: any) => {
+        calls.push({ url, body: JSON.parse(init.body) })
+        if (calls.length === 1) {
+          return jsonResponse({ matched: [{ id: 'pid-123' }] })
+        }
+        return jsonResponse({ data: [{ professional_email: 'jane@x.com', mobile_phone: '+15551234' }] })
+      }) as typeof fetch
+      const compiled = compileManifest(MATCH_THEN_ENRICH, 'inline', { fetchImpl })
+      const out = (await compiled.invoke({ email: 'jane@x.com' })) as { results: any[] }
+      expect(calls).toHaveLength(2)
+      expect(calls[0].url).toBe('https://api.example.com/v1/match')
+      expect(calls[0].body).toEqual({ email: 'jane@x.com' })
+      expect(calls[1].url).toBe('https://api.example.com/v1/enrich')
+      expect(calls[1].body).toEqual({ id: 'pid-123' })
+      expect(out.results[0]).toEqual({ email: 'jane@x.com', phone: '+15551234' })
+    })
+
+    it('applies the manifest auth to every step', async () => {
+      const headersSeen: Array<Record<string, string>> = []
+      const fetchImpl = (async (_url: string, init: any) => {
+        headersSeen.push(init.headers)
+        return jsonResponse(headersSeen.length === 1 ? { matched: [{ id: 'p1' }] } : { data: [{}] })
+      }) as typeof fetch
+      const compiled = compileManifest(MATCH_THEN_ENRICH, 'inline', { fetchImpl })
+      await compiled.invoke({ email: 'a@b.c' })
+      expect(headersSeen[0]['api_key']).toBe('test-key')
+      expect(headersSeen[1]['api_key']).toBe('test-key')
+    })
+
+    it('aborts the chain when an early step returns a vendor error', async () => {
+      const manifest = `
+manifestVersion: 1
+capability: people-enrich
+provider: explorium
+version: 0.1.0
+auth: { type: none }
+steps:
+  - id: match
+    endpoint:
+      method: POST
+      url: https://api.example.com/v1/match
+    response:
+      rootPath: matched[0]
+      mappings:
+        "prospect_id": "$.id"
+      errorEnvelope:
+        matchPath: $.error
+        messagePath: $.error
+  - id: enrich
+    endpoint:
+      method: POST
+      url: https://api.example.com/v1/enrich
+    response:
+      mappings:
+        "results[].email": "$.x"
+`
+      let calls = 0
+      const fetchImpl = (async () => {
+        calls++
+        return jsonResponse({ error: 'no match' })
+      }) as typeof fetch
+      const compiled = compileManifest(manifest, 'inline', { fetchImpl })
+      await expect(compiled.invoke({})).rejects.toMatchObject({
+        name: 'ProviderApiError',
+        message: expect.stringContaining('no match'),
+      })
+      // Second step must not run after the first errors out.
+      expect(calls).toBe(1)
+    })
+
+    it('rejects manifests with both top-level endpoint and steps', () => {
+      const bad = `
+manifestVersion: 1
+capability: foo
+provider: bar
+version: 0.1.0
+auth: { type: none }
+endpoint: { method: GET, url: https://x.com }
+response:
+  mappings: { "x": "$.x" }
+steps:
+  - id: a
+    endpoint: { method: GET, url: https://y.com }
+    response:
+      mappings: { "x": "$.x" }
+`
+      expect(() => compileManifest(bad, 'inline')).toThrow(ManifestValidationError)
+    })
+
+    it('rejects manifests with duplicate step ids at runtime', async () => {
+      const bad = `
+manifestVersion: 1
+capability: foo
+provider: bar
+version: 0.1.0
+auth: { type: none }
+steps:
+  - id: same
+    endpoint: { method: GET, url: https://x.com }
+    response:
+      mappings: { "v": "$.x" }
+  - id: same
+    endpoint: { method: GET, url: https://x.com }
+    response:
+      mappings: { "v": "$.x" }
+`
+      const fetchImpl = (async () => jsonResponse({ x: 1 })) as typeof fetch
+      const compiled = compileManifest(bad, 'inline', { fetchImpl })
+      await expect(compiled.invoke({})).rejects.toMatchObject({
+        name: 'ProviderApiError',
+        message: expect.stringContaining("duplicate step id 'same'"),
+      })
+    })
+
+    it('rejects unknown {{steps.*}} template references at compile time', () => {
+      const bad = `
+manifestVersion: 1
+capability: foo
+provider: bar
+version: 0.1.0
+auth: { type: none }
+steps:
+  - id: a
+    endpoint:
+      method: POST
+      url: https://x.com/{{bogus.field}}
+    response:
+      mappings: { "v": "$.x" }
+`
+      expect(() => compileManifest(bad, 'inline')).toThrow(/unknown template root/)
+    })
+  })
 })

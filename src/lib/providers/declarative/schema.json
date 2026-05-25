@@ -8,9 +8,7 @@
     "capability",
     "provider",
     "version",
-    "auth",
-    "endpoint",
-    "response"
+    "auth"
   ],
   "properties": {
     "manifestVersion": { "type": "integer", "enum": [1] },
@@ -73,6 +71,25 @@
         }
       }
     },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "endpoint", "response"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$",
+            "description": "Step identifier — referenced by later steps as {{steps.<id>.<path>}}"
+          },
+          "endpoint": { "$ref": "#/properties/endpoint" },
+          "request": { "$ref": "#/properties/request" },
+          "response": { "$ref": "#/properties/response" }
+        }
+      }
+    },
     "pagination": {
       "type": "object",
       "additionalProperties": false,
@@ -107,5 +124,31 @@
         }
       }
     }
-  }
+  },
+  "oneOf": [
+    {
+      "description": "Single-step manifest: endpoint + response at the top level",
+      "required": ["endpoint", "response"],
+      "not": { "required": ["steps"] }
+    },
+    {
+      "description": "Multi-step manifest: a `steps` array with no top-level endpoint/request/response",
+      "required": ["steps"],
+      "not": {
+        "anyOf": [
+          { "required": ["endpoint"] },
+          { "required": ["request"] },
+          { "required": ["response"] }
+        ]
+      },
+      "allOf": [
+        {
+          "not": {
+            "required": ["pagination"],
+            "description": "Pagination is incompatible with multi-step manifests in v1"
+          }
+        }
+      ]
+    }
+  ]
 }
