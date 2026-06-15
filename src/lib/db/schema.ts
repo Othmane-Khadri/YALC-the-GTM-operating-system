@@ -455,6 +455,9 @@ export const signalWatches = sqliteTable('signal_watches', {
   entityName: text('entity_name').notNull(),
   signalTypes: text('signal_types').notNull(), // JSON: SignalType[]
   baseline: text('baseline').notNull().default('{}'), // JSON: last known state
+  // Skill id to invoke when a watched signal pair fires. NULL means
+  // detection only — no downstream orchestrator wired up.
+  orchestratorSkillId: text('orchestrator_skill_id'),
   createdAt: text('created_at').default(sql`(datetime('now'))`),
   lastCheckedAt: text('last_checked_at').default(sql`(datetime('now'))`),
 })
@@ -705,4 +708,29 @@ export const callTranscriptsRelations = relations(callTranscripts, ({ one }) => 
     fields: [callTranscripts.callRecordingId],
     references: [callRecordings.id],
   }),
+}))
+
+// ─── Slack approvals ─────────────────────────────────────────────────────────
+// Tracks pending human-in-the-loop approvals dispatched to Slack. Each row is
+// created when a run requests confirmation. Resolution can come from a reaction
+// or a thread reply, but only from the original requester.
+export const slackApprovals = sqliteTable('slack_approvals', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  threadTs: text('thread_ts').notNull(),
+  runId: text('run_id').notNull(),
+  requestedBy: text('requested_by').notNull(),
+  channel: text('channel').notNull(),
+  state: text('state', { enum: ['pending', 'approved', 'rejected', 'timeout'] })
+    .notNull()
+    .default('pending'),
+  createdAt: integer('created_at', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  resolvedAt: integer('resolved_at', { mode: 'timestamp' }),
+  resolvedBy: text('resolved_by'),
+  nudgeSent: integer('nudge_sent', { mode: 'boolean' }).notNull().default(false),
+}, (t) => ({
+  threadTsIdx: uniqueIndex('slack_approvals_thread_ts_idx').on(t.threadTs),
+  runIdIdx: index('slack_approvals_run_id_idx').on(t.runId),
+  stateIdx: index('slack_approvals_state_idx').on(t.state),
 }))

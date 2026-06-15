@@ -522,6 +522,194 @@ export const CRM_CONTACT_UPSERT_CAPABILITY = {
   defaultPriority: ['hubspot'],
 } as const
 
+/**
+ * crm-attach-note: attach a note (engagement) to a CRM contact. Mirrors
+ * the upsert capability's shape: a single declarative manifest under
+ * `providers/manifests/crm-attach-note/<provider>.yaml` powers each
+ * concrete provider. Returns the provider-issued note id.
+ */
+export const CRM_ATTACH_NOTE_CAPABILITY = {
+  id: 'crm-attach-note',
+  description:
+    'Attach a note to a CRM contact. The note body is free-form; optional fields cover timestamp, owner, and attachment ids. Returns the CRM-issued note id and a best-effort `created` flag.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      contactId: {
+        type: 'string',
+        description: 'CRM contact id to associate the note with.',
+      },
+      body: { type: 'string', description: 'Note body. Plain text or HTML.' },
+      timestamp: {
+        type: 'string',
+        description: 'ISO-8601 timestamp recorded on the note. Defaults to now.',
+      },
+      ownerId: { type: 'string', description: 'CRM user id of the note author.' },
+      attachmentIds: {
+        type: 'string',
+        description: 'Comma-separated attachment ids to include on the note.',
+      },
+    },
+    required: ['contactId', 'body'],
+    additionalProperties: false,
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      noteId: { type: 'string', description: 'CRM-issued unique id for the note.' },
+      created: {
+        type: 'boolean',
+        description: 'True iff the note row did not exist before this call.',
+      },
+    },
+    required: ['noteId', 'created'],
+  },
+  defaultPriority: ['hubspot'],
+} as const
+
+/**
+ * crm-associate-note-to-contact: link a previously-created note to a
+ * contact via the CRM's native association API. `crm-attach-note`
+ * creates the note row but does NOT write the timeline link in
+ * HubSpot; Agent 1 chains this immediately after the note create so
+ * the activity surfaces on the contact's record.
+ */
+export const CRM_ASSOCIATE_NOTE_TO_CONTACT_CAPABILITY = {
+  id: 'crm-associate-note-to-contact',
+  description:
+    'Associate an existing CRM note with a CRM contact, so the note appears on the contact timeline. Used as a follow-up to crm-attach-note when the underlying vendor (HubSpot) requires a separate association call.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      noteId: { type: 'string', description: 'CRM-issued note id (from crm-attach-note).' },
+      contactId: { type: 'string', description: 'CRM-issued contact id to associate the note with.' },
+    },
+    required: ['noteId', 'contactId'],
+    additionalProperties: false,
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      associated: {
+        type: 'boolean',
+        description: 'True iff the association call returned a success body.',
+      },
+    },
+    required: ['associated'],
+  },
+  defaultPriority: ['hubspot'],
+} as const
+
+/**
+ * crm-create-task: create a task (engagement) on a CRM contact owner's
+ * queue. Used by follow-up automations and signal-driven plays.
+ */
+export const CRM_CREATE_TASK_CAPABILITY = {
+  id: 'crm-create-task',
+  description:
+    'Create a CRM task for a rep to action. Subject and body are required; optional fields cover due date, owner, and associated contact. Returns the CRM-issued task id and a best-effort `created` flag.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      subject: { type: 'string', description: 'Short task title.' },
+      body: { type: 'string', description: 'Task description (plain text or HTML).' },
+      dueAt: {
+        type: 'string',
+        description: 'ISO-8601 due timestamp for the task.',
+      },
+      ownerId: { type: 'string', description: 'CRM user id assigned to the task.' },
+      contactId: {
+        type: 'string',
+        description: 'Contact id the task is associated with.',
+      },
+    },
+    required: ['subject'],
+    additionalProperties: false,
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      taskId: { type: 'string', description: 'CRM-issued unique id for the task.' },
+      created: {
+        type: 'boolean',
+        description: 'True iff the task row did not exist before this call.',
+      },
+    },
+    required: ['taskId', 'created'],
+  },
+  defaultPriority: ['hubspot'],
+} as const
+
+/**
+ * crm-list-closed-won: list deals in the closed-won stage. Used by
+ * post-sale workflows, case-study triggers, and revenue attribution
+ * reporting. Returns a normalized `deals` array.
+ */
+export const CRM_LIST_CLOSED_WON_CAPABILITY = {
+  id: 'crm-list-closed-won',
+  description:
+    'List CRM deals in the closed-won stage. Optional `since` (ISO-8601 close date) restricts the window; `limit` caps the result size. Returns a normalized `deals` array with id, name, amount, and close date.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      since: {
+        type: 'string',
+        description: 'ISO-8601 lower bound on close date (inclusive).',
+      },
+      limit: {
+        type: 'number',
+        description: 'Maximum number of deals to return. Defaults to 100.',
+      },
+    },
+    additionalProperties: false,
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      deals: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            dealId: { type: 'string' },
+            name: { type: 'string' },
+            amount: { type: 'string' },
+            closeDate: { type: 'string' },
+          },
+          required: ['dealId'],
+        },
+      },
+    },
+    required: ['deals'],
+  },
+  defaultPriority: ['hubspot'],
+} as const
+
+export const PEOPLE_SEARCH_CAPABILITY = {
+  id: 'people-search',
+  description:
+    'Search for people by free-text query, company, title, or location. Returns a list of candidate profiles (firstname, lastname, email, linkedin_url, company, title). Distinct from `people-enrich`, which takes known identities and resolves email + phone.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'Free-text query (e.g. "VP Engineering").' },
+      company_name: { type: 'string' },
+      title: { type: 'string' },
+      location: { type: 'string' },
+      limit: { type: 'number' },
+    },
+    additionalProperties: true,
+  },
+  outputSchema: {
+    type: 'object',
+    properties: {
+      results: { type: 'array', items: { type: 'object' } },
+    },
+    required: ['results'],
+  },
+  defaultPriority: ['fiber'],
+} as const
+
 export const LANDING_PAGE_DEPLOY_CAPABILITY = {
   id: 'landing-page-deploy',
   description:
@@ -590,6 +778,11 @@ export async function registerBuiltinCapabilities(registry: CapabilityRegistry):
   registry.registerCapability({ ...ASSET_RENDERING_CAPABILITY, defaultPriority: [...ASSET_RENDERING_CAPABILITY.defaultPriority] })
   registry.registerCapability({ ...LANDING_PAGE_DEPLOY_CAPABILITY, defaultPriority: [...LANDING_PAGE_DEPLOY_CAPABILITY.defaultPriority] })
   registry.registerCapability({ ...CRM_CONTACT_UPSERT_CAPABILITY, defaultPriority: [...CRM_CONTACT_UPSERT_CAPABILITY.defaultPriority] })
+  registry.registerCapability({ ...CRM_ATTACH_NOTE_CAPABILITY, defaultPriority: [...CRM_ATTACH_NOTE_CAPABILITY.defaultPriority] })
+  registry.registerCapability({ ...CRM_ASSOCIATE_NOTE_TO_CONTACT_CAPABILITY, defaultPriority: [...CRM_ASSOCIATE_NOTE_TO_CONTACT_CAPABILITY.defaultPriority] })
+  registry.registerCapability({ ...CRM_CREATE_TASK_CAPABILITY, defaultPriority: [...CRM_CREATE_TASK_CAPABILITY.defaultPriority] })
+  registry.registerCapability({ ...CRM_LIST_CLOSED_WON_CAPABILITY, defaultPriority: [...CRM_LIST_CLOSED_WON_CAPABILITY.defaultPriority] })
+  registry.registerCapability({ ...PEOPLE_SEARCH_CAPABILITY, defaultPriority: [...PEOPLE_SEARCH_CAPABILITY.defaultPriority] })
 
   const { icpCompanySearchCrustdataAdapter } = await import('./icp-company-search-crustdata.js')
   const { icpCompanySearchApolloAdapter } = await import('./icp-company-search-apollo.js')

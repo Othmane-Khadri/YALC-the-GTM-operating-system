@@ -3922,4 +3922,19 @@ program
     if (result.exitCode !== 0) process.exit(result.exitCode)
   }))
 
+// slack:listen - Boot the inbound Slack listener (Bolt Socket Mode).
+program
+  .command('slack:listen')
+  .description('Start the inbound Slack listener (Bolt Socket Mode).')
+  .action(withDiagnostics(async () => {
+    const { runSlackListen } = await import('./commands/slack-listen')
+    const { createSqliteApprovalStore, __setApprovalStore } = await import(
+      '../lib/server/slack-approval.js'
+    )
+    __setApprovalStore(await createSqliteApprovalStore())
+    const result = await runSlackListen()
+    process.stdout.write(result.output + '\n')
+    if (result.exitCode !== 0) process.exit(result.exitCode)
+  }))
+
 program.parse()

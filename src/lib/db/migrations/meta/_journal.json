@@ -22,6 +22,27 @@
       "when": 1779119640275,
       "tag": "0002_warm_liz_osborn",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1780000000000,
+      "tag": "0003_slack_approvals",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1781000000000,
+      "tag": "0004_signal_pair_watcher",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1782000000000,
+      "tag": "0005_slack_approval_nudge",
+      "breakpoints": true
     }
   ]
 }

@@ -8,6 +8,27 @@
         "--header",
         "X-API-Key: ${LEMLIST_API_KEY}"
       ]
+    },
+    "hubspot": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@hubspot/mcp-server"
+      ],
+      "env": {
+        "PRIVATE_APP_ACCESS_TOKEN": "${HUBSPOT_API_KEY}"
+      }
+    },
+    "slack": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-slack"
+      ],
+      "env": {
+        "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}",
+        "SLACK_TEAM_ID": "${SLACK_TEAM_ID}"
+      }
     }
   }
 }
