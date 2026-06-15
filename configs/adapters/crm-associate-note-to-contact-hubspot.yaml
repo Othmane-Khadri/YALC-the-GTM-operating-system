@@ -1,0 +1,43 @@
+# HubSpot: crm-associate-note-to-contact
+#
+# Vendor docs: https://developers.hubspot.com/docs/api/crm/associations/v4
+# Endpoint:    PUT /crm/v4/objects/notes/{noteId}/associations/default/contacts/{contactId}
+# Auth:        Bearer <private-app-token> (static, no OAuth refresh)
+#
+# `crm-attach-note/hubspot.yaml` only creates the note row; nothing in
+# HubSpot links it to the contact's timeline until this association
+# call lands. We use the v4 default-association PUT, which is idempotent
+# and binds the canonical `note_to_contact` label without requiring the
+# caller to look the labels up first.
+#
+# `associated` is a boolean derived from the presence of `fromObjectId`
+# in the success body (HubSpot returns `{fromObjectId, toObjectId, labels}`
+# on 200, and an error envelope under `$.status == 'error'` on failure).
+manifestVersion: 1
+capability: crm-associate-note-to-contact
+provider: hubspot
+version: 0.1.0
+auth:
+  type: bearer
+  value: ${env:HUBSPOT_API_KEY}
+endpoint:
+  method: PUT
+  url: https://api.hubapi.com/crm/v4/objects/notes/{{input.noteId}}/associations/default/contacts/{{input.contactId}}
+request:
+  contentType: application/json
+  bodyTemplate: |
+    {}
+response:
+  rootPath: $
+  mappings:
+    "associated": "$.fromObjectId != null"
+  errorEnvelope:
+    matchPath: $.status
+    matchValue: error
+    messagePath: $.message
+smoke_test:
+  input:
+    noteId: "0"
+    contactId: "0"
+  expectNonEmpty:
+    - associated

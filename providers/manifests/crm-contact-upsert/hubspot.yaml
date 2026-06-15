@@ -35,8 +35,7 @@ request:
         "company": "{{input.contact.company}}",
         "phone": "{{input.contact.phone}}",
         "jobtitle": "{{input.contact.jobtitle}}",
-        "website": "{{input.contact.website}}",
-        "linkedin_url": "{{input.contact.linkedin_url}}"
+        "website": "{{input.contact.website}}"
       }
     }
 response:

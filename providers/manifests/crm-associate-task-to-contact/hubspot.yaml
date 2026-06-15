@@ -1,0 +1,47 @@
+# HubSpot: crm-associate-task-to-contact
+#
+# Vendor docs: https://developers.hubspot.com/docs/api/crm/associations/v4
+# Endpoint:    PUT /crm/v4/objects/tasks/{taskId}/associations/default/contacts/{contactId}
+# Auth:        Bearer <private-app-token> (static, no OAuth refresh)
+#
+# Creating a task via `crm-create-task/hubspot.yaml` returns a `taskId`
+# but does NOT link it to any contact. (There is no `hs_task_contact_id`
+# property in HubSpot — task-to-contact linkage is an association, not a
+# property; sending such a property returns PROPERTY_DOESNT_EXIST.)
+# HubSpot exposes a separate association endpoint that takes the task id
+# and the contact id and writes the default `task_to_contact`
+# association so the task shows up under the contact's record and in the
+# rep's task queue scoped to that contact.
+#
+# We use the v4 default-association PUT, which is idempotent: repeated
+# calls with the same pair return 200 with the existing labels. The
+# response includes `fromObjectId` and `toObjectId`; we emit a boolean
+# `associated` derived from the presence of the linkage object.
+manifestVersion: 1
+capability: crm-associate-task-to-contact
+provider: hubspot
+version: 0.1.0
+auth:
+  type: bearer
+  value: ${env:HUBSPOT_API_KEY}
+endpoint:
+  method: PUT
+  url: https://api.hubapi.com/crm/v4/objects/tasks/{{input.taskId}}/associations/default/contacts/{{input.contactId}}
+request:
+  contentType: application/json
+  bodyTemplate: |
+    {}
+response:
+  rootPath: $
+  mappings:
+    "associated": "$.fromObjectId != null"
+  errorEnvelope:
+    matchPath: $.status
+    matchValue: error
+    messagePath: $.message
+smoke_test:
+  input:
+    taskId: "0"
+    contactId: "0"
+  expectNonEmpty:
+    - associated

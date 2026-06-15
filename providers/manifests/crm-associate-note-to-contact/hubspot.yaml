@@ -1,0 +1,46 @@
+# HubSpot: crm-associate-note-to-contact
+#
+# Vendor docs: https://developers.hubspot.com/docs/api/crm/associations/v4
+# Endpoint:    PUT /crm/v4/objects/notes/{noteId}/associations/default/contacts/{contactId}
+# Auth:        Bearer <private-app-token> (static, no OAuth refresh)
+#
+# Creating a note via `crm-attach-note/hubspot.yaml` returns a `noteId`
+# but does NOT link it to any contact timeline. HubSpot exposes a
+# separate association endpoint that takes the note id and the contact
+# id and writes the default `note_to_contact` association so the note
+# shows up under the contact's activity feed in the UI.
+#
+# We use the v4 default-association PUT, which is idempotent: repeated
+# calls with the same pair return 200 with the existing labels. The
+# response includes the resulting `fromObjectId` and `toObjectId`; we
+# emit a boolean `associated` derived from the presence of the linkage
+# object so callers can branch on success without parsing the full
+# response.
+manifestVersion: 1
+capability: crm-associate-note-to-contact
+provider: hubspot
+version: 0.1.0
+auth:
+  type: bearer
+  value: ${env:HUBSPOT_API_KEY}
+endpoint:
+  method: PUT
+  url: https://api.hubapi.com/crm/v4/objects/notes/{{input.noteId}}/associations/default/contacts/{{input.contactId}}
+request:
+  contentType: application/json
+  bodyTemplate: |
+    {}
+response:
+  rootPath: $
+  mappings:
+    "associated": "$.fromObjectId != null"
+  errorEnvelope:
+    matchPath: $.status
+    matchValue: error
+    messagePath: $.message
+smoke_test:
+  input:
+    noteId: "0"
+    contactId: "0"
+  expectNonEmpty:
+    - associated

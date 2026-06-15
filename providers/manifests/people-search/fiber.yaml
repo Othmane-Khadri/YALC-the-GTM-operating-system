@@ -1,0 +1,60 @@
+# Fiber AI people-search
+#
+# Vendor docs: https://docs.fiber.ai
+# MCP server:  https://mcp.fiber.ai/mcp/v2 (curated v2 surface)
+# MCP tool:    peopleSearch_tool
+# Auth:        x-api-key header AND apiKey field in the request body
+#              (Fiber requires both; the MCP transport injects the header,
+#              the manifest body template carries the apiKey field).
+#
+# Fiber's v2 MCP exposes a small set of curated search/enrich tools.
+# This manifest targets the v2 endpoint and invokes peopleSearch_tool
+# via the standard MCP tool-call envelope. Results map onto YALC's
+# people-search shape: results[].firstname / lastname / email /
+# linkedin_url / company.
+#
+# Coverage note: Fiber's US coverage is strong. EU phone coverage is
+# effectively 0% as of 2026-06; for EU phones, prefer FullEnrich.
+manifestVersion: 1
+capability: people-search
+provider: fiber
+version: 0.1.0
+auth:
+  type: header
+  name: x-api-key
+  value: ${env:FIBER_API_KEY}
+endpoint:
+  method: POST
+  url: https://mcp.fiber.ai/mcp/v2
+request:
+  contentType: application/json
+  bodyTemplate: |
+    {
+      "tool": "peopleSearch_tool",
+      "apiKey": "${env:FIBER_API_KEY}",
+      "input": {
+        "query": "{{input.query}}",
+        "company": "{{input.company_name}}",
+        "title": "{{input.title}}",
+        "limit": {{input.limit}}
+      }
+    }
+response:
+  rootPath: $.result.people
+  mappings:
+    "results[].firstname": "$.first_name"
+    "results[].lastname": "$.last_name"
+    "results[].email": "$.email"
+    "results[].linkedin_url": "$.linkedin_url"
+    "results[].company": "$.company_name"
+    "results[].title": "$.title"
+  errorEnvelope:
+    matchPath: $.error.message
+smoke_test:
+  input:
+    query: VP Engineering
+    company_name: Anthropic
+    title: VP Engineering
+    limit: 5
+  expectNonEmpty:
+    - "results[0].linkedin_url"

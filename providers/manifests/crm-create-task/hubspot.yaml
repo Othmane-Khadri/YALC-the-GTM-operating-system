@@ -1,0 +1,54 @@
+# HubSpot: crm-create-task
+#
+# Vendor docs: https://developers.hubspot.com/docs/api/crm/tasks
+# Endpoint:    POST /crm/v3/objects/tasks
+# Auth:        Bearer <private-app-token> (static, no OAuth refresh)
+#
+# HubSpot's CRM v3 tasks endpoint creates an engagement task with the
+# given subject, body, and optional due timestamp + owner. The response
+# always includes `id` plus `createdAt` / `updatedAt`. As with the other
+# CRM manifests we surface `taskId` plus a best-effort `created` flag;
+# callers that need strict create vs update semantics should check the
+# returned id against their local store.
+#
+# Task status defaults to NOT_STARTED so the assigned rep sees it as
+# actionable in HubSpot's task queue. Priority defaults to MEDIUM.
+manifestVersion: 1
+capability: crm-create-task
+provider: hubspot
+version: 0.1.0
+auth:
+  type: bearer
+  value: ${env:HUBSPOT_API_KEY}
+endpoint:
+  method: POST
+  url: https://api.hubapi.com/crm/v3/objects/tasks
+request:
+  contentType: application/json
+  bodyTemplate: |
+    {
+      "properties": {
+        "hs_task_subject": "{{input.subject}}",
+        "hs_task_body": "{{input.body}}",
+        "hs_timestamp": "{{input.dueAt}}",
+        "hs_task_status": "NOT_STARTED",
+        "hs_task_priority": "MEDIUM",
+        "hs_task_type": "TODO"
+      }
+    }
+response:
+  rootPath: $
+  mappings:
+    "taskId": "$.id"
+    "created": "$.archived == 'false'"
+  errorEnvelope:
+    matchPath: $.status
+    matchValue: error
+    messagePath: $.message
+smoke_test:
+  input:
+    subject: "YALC smoke task"
+    body: "Follow up with prospect"
+    dueAt: "2026-01-02T00:00:00Z"
+  expectNonEmpty:
+    - taskId

@@ -1,0 +1,59 @@
+# Fiber AI people-search
+#
+# Vendor docs: https://docs.fiber.ai
+# REST API:    https://api.fiber.ai
+# Auth:        x-api-key header AND apiKey field in the request body
+#              (Fiber's Zod validators require apiKey in the body even
+#              when the header is present).
+#
+# NOTE (2026-06-09): the curated v2 MCP endpoint
+# (https://mcp.fiber.ai/mcp/v2) is a standards MCP/SSE server and rejects
+# a plain JSON POST with HTTP 406 ("must accept both application/json and
+# text/event-stream"). This adapter therefore targets the REST API's
+# single-call natural-language search (`/v1/nlp-search/run`), which fits
+# the single-endpoint declarative manifest shape. For a single company
+# the NLP parser is reliable; the "drops most companies" trap only
+# applies to MULTI-company queries, which this adapter never builds.
+#
+# Results map onto YALC's people-search shape:
+# results[].firstname / lastname / linkedin_url / company / title.
+#
+# Coverage note: Fiber's US coverage is strong. EU phone coverage is
+# effectively 0% as of 2026-06; for EU phones, prefer FullEnrich.
+manifestVersion: 1
+capability: people-search
+provider: fiber
+version: 0.2.0
+auth:
+  type: header
+  name: x-api-key
+  value: ${env:FIBER_API_KEY}
+endpoint:
+  method: POST
+  url: https://api.fiber.ai/v1/nlp-search/run
+request:
+  contentType: application/json
+  bodyTemplate: |
+    {
+      "apiKey": "${env:FIBER_API_KEY}",
+      "query": "{{input.query}}",
+      "pageSize": {{input.limit}}
+    }
+response:
+  rootPath: $.output.results.people
+  mappings:
+    "results[].firstname": "$.first_name"
+    "results[].lastname": "$.last_name"
+    "results[].linkedin_url": "$.url"
+    "results[].company": "$.current_job.company_name"
+    "results[].title": "$.headline"
+  errorEnvelope:
+    matchPath: $.error.message
+smoke_test:
+  input:
+    query: VP Engineering at Anthropic
+    company_name: Anthropic
+    title: VP Engineering
+    limit: 1
+  expectNonEmpty:
+    - "results[0].linkedin_url"

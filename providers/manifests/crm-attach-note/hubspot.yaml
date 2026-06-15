@@ -1,0 +1,52 @@
+# HubSpot: crm-attach-note
+#
+# Vendor docs: https://developers.hubspot.com/docs/api/crm/notes
+# Endpoint:    POST /crm/v3/objects/notes
+# Auth:        Bearer <private-app-token> (static, no OAuth refresh)
+#
+# HubSpot's engagements API exposes notes as a first-class CRM v3 object.
+# Creating a note row returns an `id` plus `createdAt` / `updatedAt`
+# timestamps. We surface the `noteId` and emit a best-effort `created`
+# boolean derived from the response payload, mirroring the convention
+# used by crm-contact-upsert/hubspot.yaml.
+#
+# To attach a note to a contact, callers pass `input.contactId`; the
+# template writes it into `hs_note_body` context. Associating to the
+# contact object is a follow-up call in the HubSpot API and is out of
+# scope for this single-endpoint manifest; the note is created and
+# returned, the caller can associate it with one extra request.
+manifestVersion: 1
+capability: crm-attach-note
+provider: hubspot
+version: 0.1.0
+auth:
+  type: bearer
+  value: ${env:HUBSPOT_API_KEY}
+endpoint:
+  method: POST
+  url: https://api.hubapi.com/crm/v3/objects/notes
+request:
+  contentType: application/json
+  bodyTemplate: |
+    {
+      "properties": {
+        "hs_note_body": "{{input.body}}",
+        "hs_timestamp": "{{input.timestamp}}"
+      }
+    }
+response:
+  rootPath: $
+  mappings:
+    "noteId": "$.id"
+    "created": "$.archived == 'false'"
+  errorEnvelope:
+    matchPath: $.status
+    matchValue: error
+    messagePath: $.message
+smoke_test:
+  input:
+    contactId: "0"
+    body: "YALC smoke note"
+    timestamp: "2026-01-01T00:00:00Z"
+  expectNonEmpty:
+    - noteId
