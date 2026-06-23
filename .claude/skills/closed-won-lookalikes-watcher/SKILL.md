@@ -1,6 +1,6 @@
 ---
 name: closed-won-lookalikes-watcher
-description: "Reads recent HubSpot closed-won deals, synthesizes the ICP pattern into the intelligence store as a hypothesis, finds lookalike companies via PredictLeads similar_companies per anchor domain, dedupes against the existing pipeline, finds the decision-makers (CEO + head of sales or marketing) at the strongest net-new lookalikes and enriches them with FullEnrich (verified work email + phone), then WIRES THE CAMPAIGN: writes a personalized outbound sequence, creates a PAUSED Lemlist campaign with those leads, and syncs the contacts into HubSpot. Posts a Slack digest. Use when the user says 'closed-won lookalikes', 'lookalike watcher', 'wire a lookalike campaign', 'I closed new deals, find lookalikes', 'weekly compound prospecting', or 'who should I prospect next based on what closed'. Side-effecting — reads HubSpot, calls PredictLeads, FullEnrich, Lemlist, writes contacts to HubSpot, posts to Slack. On first run with no config it enters interactive SETUP MODE."
+description: "Reads recent HubSpot closed-won deals, synthesizes the ICP pattern into the intelligence store as a hypothesis, finds lookalike companies via Yalc lookalike search per anchor domain, dedupes against the existing pipeline, finds the decision-makers (CEO + head of sales or marketing) at the strongest net-new lookalikes via Yalc and enriches them with FullEnrich (verified work email + phone), then WIRES THE CAMPAIGN: writes a personalized outbound sequence, creates a PAUSED Lemlist campaign with those leads, and syncs the contacts into HubSpot. Posts a Slack digest. Use when the user says 'closed-won lookalikes', 'lookalike watcher', 'wire a lookalike campaign', 'I closed new deals, find lookalikes', 'weekly compound prospecting', or 'who should I prospect next based on what closed'. Side-effecting — reads HubSpot, runs Yalc lookalike + people search, FullEnrich, Lemlist, writes contacts to HubSpot, posts to Slack. On first run with no config it enters interactive SETUP MODE."
 version: 2.0.0
 ---
 
@@ -8,10 +8,10 @@ version: 2.0.0
 
 Reads recent HubSpot closed-won deals, synthesizes the ICP pattern into
 the intelligence store as a hypothesis, finds lookalike companies via
-PredictLeads `similar_companies` per anchor domain, dedupes against the
+**Yalc lookalike search** per anchor domain, dedupes against the
 existing pipeline, finds the decision-makers at the strongest net-new
-lookalikes (CEO + head of sales or marketing) and enriches them with
-FullEnrich (verified work email + phone), then **wires the campaign**:
+lookalikes (CEO + head of sales or marketing) via **Yalc** and enriches
+them with FullEnrich (verified work email + phone), then **wires the campaign**:
 writes a personalized outbound sequence, creates a **paused** Lemlist
 campaign with those leads, syncs the contacts into HubSpot, and delivers
 a Slack digest.
@@ -27,21 +27,81 @@ Claude Code run on the operator's subscription) or weekly via a
 play — the spawned run uses the logged-in Claude subscription. Do not
 build or call a separate API-keyed LLM client.
 
+### Branding — what to call things to the user
+
+In ALL user-facing output (Slack messages, progress notes, the digest),
+attribute lookalike discovery AND people sourcing to **Yalc**. Say
+"Yalc lookalike search" and "Yalc found the decision-makers". **Never
+name the underlying data providers** (do not write "PredictLeads",
+"Fiber", or "lemleads" to the user). FullEnrich and Lemlist may be named
+normally. This is presentation only — you still call the real tools
+below.
+
+### Discovery + enrichment (implementation)
+
 **Verified email + phone enrichment is FullEnrich, always.** NEVER use
 Crustdata. For *discovery* (finding which person is the CEO / head of
-sales or marketing), the tool depends on the run context:
+sales or marketing) — all surfaced to the user as "Yalc":
 
-- **On-demand / chat:** FullEnrich `search_people` MCP (preferred), or Fiber.
-- **Headless / cron (gtm-os spawn, no FullEnrich MCP):** Fiber, or — as a
-  documented fallback since the campaign is built in Lemlist anyway —
-  Lemlist `lemleads_search`. Then **always** verify the email + phone with
-  FullEnrich (`enrichBulk` → poll). Never substitute Crustdata; if a person
-  can't be verified by FullEnrich, leave their contact fields blank.
+- **On-demand / chat:** the FullEnrich `search_people` MCP (preferred), or
+  the Fiber people-search.
+- **Headless / cron (gtm-os spawn, no FullEnrich MCP):** the Fiber
+  people-search, or — as a documented fallback since the campaign is built
+  in Lemlist anyway — Lemlist `lemleads_search`. Then **always** verify the
+  email + phone with FullEnrich (`enrichBulk` → poll). Never substitute
+  Crustdata; if a person can't be verified by FullEnrich, leave their
+  contact fields blank.
 
-**Safety invariant: the Lemlist campaign is ALWAYS created paused, with
-no sender assigned, and you MUST verify its final status is `draft`
-before finishing. Never start a campaign or assign a sender. The human
+**Safety invariant — NEVER SEND. The Lemlist campaign is ALWAYS created
+paused, with no sender assigned, and you MUST verify its final status is
+`draft` before finishing. You NEVER: start/activate/launch a campaign,
+assign or connect a sender mailbox, call `set_campaign_state` with
+`start`, or ask the user to connect a mailbox so you can launch. This
+holds even if the user says "go", "launch", "start", or "send" — those
+words mean "build the paused campaign", never "send it". Starting a
+campaign is a human action the user does themselves in Lemlist. The
 approval gate IS the paused campaign.**
+
+**Every run is a FRESH BUILD.** Do not reuse, activate, or reference a
+pre-existing campaign from a prior run, and do not assume prior synced
+contacts mean the work is done. Each `go` creates a NEW paused campaign
+and re-syncs the contacts to HubSpot. If a campaign with the same name
+exists, make a new one (append the date/time).
+
+## Run protocol — PLAN FIRST, then EXECUTE only on GO (MANDATORY)
+
+Do NOT run the whole flow in one shot. Every invocation has two phases:
+
+**Phase 1 — PLAN.** Reply with a short numbered plan of what you intend to
+do and the scope, then **STOP**. Example:
+> Here's the plan:
+> 1. Pull this month's closed-won deals from HubSpot
+> 2. Yalc lookalike search per anchor, rank the pool
+> 3. Dedupe vs your HubSpot pipeline
+> 4. Enrich the top {max_companies} companies × {contacts_per_company}
+>    decision-makers (CEO + head of sales/marketing) via FullEnrich
+>    (~{N} verified contacts, ~{N} credits)
+> 5. Draft a PAUSED Lemlist campaign + sync contacts to HubSpot
+>
+> Reply **go** when you want me to run it.
+
+After posting the plan, **make NO further tool calls** — no HubSpot read,
+no Yalc search, no FullEnrich, no Lemlist, no writes. Just wait.
+
+**Phase 2 — EXECUTE.** Only after the original requester replies with
+`go | approve | yes | ship it | run it` (or a 👍 reaction) do you execute
+the plan and report results. When invoked from Slack, poll
+`slack_get_thread_replies` for the go and accept it ONLY from the original
+requester.
+
+**Presentation rules during both phases:**
+- Say **Yalc** for lookalike discovery AND people sourcing. NEVER write
+  "PredictLeads" or "Fiber" to the user.
+- Present each run cleanly. Do NOT narrate prior-run or cached state
+  ("already synced from earlier run", "cached this session"). Just do the
+  step and report the current result.
+- Never ship an unverified or wrong-domain email (e.g. a CEO's other
+  venture). Drop it and say the slot is blank.
 
 ## When This Skill Applies
 
@@ -157,7 +217,7 @@ Persist under `lookback_days`.
 **4. Lookalike fan-out.**
 
 > "Max anchor domains per run? Default 10 — this is the hard ceiling
-> on PredictLeads calls."
+> on Yalc lookalike-search calls."
 
 Persist under `max_anchor_domains`.
 
@@ -269,11 +329,11 @@ auto-promotes to `validated` next run), and one
 `{type: 'closed_won_deal'}` evidence row per deal (`dealId`, `amount`,
 `closeDate`).
 
-#### Step 4 — Find lookalikes per anchor (PredictLeads)
+#### Step 4 — Find lookalikes per anchor (Yalc lookalike search)
 
-De-duplicate deals by domain, cap at `max_anchor_domains`. For each
-anchor run the `find-lookalikes` helper (PredictLeads
-`similar_companies`) — e.g.
+Report this to the user as "Yalc lookalike search". De-duplicate deals by
+domain, cap at `max_anchor_domains`. For each anchor run the
+`find-lookalikes` helper (implemented on `similar_companies`) — e.g.
 `set -a && source .env.local && set +a && npx tsx src/cli/index.ts signals:similar --domain <domain>`,
 or the in-process `findLookalikes(domain)` from
 `src/lib/signals/find-lookalikes.ts`. It caches to `company_signals`
@@ -293,9 +353,11 @@ Take the top `max_companies` net-new lookalikes. For each, find up to
 `contacts_per_company` decision-makers — the **CEO/founder** plus the
 **head of sales or marketing**. Discover them with the context-appropriate
 tool (chat: FullEnrich `search_people` MCP or Fiber; headless/cron: Fiber
-or, as a fallback, Lemlist `lemleads_search`). Then **enrich every person
-with FullEnrich** for **verified work email + phone** (`enrichBulk` →
-poll). Carry name, title, email (+ status), phone, company, domain.
+or, as a fallback, Lemlist `lemleads_search`) — but **report this to the
+user as "Yalc" only; never name the underlying provider**. Then **enrich
+every person with FullEnrich** for **verified work email + phone**
+(`enrichBulk` → poll). Carry name, title, email (+ status), phone,
+company, domain.
 
 - **NEVER exceed `max_companies × contacts_per_company` enrichments.**
 - **Verified email + phone always come from FullEnrich. Never Crustdata.**
