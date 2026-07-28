@@ -410,11 +410,11 @@ campaignRoutes.post('/:id/chat', async (c) => {
   ].join('\n')
 
   try {
-    const Anthropic = (await import('@anthropic-ai/sdk')).default
-    const anthropic = new Anthropic()
+    const { getAnthropicClient, FAST_MODEL } = await import('../../ai/client.js')
+    const anthropic = getAnthropicClient()
 
     const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: FAST_MODEL,
       max_tokens: 1024,
       system: 'You are a campaign analyst. Answer questions about this LinkedIn outreach campaign using only the data provided. Be concise and specific. Include numbers.',
       messages: [
