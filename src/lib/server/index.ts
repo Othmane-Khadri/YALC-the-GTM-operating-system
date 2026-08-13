@@ -22,6 +22,7 @@ import { skillsRoutes } from './routes/skills'
 import { gatesRoutes } from './routes/gates'
 import { visualizeApiRoutes, visualizePageRoutes } from './routes/visualize'
 import { dashboardRoutes } from './routes/dashboard'
+import { outreachRoutes } from './routes/outreach'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -94,6 +95,7 @@ export function createApp() {
   app.route('/api/gates', gatesRoutes)
   app.route('/api/visualize', visualizeApiRoutes)
   app.route('/api/dashboard', dashboardRoutes)
+  app.route('/api/outreach', outreachRoutes)
 
   // Generated visualization page — serves saved HTML from
   // `~/.gtm-os/visualizations/<view_id>.html` with the right Content-Type.
