@@ -56,6 +56,7 @@ export function createOutreachRoutes(options: RouteOptions = {}) {
           status: campaign.externalStatus,
           senderAccountIds: campaign.senderAccountIds,
           link: campaign.link,
+          mappingLocked: campaign.mappingLocked,
         })),
       })
     } catch {

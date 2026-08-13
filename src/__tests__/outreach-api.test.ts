@@ -91,6 +91,7 @@ describe('campaign discovery', () => {
         status: 'active',
         senderAccountIds: [],
         link: null,
+        mappingLocked: false,
       }],
     })
     expect(JSON.stringify(body)).not.toMatch(/contact|message|email|bodyText/i)
@@ -136,6 +137,29 @@ describe('campaign discovery', () => {
     const { body } = await json(appFor(), '/provider-campaigns?provider=instantly&tenant=tenant-a')
 
     expect(body).toMatchObject({ campaigns: [{ link: null }] })
+  })
+
+  it('exposes only a boolean mapping lock before and after the first imported message', async () => {
+    const route = appFor()
+    const linked = await json(route, '/campaign-links', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        tenant: 'tenant-a', provider: 'instantly', externalCampaignId: 'instant-9001', campaignId: `${TEST_PREFIX}local-a`,
+      }),
+    })
+    const runId = (linked.body.link as { id: string }).id
+
+    const before = await json(route, '/provider-campaigns?provider=instantly&tenant=tenant-a')
+    expect(before.body).toMatchObject({ campaigns: [{ link: { id: runId }, mappingLocked: false }] })
+
+    await rawClient.execute({
+      sql: 'UPDATE campaign_provider_runs SET first_message_imported_at = ? WHERE id = ?',
+      args: ['2026-08-13T12:00:00.000Z', runId],
+    })
+    const after = await json(route, '/provider-campaigns?provider=instantly&tenant=tenant-a')
+    expect(after.body).toMatchObject({ campaigns: [{ link: { id: runId }, mappingLocked: true }] })
+    expect(JSON.stringify(after.body)).not.toMatch(/first_message_imported_at|2026-08-13T12:00:00\.000Z/)
   })
 })
 

@@ -90,7 +90,7 @@ export class CampaignLinkService {
     private readonly discovery: CampaignDiscovery = defaultCampaignDiscovery,
   ) {}
 
-  async discover(tenantId: string, provider: OutreachProvider): Promise<Array<DiscoveredProviderCampaign & { link: CampaignLink | null }>> {
+  async discover(tenantId: string, provider: OutreachProvider): Promise<Array<DiscoveredProviderCampaign & { link: CampaignLink | null; mappingLocked: boolean }>> {
     const campaigns = await this.discovery[provider]()
     if (provider === 'heyreach') {
       for (const campaign of campaigns) {
@@ -99,17 +99,25 @@ export class CampaignLinkService {
     }
 
     const rows = await this.raw.execute({
-      sql: `SELECT id, campaign_id, sender_account_id, external_campaign_id
+      sql: `SELECT id, campaign_id, sender_account_id, external_campaign_id, first_message_imported_at
         FROM campaign_provider_runs WHERE tenant_id = ? AND provider = ?`,
       args: [tenantId, provider],
     })
-    const links = new Map<string, CampaignLink>()
+    const links = new Map<string, { link: CampaignLink; mappingLocked: boolean }>()
     for (const row of rows.rows as Array<Record<string, unknown>>) {
       const externalCampaignId = typeof row.external_campaign_id === 'string' ? row.external_campaign_id : null
-      if (externalCampaignId) links.set(externalCampaignId, toLink(row))
+      if (externalCampaignId) {
+        links.set(externalCampaignId, {
+          link: toLink(row),
+          mappingLocked: row.first_message_imported_at !== null && row.first_message_imported_at !== undefined,
+        })
+      }
     }
 
-    return campaigns.map((campaign) => ({ ...campaign, link: links.get(campaign.externalCampaignId) ?? null }))
+    return campaigns.map((campaign) => {
+      const mapping = links.get(campaign.externalCampaignId)
+      return { ...campaign, link: mapping?.link ?? null, mappingLocked: mapping?.mappingLocked ?? false }
+    })
   }
 
   async link(input: CampaignLinkInput): Promise<CampaignLinkResult> {
