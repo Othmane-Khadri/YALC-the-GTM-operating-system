@@ -1,14 +1,11 @@
 ---
 name: fetch-inbox-replies
-description: Read one campaign-scoped inbox page from the cold-email tool
+description: Pull recent inbox replies from the cold-email tool
 category: research
 inputs:
-  - name: campaign_id
-    description: Exact provider campaign ID to read
+  - name: lookback_hours
+    description: How many hours of inbox history to pull
     required: true
-  - name: cursor
-    description: Cursor from the previous result's nextCursor, if any
-    required: false
 capability: inbox-replies-fetch
 capabilities: [search]
 output: structured_json
@@ -23,12 +20,11 @@ output_schema:
         type: object
 ---
 
-Fetch one page of messages for the exact campaign {{campaign_id}} from the
-configured email provider. Do not follow `nextCursor` automatically.
+Fetch replies received within the last {{lookback_hours}} hours from the configured email provider.
 
 Return:
 ```json
 [
-  { "externalThreadId": "", "email": "", "providerTimestamp": "", "subject": "", "bodyText": "" }
+  { "thread_id": "", "from": "", "received_at": "", "subject": "", "body_excerpt": "" }
 ]
 ```

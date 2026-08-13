@@ -8,6 +8,7 @@ import type {
   ReadMessagePageInput,
   ReadMessagePageResult,
 } from '../contracts'
+import { toSafeProviderError, type SafeProviderError } from '../errors'
 import { normalizeEmail } from '../identity'
 
 export interface InstantlyCampaignEmailReader {
@@ -58,10 +59,7 @@ function classify(email: InstantlyEmail): MessageClassification | null {
 
 function normalizeCampaignEmail(
   email: InstantlyEmail,
-  campaignId: string,
 ): NormalizedMessage | null {
-  if (email.campaign_id !== campaignId) return null
-
   const externalThreadId = nonEmptyString(email.thread_id)
   const providerTimestamp = isTimestamp(email.timestamp_created) ? email.timestamp_created : null
   const classification = classify(email)
@@ -100,6 +98,21 @@ function normalizeCampaignEmail(
   }
 }
 
+/**
+ * Deliberately retains only the shared safe provider projection. The source
+ * error is neither stored nor attached as a cause because it can contain a
+ * provider body, URL, or credentials.
+ */
+export class InstantlyOutreachReadError extends Error {
+  readonly safeError: SafeProviderError
+
+  constructor(safeError: SafeProviderError) {
+    super(`Instantly outreach read failed: ${safeError.category}`)
+    this.name = 'InstantlyOutreachReadError'
+    this.safeError = safeError
+  }
+}
+
 /** Read-only, campaign-scoped adapter for Instantly email timelines. */
 export class InstantlyOutreachReadAdapter implements OutreachReadAdapter {
   readonly provider = 'instantly' as const
@@ -116,17 +129,34 @@ export class InstantlyOutreachReadAdapter implements OutreachReadAdapter {
   }
 
   async readMessagePage(input: ReadMessagePageInput): Promise<ReadMessagePageResult> {
-    const page = await this.reader.listCampaignEmails({
-      campaignId: input.externalCampaignId,
-      startingAfter: input.cursor,
-      limit: Math.min(Math.max(input.pageSize ?? 100, 1), 100),
-    })
+    let page: Awaited<ReturnType<InstantlyCampaignEmailReader['listCampaignEmails']>>
+    try {
+      page = await this.reader.listCampaignEmails({
+        campaignId: input.externalCampaignId,
+        startingAfter: input.cursor,
+        limit: Math.min(Math.max(input.pageSize ?? 100, 1), 100),
+      })
+    } catch (error) {
+      throw new InstantlyOutreachReadError(toSafeProviderError(error))
+    }
+
+    const messages: NormalizedMessage[] = []
+    let malformed = 0
+    let mismatched = 0
+    for (const email of page.items) {
+      if (email.campaign_id !== input.externalCampaignId) {
+        mismatched += 1
+        continue
+      }
+      const normalized = normalizeCampaignEmail(email)
+      if (normalized) messages.push(normalized)
+      else malformed += 1
+    }
+
     return {
-      messages: page.items.flatMap((email) => {
-        const normalized = normalizeCampaignEmail(email, input.externalCampaignId)
-        return normalized ? [normalized] : []
-      }),
+      messages,
       nextCursor: page.nextStartingAfter,
+      normalization: { imported: messages.length, malformed, mismatched },
     }
   }
 }

@@ -95,6 +95,31 @@ export interface InstantlyEmailList {
   next_starting_after?: string | null
 }
 
+/** @deprecated Retained for the established inbox-replies capability only. */
+export interface InboxReply {
+  id?: string
+  campaign_id?: string
+  lead_email?: string
+  from_email?: string
+  to_email?: string
+  subject?: string
+  body?: string
+  body_text?: string
+  received_at?: string
+  thread_id?: string
+}
+
+/** HTTP metadata only; provider response bodies must never cross this boundary. */
+export class InstantlyProviderError extends Error {
+  readonly status: number
+
+  constructor(status: number) {
+    super(`Instantly API request failed (${status})`)
+    this.name = 'InstantlyProviderError'
+    this.status = status
+  }
+}
+
 // ─── Service ───────────────────────────────────────────────────────────────
 
 export class InstantlyService {
@@ -116,8 +141,7 @@ export class InstantlyService {
     })
 
     if (!response.ok) {
-      const text = await response.text()
-      throw new Error(`Instantly API error (${response.status}): ${text}`)
+      throw new InstantlyProviderError(response.status)
     }
     return response.json() as T
   }
@@ -199,6 +223,21 @@ export class InstantlyService {
     if (input.minTimestampCreated) params.set('min_timestamp_created', input.minTimestampCreated)
     const page = await this.request<InstantlyEmailList>('GET', `/api/v2/emails?${params}`)
     return { items: page.items ?? [], nextStartingAfter: page.next_starting_after ?? null }
+  }
+
+  /**
+   * @deprecated The established public inbox-replies capability still depends
+   * on this legacy endpoint. New outreach imports must use listCampaignEmails.
+   */
+  async listInboxReplies(opts: { lookbackHours: number; limit?: number }): Promise<InboxReply[]> {
+    const limit = opts.limit ?? 100
+    const cutoffMs = Date.now() - opts.lookbackHours * 3_600_000
+    const since = new Date(cutoffMs).toISOString()
+    const res = await this.request<{ items?: InboxReply[] }>(
+      'GET',
+      `/api/v2/unibox/emails?direction=inbound&since=${encodeURIComponent(since)}&limit=${limit}`,
+    )
+    return res.items ?? []
   }
 
   // ─── Analytics ─────────────────────────────────────────────────────────

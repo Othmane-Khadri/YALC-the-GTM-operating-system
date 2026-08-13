@@ -30,9 +30,17 @@ export interface ReadMessagePageInput {
   pageSize?: number
 }
 
+/** Aggregate-only import accounting: never carries provider record content. */
+export interface ReadMessagePageNormalization {
+  imported: number
+  malformed: number
+  mismatched: number
+}
+
 export interface ReadMessagePageResult {
   messages: NormalizedMessage[]
   nextCursor: string | null
+  normalization: ReadMessagePageNormalization
 }
 
 /**

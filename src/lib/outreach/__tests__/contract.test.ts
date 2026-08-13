@@ -15,7 +15,11 @@ function fakeAdapter(): OutreachReadAdapter {
       return []
     },
     async readMessagePage(_input: ReadMessagePageInput): Promise<ReadMessagePageResult> {
-      return { messages: [], nextCursor: null }
+      return {
+        messages: [],
+        nextCursor: null,
+        normalization: { imported: 0, malformed: 0, mismatched: 0 },
+      }
     },
   }
 }

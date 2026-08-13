@@ -34,6 +34,29 @@ describe('Instantly campaign email reader', () => {
     vi.unstubAllEnvs()
     vi.unstubAllGlobals()
   })
+
+  it('retains HTTP status without retaining a provider response body', async () => {
+    const sensitiveProviderBody = 'recipient@example.test token=synthetic-sensitive-value'
+    vi.stubEnv('INSTANTLY_API_KEY', 'test-key-not-a-provider-secret')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      text: async () => sensitiveProviderBody,
+    }))
+
+    try {
+      await new InstantlyService().listCampaignEmails({ campaignId })
+      throw new Error('expected listCampaignEmails to fail')
+    } catch (error) {
+      expect(error).toMatchObject({ status: 429 })
+      expect(error).not.toHaveProperty('body')
+      expect(error).not.toHaveProperty('responseBody')
+      expect(error instanceof Error ? error.message : '').not.toContain(sensitiveProviderBody)
+    } finally {
+      vi.unstubAllEnvs()
+      vi.unstubAllGlobals()
+    }
+  })
 })
 
 describe('Instantly outreach read adapter', () => {
@@ -90,6 +113,8 @@ describe('Instantly outreach read adapter', () => {
     ])
     expect(firstPage.nextCursor).toBe('email-100')
     expect(secondPage.nextCursor).toBeNull()
+    expect(firstPage.normalization).toEqual({ imported: 6, malformed: 3, mismatched: 1 })
+    expect(secondPage.normalization).toEqual({ imported: 1, malformed: 0, mismatched: 0 })
     expect(firstPage.messages).toMatchObject([
       {
         externalMessageId: 'email-100',
@@ -113,5 +138,23 @@ describe('Instantly outreach read adapter', () => {
     expect(secondPage.messages).toMatchObject([
       { externalMessageId: 'email-200', bodyText: 'Second page plain text' },
     ])
+  })
+
+  it('projects reader failures to shared safe provider metadata', async () => {
+    const sensitiveProviderBody = 'recipient@example.test token=synthetic-sensitive-value'
+    const reader: InstantlyCampaignEmailReader = {
+      async listCampaignEmails() {
+        throw { status: 403, body: sensitiveProviderBody, message: sensitiveProviderBody }
+      },
+    }
+
+    await expect(
+      new InstantlyOutreachReadAdapter(reader).readMessagePage({ externalCampaignId: campaignId, cursor: null }),
+    ).rejects.toMatchObject({
+      safeError: { category: 'forbidden', status: 403 },
+    })
+    await expect(
+      new InstantlyOutreachReadAdapter(reader).readMessagePage({ externalCampaignId: campaignId, cursor: null }),
+    ).rejects.not.toThrow(sensitiveProviderBody)
   })
 })

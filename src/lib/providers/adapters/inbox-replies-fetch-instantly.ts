@@ -1,22 +1,21 @@
 import type { CapabilityAdapter } from '../capabilities.js'
-import { InstantlyOutreachReadAdapter } from '../../outreach/adapters/instantly.js'
+import { instantlyService } from '../../services/instantly.js'
+import { toSafeProviderError } from '../../outreach/errors.js'
 import { MissingApiKeyError, ProviderApiError } from './index.js'
 
 interface InboxRepliesFetchInput {
-  campaignId?: string
-  cursor?: string | null
-  pageSize?: number
+  lookbackHours?: number
+  limit?: number
   /** Snake-case aliases. */
-  campaign_id?: string
-  page_size?: number
+  lookback_hours?: number
 }
 
 /**
  * Instantly inbox-replies-fetch adapter.
  *
- * Reads one normalized email page from Instantly's official, campaign-scoped
- * `/api/v2/emails` endpoint. Pagination belongs to the caller; this adapter
- * deliberately does not traverse pages or access a workspace-wide inbox.
+ * Retains the established public Unibox capability contract. New outreach
+ * timeline imports must use `InstantlyOutreachReadAdapter` and official
+ * campaign-scoped v2 email reads instead.
  */
 export const inboxRepliesFetchInstantlyAdapter: CapabilityAdapter = {
   capabilityId: 'inbox-replies-fetch',
@@ -27,23 +26,22 @@ export const inboxRepliesFetchInstantlyAdapter: CapabilityAdapter = {
       throw new MissingApiKeyError('instantly', 'INSTANTLY_API_KEY')
     }
     const raw = (input ?? {}) as InboxRepliesFetchInput
-    const campaignId = raw.campaignId ?? raw.campaign_id
-    if (typeof campaignId !== 'string' || campaignId.length === 0) {
+    const lookbackHours = raw.lookbackHours ?? raw.lookback_hours
+    if (typeof lookbackHours !== 'number' || lookbackHours <= 0) {
       throw new ProviderApiError(
         'instantly',
-        'campaignId (or campaign_id) is required',
+        'lookbackHours (or lookback_hours) is required and must be a positive number',
       )
     }
     try {
-      const page = await new InstantlyOutreachReadAdapter().readMessagePage({
-        externalCampaignId: campaignId,
-        cursor: raw.cursor ?? null,
-        pageSize: raw.pageSize ?? raw.page_size,
+      const replies = await instantlyService.listInboxReplies({
+        lookbackHours,
+        limit: raw.limit,
       })
-      return { replies: page.messages, nextCursor: page.nextCursor }
+      return { replies }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      throw new ProviderApiError('instantly', message)
+      const safe = toSafeProviderError(err)
+      throw new ProviderApiError('instantly', safe.category, safe.status)
     }
   },
 }

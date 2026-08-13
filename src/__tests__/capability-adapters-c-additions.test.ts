@@ -177,35 +177,53 @@ describe('inbox-replies-fetch instantly adapter', () => {
     )
     await expect(
       inboxRepliesFetchInstantlyAdapter.execute(
-        { campaignId: 'campaign-42' },
+        { lookbackHours: 24 },
         { executor: null, registry: null as never },
       ),
     ).rejects.toThrow(/INSTANTLY_API_KEY/)
   })
 
-  it('reads one normalized, campaign-scoped official email page', async () => {
+  it('returns replies from the legacy unibox capability', async () => {
     process.env.INSTANTLY_API_KEY = 'test-key-1234567890123456789012345'
-    const { InstantlyService } = await import('../lib/services/instantly')
-    vi.spyOn(InstantlyService.prototype, 'listCampaignEmails').mockResolvedValue({
-      items: [{
-        id: 'r1', campaign_id: 'campaign-42', thread_id: 'thread-42',
-        timestamp_created: '2026-08-13T00:00:00.000Z',
-        body: { text: 'Plain reply only', html: '<p>Do not return this</p>' },
-        lead: 'recipient@example.test', ue_type: 2,
-      }],
-      nextStartingAfter: 'r1',
-    })
+    const { instantlyService } = await import('../lib/services/instantly')
+    vi.spyOn(instantlyService, 'listInboxReplies').mockResolvedValue([
+      { id: 'r1', from_email: 'recipient@example.test', subject: 'Re: hi' },
+    ])
     const { inboxRepliesFetchInstantlyAdapter } = await import(
       '../lib/providers/adapters/inbox-replies-fetch-instantly'
     )
     const out = (await inboxRepliesFetchInstantlyAdapter.execute(
-      { campaignId: 'campaign-42' },
+      { lookbackHours: 24 },
       { executor: null, registry: null as never },
-    )) as { replies: Array<{ externalMessageId?: string; bodyText?: string }>; nextCursor: string | null }
+    )) as { replies: Array<{ id?: string }> }
     expect(out.replies).toHaveLength(1)
-    expect(out.replies[0].externalMessageId).toBe('r1')
-    expect(out.replies[0].bodyText).toBe('Plain reply only')
-    expect(out.nextCursor).toBe('r1')
+    expect(out.replies[0].id).toBe('r1')
+  })
+
+  it('projects legacy provider failures without exposing provider body text', async () => {
+    process.env.INSTANTLY_API_KEY = 'test-key-1234567890123456789012345'
+    const sensitiveProviderBody = 'recipient@example.test token=synthetic-sensitive-value'
+    const { instantlyService } = await import('../lib/services/instantly')
+    vi.spyOn(instantlyService, 'listInboxReplies').mockRejectedValue({
+      status: 429,
+      body: sensitiveProviderBody,
+      message: sensitiveProviderBody,
+    })
+    const { inboxRepliesFetchInstantlyAdapter } = await import(
+      '../lib/providers/adapters/inbox-replies-fetch-instantly'
+    )
+
+    try {
+      await inboxRepliesFetchInstantlyAdapter.execute(
+        { lookbackHours: 24 },
+        { executor: null, registry: null as never },
+      )
+      throw new Error('expected inbox-replies-fetch to fail')
+    } catch (error) {
+      expect(error).toMatchObject({ providerId: 'instantly', status: 429 })
+      expect(error).not.toHaveProperty('body')
+      expect(error instanceof Error ? error.message : '').not.toContain(sensitiveProviderBody)
+    }
   })
 })
 
