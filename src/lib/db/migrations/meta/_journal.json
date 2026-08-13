@@ -36,6 +36,13 @@
       "when": 1786642882500,
       "tag": "0004_lucky_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786643231128,
+      "tag": "0005_tricky_mandroid",
+      "breakpoints": true
     }
   ]
 }

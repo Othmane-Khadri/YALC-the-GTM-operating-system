@@ -480,6 +480,8 @@ export const outreachConversations = sqliteTable('outreach_conversations', {
     name: 'outreach_conversations_tenant_provider_run_fk',
   }).onDelete('cascade'),
   uniqueTenantId: uniqueIndex('outreach_conversations_tenant_id_idx').on(t.tenantId, t.id),
+  uniqueTenantConversationRun: uniqueIndex('outreach_conversations_tenant_id_run_idx')
+    .on(t.tenantId, t.id, t.providerRunId),
   uniqueExternalThread: uniqueIndex('outreach_conversations_tenant_run_provider_thread_idx')
     .on(t.tenantId, t.providerRunId, t.provider, t.externalThreadId),
   byCampaignLead: index('outreach_conversations_tenant_lead_idx').on(t.tenantId, t.campaignLeadId),
@@ -505,10 +507,10 @@ export const outreachMessages = sqliteTable('outreach_messages', {
   providerTimestamp: text('provider_timestamp').notNull(),
   importedAt: text('imported_at').default(sql`(datetime('now'))`),
 }, (t) => ({
-  conversationTenant: foreignKey({
-    columns: [t.tenantId, t.outreachConversationId],
-    foreignColumns: [outreachConversations.tenantId, outreachConversations.id],
-    name: 'outreach_messages_tenant_conversation_fk',
+  conversationRunTenant: foreignKey({
+    columns: [t.tenantId, t.outreachConversationId, t.providerRunId],
+    foreignColumns: [outreachConversations.tenantId, outreachConversations.id, outreachConversations.providerRunId],
+    name: 'outreach_messages_tenant_conversation_run_fk',
   }).onDelete('cascade'),
   providerRunTenant: foreignKey({
     columns: [t.tenantId, t.providerRunId],

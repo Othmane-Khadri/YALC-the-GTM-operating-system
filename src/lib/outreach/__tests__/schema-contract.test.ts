@@ -12,6 +12,7 @@ const migrationNames = [
   '0002_warm_liz_osborn.sql',
   '0003_multichannel_outreach_inbox.sql',
   '0004_lucky_chat.sql',
+  '0005_tricky_mandroid.sql',
 ]
 
 async function applyMigrations() {
@@ -130,6 +131,7 @@ describe('outreach schema contract', () => {
     expect(await foreignKeys('outreach_messages')).toEqual(expect.arrayContaining([
       { from: 'tenant_id', table: 'outreach_conversations', to: 'tenant_id' },
       { from: 'outreach_conversation_id', table: 'outreach_conversations', to: 'id' },
+      { from: 'provider_run_id', table: 'outreach_conversations', to: 'provider_run_id' },
       { from: 'tenant_id', table: 'campaign_provider_runs', to: 'tenant_id' },
       { from: 'provider_run_id', table: 'campaign_provider_runs', to: 'id' },
     ]))
@@ -158,6 +160,11 @@ describe('outreach schema contract', () => {
       'outreach_conversations',
       'outreach_conversations_tenant_run_provider_thread_idx',
       ['tenant_id', 'provider_run_id', 'provider', 'external_thread_id'],
+    )
+    await expectUniqueIndex(
+      'outreach_conversations',
+      'outreach_conversations_tenant_id_run_idx',
+      ['tenant_id', 'id', 'provider_run_id'],
     )
     await expectUniqueIndex(
       'outreach_messages',
@@ -214,6 +221,12 @@ describe('outreach schema contract', () => {
             VALUES (?, ?, ?, ?, ?, ?)`,
       args: ['run-a', 'tenant-a', 'campaign-a', 'heyreach', 'external-campaign', 'Campaign'],
     })
+    await raw.execute({
+      sql: `INSERT INTO campaign_provider_runs
+            (id, tenant_id, campaign_id, provider, external_campaign_id, external_name)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+      args: ['run-a-other', 'tenant-a', 'campaign-a', 'heyreach', 'external-campaign-other', 'Campaign other'],
+    })
     await expect(raw.execute({
       sql: `INSERT INTO campaign_provider_runs
             (id, tenant_id, campaign_id, provider, external_campaign_id, external_name)
@@ -232,6 +245,17 @@ describe('outreach schema contract', () => {
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
       args: ['outreach-conversation-a', 'tenant-a', 'lead-a', 'run-a', 'heyreach', 'linkedin', 'thread-a'],
     })
+
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_messages
+            (id, tenant_id, outreach_conversation_id, provider_run_id, provider, external_message_id, fingerprint,
+             direction, message_kind, subject, body_text, provider_timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        'mismatched-message-run', 'tenant-a', 'outreach-conversation-a', 'run-a-other', 'heyreach', 'mismatch-message', 'mismatch-fingerprint',
+        'inbound', 'human', 'Subject', 'Body', '2026-08-13T00:00:00Z',
+      ],
+    })).rejects.toThrow(/FOREIGN KEY constraint failed/)
 
     await expect(raw.execute({
       sql: `INSERT INTO campaign_provider_runs

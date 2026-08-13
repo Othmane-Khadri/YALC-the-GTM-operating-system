@@ -16,6 +16,7 @@ const migrationNames = [
   '0002_warm_liz_osborn.sql',
   '0003_multichannel_outreach_inbox.sql',
   '0004_lucky_chat.sql',
+  '0005_tricky_mandroid.sql',
 ]
 
 async function applyMigrations() {

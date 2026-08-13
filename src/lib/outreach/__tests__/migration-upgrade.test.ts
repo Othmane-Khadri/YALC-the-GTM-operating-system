@@ -73,6 +73,8 @@ describe('0004 outreach provider-run scope upgrade', () => {
       args: ['message-b', 'tenant-a', 'conversation-outreach-b', 'run-campaign-b', 'instantly', 'same-message', 'same-fingerprint', 'inbound', 'human', 'Independent', '2026-08-13T10:00:00.000Z'],
     })
 
+    await apply('0005_tricky_mandroid.sql')
+
     await expect(raw.execute('SELECT count(*) AS count FROM outreach_messages WHERE tenant_id = ?', ['tenant-a']))
       .resolves.toMatchObject({ rows: [{ count: 2 }] })
   })
