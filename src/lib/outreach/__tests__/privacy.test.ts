@@ -27,14 +27,14 @@ const sentinels = [
 
 let syncRunId: string | null = null
 
-type TableSnapshot = { count: number; ids: string[] }
+type TableSnapshot = Array<Record<string, unknown>>
 type OutreachSnapshot = {
   campaignLeads: TableSnapshot
   identities: TableSnapshot
   conversations: TableSnapshot
   messages: TableSnapshot
   drafts: TableSnapshot
-  providerRun: {
+  providerRunStable: {
     syncCursor: string | null
     syncWatermark: string | null
     firstMessageImportedAt: string | null
@@ -99,8 +99,8 @@ async function seed(): Promise<void> {
 
 async function snapshot(): Promise<OutreachSnapshot> {
   const rows = async (table: 'campaign_leads' | 'outreach_identities' | 'outreach_conversations' | 'outreach_messages' | 'outreach_drafts'): Promise<TableSnapshot> => {
-    const result = await rawClient.execute({ sql: `SELECT id FROM ${table} WHERE tenant_id = ? ORDER BY id`, args: [tenantId] })
-    return { count: result.rows.length, ids: result.rows.map((row) => String(row.id)) }
+    const result = await rawClient.execute({ sql: `SELECT * FROM ${table} WHERE tenant_id = ? ORDER BY id`, args: [tenantId] })
+    return result.rows.map((row) => Object.fromEntries(Object.entries(row).sort(([left], [right]) => left.localeCompare(right))))
   }
   const providerRun = await rawClient.execute({
     sql: `SELECT sync_cursor, sync_watermark, first_message_imported_at
@@ -115,11 +115,25 @@ async function snapshot(): Promise<OutreachSnapshot> {
     conversations: await rows('outreach_conversations'),
     messages: await rows('outreach_messages'),
     drafts: await rows('outreach_drafts'),
-    providerRun: {
+    providerRunStable: {
       syncCursor: typeof row.sync_cursor === 'string' ? row.sync_cursor : null,
       syncWatermark: typeof row.sync_watermark === 'string' ? row.sync_watermark : null,
       firstMessageImportedAt: typeof row.first_message_imported_at === 'string' ? row.first_message_imported_at : null,
     },
+  }
+}
+
+async function providerFailureState(): Promise<{ lastSyncFailedAt: string | null; lastErrorCode: string | null }> {
+  const result = await rawClient.execute({
+    sql: `SELECT last_sync_failed_at, last_error_code
+          FROM campaign_provider_runs WHERE id = ? AND tenant_id = ?`,
+    args: [providerRunId, tenantId],
+  })
+  const row = result.rows[0] as Record<string, unknown> | undefined
+  if (!row) throw new Error('missing privacy provider run failure state')
+  return {
+    lastSyncFailedAt: typeof row.last_sync_failed_at === 'string' ? row.last_sync_failed_at : null,
+    lastErrorCode: typeof row.last_error_code === 'string' ? row.last_error_code : null,
   }
 }
 
@@ -155,14 +169,12 @@ describe('outreach privacy boundary', () => {
 
     await seed()
     const before = await snapshot()
-    expect(before).toEqual({
-      campaignLeads: { count: 1, ids: [leadId] },
-      identities: { count: 1, ids: [identityId] },
-      conversations: { count: 1, ids: [outreachConversationId] },
-      messages: { count: 1, ids: [outreachMessageId] },
-      drafts: { count: 1, ids: [draftId] },
-      providerRun: { syncCursor: priorCursor, syncWatermark: priorWatermark, firstMessageImportedAt: priorFirstImportedAt },
-    })
+    expect(before.campaignLeads.map((row) => row.id)).toEqual([leadId])
+    expect(before.identities.map((row) => row.id)).toEqual([identityId])
+    expect(before.conversations.map((row) => row.id)).toEqual([outreachConversationId])
+    expect(before.messages.map((row) => row.id)).toEqual([outreachMessageId])
+    expect(before.drafts.map((row) => row.id)).toEqual([draftId])
+    expect(before.providerRunStable).toEqual({ syncCursor: priorCursor, syncWatermark: priorWatermark, firstMessageImportedAt: priorFirstImportedAt })
     let providerReads = 0
     const failingAdapter: OutreachReadAdapter = {
       provider: 'instantly',
@@ -187,6 +199,7 @@ describe('outreach privacy boundary', () => {
     const response = await routes.request(`/sync/${syncRunId}?tenant=${tenantId}`)
     const apiStatus = await response.json()
     const after = await snapshot()
+    const failureState = await providerFailureState()
 
     expect(response.status).toBe(200)
     expect(providerReads).toBe(1)
@@ -206,10 +219,13 @@ describe('outreach privacy boundary', () => {
       counts: { pagesProcessed: 0, conversationsProcessed: 0, messagesProcessed: 0 },
     })
     expect(after).toEqual(before)
+    expect(failureState).toMatchObject({ lastErrorCode: 'forbidden', lastSyncFailedAt: expect.any(String) })
+    expect(Date.parse(failureState.lastSyncFailedAt ?? '')).not.toBeNaN()
 
     expectNoSentinels(adapterError)
     expectNoSentinels(syncStatus)
     expectNoSentinels(apiStatus)
+    expectNoSentinels(failureState)
     for (const spy of Object.values(consoleSpies)) expect(spy).not.toHaveBeenCalled()
   })
 })
