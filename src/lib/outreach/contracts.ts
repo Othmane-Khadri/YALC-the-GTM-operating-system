@@ -28,6 +28,8 @@ export interface ReadMessagePageInput {
   externalCampaignId: string
   cursor: string | null
   pageSize?: number
+  /** Local sync-run identity; providers must treat it as opaque. */
+  syncRunId?: string | null
 }
 
 /** Aggregate-only import accounting: never carries provider record content. */

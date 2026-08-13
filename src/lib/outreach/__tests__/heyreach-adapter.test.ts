@@ -91,7 +91,11 @@ describe('HeyReach outreach read adapter', () => {
 
     await expect(backfill.readMessagePage({ externalCampaignId: campaignId, cursor: null }))
       .resolves.toMatchObject({ nextCursor: '50' })
-    await expect(incremental.readMessagePage({ externalCampaignId: campaignId, cursor: '50' }))
+    await expect(incremental.readMessagePage({
+      externalCampaignId: campaignId,
+      cursor: '50',
+      syncRunId: 'incremental-run-1',
+    }))
       .resolves.toMatchObject({ nextCursor: null })
     expect(listCampaignConversationPage).toHaveBeenLastCalledWith({
       campaignId: 9001,
@@ -100,6 +104,44 @@ describe('HeyReach outreach read adapter', () => {
       limit: 50,
       bypass: true,
     })
+  })
+
+  it('continues an interrupted incremental run only when its opaque cursor belongs to that run', async () => {
+    const currentPage = Array.from({ length: 50 }, (_, index) => ({
+      id: `chat-${index}`,
+      read: false,
+      totalMessages: 0,
+      linkedInAccountId: 77,
+      lastMessageAt: '2026-08-13T10:00:00.000Z',
+    }))
+    vi.mocked(listCampaignConversationPage).mockResolvedValue({ totalCount: 150, items: currentPage })
+    const scope = {
+      senderAccountId: 77,
+      syncWatermark: '2026-08-13T09:00:00.000Z',
+      overlapMs: 60_000,
+    }
+
+    const firstPage = await new HeyReachOutreachReadAdapter(scope).readMessagePage({
+      externalCampaignId: campaignId,
+      cursor: null,
+      syncRunId: 'run-alpha',
+    })
+    expect(firstPage.nextCursor).toMatch(/^incremental:[a-f0-9]{64}:50$/)
+    expect(firstPage.nextCursor).not.toContain('run-alpha')
+
+    await new HeyReachOutreachReadAdapter(scope).readMessagePage({
+      externalCampaignId: campaignId,
+      cursor: firstPage.nextCursor,
+      syncRunId: 'run-alpha',
+    })
+    expect(listCampaignConversationPage).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 50 }))
+
+    await new HeyReachOutreachReadAdapter(scope).readMessagePage({
+      externalCampaignId: campaignId,
+      cursor: firstPage.nextCursor,
+      syncRunId: 'run-beta',
+    })
+    expect(listCampaignConversationPage).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 0 }))
   })
 
   it('rejects invalid sender scope without making an unscoped provider read', async () => {

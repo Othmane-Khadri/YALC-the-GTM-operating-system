@@ -61,13 +61,22 @@ function positiveInteger(value: string | number | null | undefined): number | nu
   return Number.isSafeInteger(parsed) ? parsed : null
 }
 
-function parseOffset(cursor: string | null, incremental: boolean): number | null {
+function validSyncRunId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 256
+}
+
+function syncRunFingerprint(syncRunId: string): string {
+  return createHash('sha256').update(`heyreach:incremental-cursor:v1\u0000${syncRunId}`).digest('hex')
+}
+
+function parseOffset(cursor: string | null, syncRunId: string | null): number | null {
   if (cursor === null) return 0
-  if (incremental) {
-    // A plain offset belongs to the completed initial backfill persisted in
-    // campaign_provider_runs. An incremental scan must always restart at zero.
-    if (!cursor.startsWith('incremental:')) return 0
-    cursor = cursor.slice('incremental:'.length)
+  if (syncRunId !== null) {
+    // A plain offset belongs to a completed backfill. A cursor from another
+    // run (including the legacy incremental format) cannot advance this run.
+    const match = /^incremental:([a-f0-9]{64}):(\d+)$/.exec(cursor)
+    if (!match || match[1] !== syncRunFingerprint(syncRunId)) return 0
+    cursor = match[2]
   }
   if (!/^\d+$/.test(cursor)) return null
   const parsed = Number(cursor)
@@ -197,8 +206,9 @@ export class HeyReachOutreachReadAdapter implements OutreachReadAdapter {
     const senderAccountId = this.senderAccountId()
     const campaignId = positiveInteger(input.externalCampaignId)
     const cutoff = watermarkCutoff(this.scope.syncWatermark, this.scope.overlapMs)
-    const offset = parseOffset(input.cursor, cutoff !== null)
-    if (campaignId === null || offset === null || (this.scope.syncWatermark !== null && this.scope.syncWatermark !== undefined && cutoff === null)) {
+    const syncRunId = cutoff === null ? null : validSyncRunId(input.syncRunId) ? input.syncRunId : null
+    const offset = parseOffset(input.cursor, syncRunId)
+    if (campaignId === null || offset === null || (cutoff !== null && syncRunId === null) || (this.scope.syncWatermark !== null && this.scope.syncWatermark !== undefined && cutoff === null)) {
       throw new HeyReachOutreachReadError({ category: 'invalid_payload' })
     }
 
@@ -282,7 +292,7 @@ export class HeyReachOutreachReadAdapter implements OutreachReadAdapter {
       ? null
       : cutoff === null
         ? String(offset + page.items.length)
-        : `incremental:${offset + page.items.length}`
+        : `incremental:${syncRunFingerprint(syncRunId!)}:${offset + page.items.length}`
 
     return {
       messages,
