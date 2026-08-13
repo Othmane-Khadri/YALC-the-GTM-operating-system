@@ -23,8 +23,8 @@ import { gatesRoutes } from './routes/gates'
 import { visualizeApiRoutes, visualizePageRoutes } from './routes/visualize'
 import { dashboardRoutes } from './routes/dashboard'
 import { outreachRoutes } from './routes/outreach'
-import { OutreachSyncCoordinator } from '../outreach/sync'
-import { rawClient } from '../db'
+import { OutreachSyncCoordinator } from '../outreach/sync.js'
+import { rawClient } from '../db/index.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 

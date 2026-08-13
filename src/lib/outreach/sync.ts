@@ -1,13 +1,17 @@
 import { randomUUID } from 'node:crypto'
 import type { Client } from '@libsql/client'
-import type { OutreachProvider, OutreachReadAdapter, ReadMessagePageResult } from './contracts'
-import { HeyReachOutreachReadAdapter } from './adapters/heyreach'
-import { InstantlyOutreachReadAdapter } from './adapters/instantly'
-import { OutreachRepository } from './repository'
-import { createProviderPacer, ProviderReadFailure, retryProviderRead, type ProviderPacer } from './rate-limit'
-import { toSafeProviderError, type ProviderErrorCategory } from './errors'
+import type { OutreachProvider, OutreachReadAdapter, ReadMessagePageResult } from './contracts.js'
+import { HeyReachOutreachReadAdapter } from './adapters/heyreach.js'
+import { InstantlyOutreachReadAdapter } from './adapters/instantly.js'
+import { OutreachRepository } from './repository.js'
+import { createProviderPacer, ProviderReadFailure, retryProviderRead, type ProviderPacer } from './rate-limit.js'
+import { toSafeProviderError, type ProviderErrorCategory } from './errors.js'
 
 const PROVIDERS = new Set<OutreachProvider>(['heyreach', 'instantly'])
+const PROVIDER_ERROR_CATEGORIES = new Set<ProviderErrorCategory>([
+  'unauthorized', 'forbidden', 'payment_required', 'rate_limited',
+  'invalid_payload', 'provider_unavailable', 'internal_error',
+])
 const INCREMENTAL_OVERLAP_MS = 10 * 60_000
 
 type Row = Record<string, unknown>
@@ -25,15 +29,28 @@ type StoredCursor =
   | { mode: 'backfill'; offset?: number; startingAfter?: string | null }
   | { mode: 'incremental'; syncRunId: string; cursor: string | null }
 
-type ProviderSummary = {
+export type MappingSyncSummary = {
+  providerRunId: string
   state: 'completed' | 'failed'
   pages: number
-  errorCode?: ProviderErrorCategory | 'interrupted'
+  errorCode?: ProviderErrorCategory
   lastSuccessfulDataAt?: string | null
+}
+
+export type ProviderSyncSummary = {
+  provider: OutreachProvider
+  state: 'completed' | 'partial' | 'failed'
+  mappings: MappingSyncSummary[]
+}
+
+export type SyncRunSummary = {
+  providers: ProviderSyncSummary[]
+  recoveryErrorCode?: 'interrupted'
 }
 
 export interface SyncAdapterFactory {
   forProvider(run: {
+    providerRunId: string
     provider: OutreachProvider
     senderAccountId: string | null
     syncWatermark: string | null
@@ -61,7 +78,7 @@ export type SafeSyncStatus = {
   id: string
   status: 'queued' | 'running' | 'completed' | 'partial' | 'failed'
   requestedProviders: OutreachProvider[]
-  providerSummary: Record<string, ProviderSummary>
+  providerSummary: SyncRunSummary
   counts: {
     pagesProcessed: number
     conversationsProcessed: number
@@ -95,15 +112,77 @@ function parseStoredProviders(value: unknown): OutreachProvider[] {
   }
 }
 
-function parseSummary(value: unknown): Record<string, ProviderSummary> {
-  if (typeof value !== 'string') return {}
+function parseSummary(value: unknown): SyncRunSummary {
+  if (typeof value !== 'string') return { providers: [] }
   try {
-    const parsed = JSON.parse(value)
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-      ? parsed as Record<string, ProviderSummary>
-      : {}
+    const parsed = JSON.parse(value) as Record<string, unknown>
+    return {
+      providers: Array.isArray(parsed.providers) ? parsed.providers.flatMap(parseProviderSummary) : [],
+      ...(parsed.recoveryErrorCode === 'interrupted' ? { recoveryErrorCode: 'interrupted' as const } : {}),
+    }
   } catch {
-    return {}
+    return { providers: [] }
+  }
+}
+
+function parseMappingSummary(value: unknown): MappingSyncSummary[] {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return []
+  const row = value as Record<string, unknown>
+  if (
+    typeof row.providerRunId !== 'string' || !row.providerRunId.trim()
+    || (row.state !== 'completed' && row.state !== 'failed')
+    || !Number.isSafeInteger(row.pages) || Number(row.pages) < 0
+  ) return []
+  const errorCode = typeof row.errorCode === 'string' && PROVIDER_ERROR_CATEGORIES.has(row.errorCode as ProviderErrorCategory)
+    ? row.errorCode as ProviderErrorCategory
+    : undefined
+  const lastSuccessfulDataAt = row.lastSuccessfulDataAt === null
+    ? null
+    : typeof row.lastSuccessfulDataAt === 'string' && !Number.isNaN(Date.parse(row.lastSuccessfulDataAt))
+      ? new Date(row.lastSuccessfulDataAt).toISOString()
+      : undefined
+  return [{
+    providerRunId: row.providerRunId,
+    state: row.state,
+    pages: Number(row.pages),
+    ...(errorCode === undefined ? {} : { errorCode }),
+    ...(lastSuccessfulDataAt === undefined ? {} : { lastSuccessfulDataAt }),
+  }]
+}
+
+function parseProviderSummary(value: unknown): ProviderSyncSummary[] {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return []
+  const row = value as Record<string, unknown>
+  if (
+    typeof row.provider !== 'string' || !PROVIDERS.has(row.provider as OutreachProvider)
+    || (row.state !== 'completed' && row.state !== 'partial' && row.state !== 'failed')
+  ) return []
+  return [{
+    provider: row.provider as OutreachProvider,
+    state: row.state,
+    mappings: Array.isArray(row.mappings) ? row.mappings.flatMap(parseMappingSummary) : [],
+  }]
+}
+
+function aggregateProviderSummaries(mappings: Array<MappingSyncSummary & { provider: OutreachProvider }>): SyncRunSummary {
+  const byProvider = new Map<OutreachProvider, MappingSyncSummary[]>()
+  for (const { provider, ...mapping } of mappings) {
+    const providerMappings = byProvider.get(provider) ?? []
+    providerMappings.push(mapping)
+    byProvider.set(provider, providerMappings)
+  }
+  return {
+    providers: [...byProvider.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([provider, providerMappings]) => {
+        const mappingsForProvider = providerMappings.sort((left, right) => left.providerRunId.localeCompare(right.providerRunId))
+        const completed = mappingsForProvider.filter((mapping) => mapping.state === 'completed').length
+        return {
+          provider,
+          state: completed === mappingsForProvider.length ? 'completed' as const : completed > 0 ? 'partial' as const : 'failed' as const,
+          mappings: mappingsForProvider,
+        }
+      }),
   }
 }
 
@@ -207,27 +286,15 @@ export class OutreachSyncCoordinator {
     const run = await this.getRun(runId)
     if (!run) return
     const providerRuns = await this.getProviderRuns(run.tenantId, run.campaignId, run.requestedProviders)
-    const summary: Record<string, ProviderSummary> = {}
-    let completed = 0
-    let failed = 0
+    const mappingSummaries: Array<MappingSyncSummary & { provider: OutreachProvider }> = []
 
     for (const providerRun of providerRuns) {
-      try {
-        summary[providerRun.provider] = await this.syncProvider(run, providerRun)
-        completed += 1
-      } catch (error) {
-        const safeError = error instanceof ProviderReadFailure ? error.safeError : toSafeProviderError(error)
-        summary[providerRun.provider] = { state: 'failed', pages: 0, errorCode: safeError.category }
-        await this.options.raw.execute({
-          sql: `UPDATE campaign_provider_runs
-                SET last_sync_failed_at = ?, last_error_code = ?, updated_at = datetime('now')
-                WHERE id = ? AND tenant_id = ? AND campaign_id = ? AND provider = ?`,
-          args: [this.now().toISOString(), safeError.category, providerRun.id, run.tenantId, run.campaignId, providerRun.provider],
-        })
-        failed += 1
-      }
+      mappingSummaries.push({ provider: providerRun.provider, ...await this.syncProvider(run, providerRun) })
     }
 
+    const summary = aggregateProviderSummaries(mappingSummaries)
+    const completed = mappingSummaries.filter((mapping) => mapping.state === 'completed').length
+    const failed = mappingSummaries.length - completed
     const finalStatus = failed === 0 && completed > 0 ? 'succeeded' : completed > 0 ? 'partial' : 'failed'
     await this.options.raw.execute({
       sql: `UPDATE outreach_sync_runs SET status = ?, provider_summary = ?, finished_at = ?, updated_at = datetime('now')
@@ -242,7 +309,7 @@ export class OutreachSyncCoordinator {
       sql: `UPDATE outreach_sync_runs
             SET status = 'failed', provider_summary = ?, finished_at = ?, updated_at = datetime('now')
             WHERE status = 'running'`,
-      args: [JSON.stringify({ interrupted: { state: 'failed', pages: 0, errorCode: 'interrupted' } }), timestamp],
+      args: [JSON.stringify({ providers: [], recoveryErrorCode: 'interrupted' }), timestamp],
     })
   }
 
@@ -273,56 +340,87 @@ export class OutreachSyncCoordinator {
     }
   }
 
-  private async syncProvider(run: { id: string; tenantId: string; campaignId: string }, providerRun: ProviderRun): Promise<ProviderSummary> {
-    const adapter = this.adapters.forProvider(providerRun)
+  private async syncProvider(run: { id: string; tenantId: string; campaignId: string }, providerRun: ProviderRun): Promise<MappingSyncSummary> {
+    const adapter = this.adapters.forProvider({
+      providerRunId: providerRun.id,
+      provider: providerRun.provider,
+      senderAccountId: providerRun.senderAccountId,
+      syncWatermark: providerRun.syncWatermark,
+    })
     let cursor = readStoredCursor(providerRun.syncCursor, providerRun.provider, run.id, providerRun.syncWatermark)
     const watermark = cursor.mode === 'incremental' && isValidTimestamp(providerRun.syncWatermark)
       ? overlapWatermark(providerRun.syncWatermark)
       : null
     let pages = 0
 
-    while (true) {
-      await this.pacer.wait(providerRun.provider)
-      const page = await retryProviderRead({
-        provider: providerRun.provider,
-        wait: this.retryWait,
-        read: () => adapter.readMessagePage({
-          externalCampaignId: providerRun.externalCampaignId,
-          cursor: adapterCursor(cursor, providerRun.provider),
-          syncRunId: cursor.mode === 'incremental' ? cursor.syncRunId : null,
-          watermark,
-        }),
-      })
-      const persisted: ReadMessagePageResult = { ...page, nextCursor: storedNextCursor(cursor, providerRun.provider, page.nextCursor) }
-      await this.repository.commitPage({
-        tenantId: run.tenantId,
-        campaignId: run.campaignId,
-        providerRunId: providerRun.id,
-        syncRunId: run.id,
-        provider: providerRun.provider,
-        page: persisted,
-      })
-      pages += 1
-      if (page.nextCursor === null) break
-      cursor = cursor.mode === 'incremental'
-        ? { ...cursor, cursor: page.nextCursor }
-        : providerRun.provider === 'heyreach'
-          ? { mode: 'backfill', offset: Number(page.nextCursor) }
-          : { mode: 'backfill', startingAfter: page.nextCursor }
-    }
+    try {
+      while (true) {
+        const page = await retryProviderRead({
+          provider: providerRun.provider,
+          pacer: this.pacer,
+          wait: this.retryWait,
+          read: () => adapter.readMessagePage({
+            externalCampaignId: providerRun.externalCampaignId,
+            cursor: adapterCursor(cursor, providerRun.provider),
+            syncRunId: cursor.mode === 'incremental' ? cursor.syncRunId : null,
+            watermark,
+          }),
+        })
+        const persisted: ReadMessagePageResult = { ...page, nextCursor: storedNextCursor(cursor, providerRun.provider, page.nextCursor) }
+        await this.repository.commitPage({
+          tenantId: run.tenantId,
+          campaignId: run.campaignId,
+          providerRunId: providerRun.id,
+          syncRunId: run.id,
+          provider: providerRun.provider,
+          page: persisted,
+        })
+        pages += 1
+        if (page.nextCursor === null) break
+        cursor = cursor.mode === 'incremental'
+          ? { ...cursor, cursor: page.nextCursor }
+          : providerRun.provider === 'heyreach'
+            ? { mode: 'backfill', offset: Number(page.nextCursor) }
+            : { mode: 'backfill', startingAfter: page.nextCursor }
+      }
 
-    const completedAt = this.now().toISOString()
-    await this.options.raw.execute({
-      sql: `UPDATE campaign_provider_runs
-            SET sync_cursor = NULL, last_sync_succeeded_at = ?, last_error_code = NULL, updated_at = datetime('now')
-            WHERE id = ? AND tenant_id = ? AND campaign_id = ? AND provider = ?`,
-      args: [completedAt, providerRun.id, run.tenantId, run.campaignId, providerRun.provider],
-    })
-    const watermarkRow = await this.options.raw.execute({
-      sql: 'SELECT sync_watermark FROM campaign_provider_runs WHERE id = ? AND tenant_id = ?',
-      args: [providerRun.id, run.tenantId],
-    })
-    return { state: 'completed', pages, lastSuccessfulDataAt: asString((watermarkRow.rows[0] as Row | undefined)?.sync_watermark) }
+      const completedAt = this.now().toISOString()
+      await this.options.raw.execute({
+        sql: `UPDATE campaign_provider_runs
+              SET sync_cursor = NULL, last_sync_succeeded_at = ?, last_error_code = NULL, updated_at = datetime('now')
+              WHERE id = ? AND tenant_id = ? AND campaign_id = ? AND provider = ?`,
+        args: [completedAt, providerRun.id, run.tenantId, run.campaignId, providerRun.provider],
+      })
+      const watermarkRow = await this.options.raw.execute({
+        sql: 'SELECT sync_watermark FROM campaign_provider_runs WHERE id = ? AND tenant_id = ?',
+        args: [providerRun.id, run.tenantId],
+      })
+      return {
+        providerRunId: providerRun.id,
+        state: 'completed',
+        pages,
+        lastSuccessfulDataAt: asString((watermarkRow.rows[0] as Row | undefined)?.sync_watermark),
+      }
+    } catch (error) {
+      const safeError = error instanceof ProviderReadFailure ? error.safeError : toSafeProviderError(error)
+      await this.options.raw.execute({
+        sql: `UPDATE campaign_provider_runs
+              SET last_sync_failed_at = ?, last_error_code = ?, updated_at = datetime('now')
+              WHERE id = ? AND tenant_id = ? AND campaign_id = ? AND provider = ?`,
+        args: [this.now().toISOString(), safeError.category, providerRun.id, run.tenantId, run.campaignId, providerRun.provider],
+      })
+      const watermarkRow = await this.options.raw.execute({
+        sql: 'SELECT sync_watermark FROM campaign_provider_runs WHERE id = ? AND tenant_id = ?',
+        args: [providerRun.id, run.tenantId],
+      })
+      return {
+        providerRunId: providerRun.id,
+        state: 'failed',
+        pages,
+        errorCode: safeError.category,
+        lastSuccessfulDataAt: asString((watermarkRow.rows[0] as Row | undefined)?.sync_watermark),
+      }
+    }
   }
 
   private async getRun(id: string): Promise<{ id: string; tenantId: string; campaignId: string; requestedProviders: OutreachProvider[] } | null> {

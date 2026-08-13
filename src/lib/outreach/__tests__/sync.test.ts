@@ -1,14 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createClient, type Client } from '@libsql/client'
-import { readFile, rm } from 'node:fs/promises'
-import { randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import type { NormalizedMessage, OutreachReadAdapter, OutreachProvider, ReadMessagePageInput, ReadMessagePageResult } from '../contracts'
-import { PROVIDER_MIN_INTERVAL_MS, createProviderPacer, retryProviderRead } from '../rate-limit'
-import { OutreachSyncCoordinator, type SyncAdapterFactory } from '../sync'
+import type { NormalizedMessage, OutreachReadAdapter, OutreachProvider, ReadMessagePageInput, ReadMessagePageResult } from '../contracts.js'
+import { PROVIDER_MIN_INTERVAL_MS, createProviderPacer, retryProviderRead } from '../rate-limit.js'
+import { OutreachSyncCoordinator, type SyncAdapterFactory } from '../sync.js'
 
 let raw: Client
-let databasePath: string
 
 const migrations = ['0000_bootstrap.sql', '0001_sticky_junta.sql', '0002_warm_liz_osborn.sql', '0003_multichannel_outreach_inbox.sql', '0004_lucky_chat.sql', '0005_tricky_mandroid.sql']
 
@@ -63,19 +61,26 @@ function factoryFor(provider: OutreachProvider, fake: OutreachReadAdapter): Sync
   return { forProvider: () => fake.provider === provider ? fake : { ...fake, provider } }
 }
 
-beforeEach(async () => {
-  databasePath = resolve(process.cwd(), `.outreach-sync-${randomUUID()}.test.db`)
-  raw = createClient({ url: `file:${databasePath}` })
+beforeAll(async () => {
+  // libSQL moves interactive transactions to another connection. Shared-cache
+  // memory keeps that connection on the same ephemeral database.
+  raw = createClient({ url: 'file::memory:?cache=shared' })
   await raw.execute('PRAGMA foreign_keys = ON')
   await applyMigrations()
+})
+
+beforeEach(async () => {
+  for (const table of [
+    'outreach_messages', 'outreach_identities', 'outreach_conversations', 'outreach_sync_runs',
+    'campaign_provider_runs', 'campaign_leads', 'campaigns', 'conversations',
+  ]) {
+    await raw.execute(`DELETE FROM ${table}`)
+  }
   await seed()
 })
 
-afterEach(async () => {
+afterAll(() => {
   raw.close()
-  await rm(databasePath, { force: true })
-  await rm(`${databasePath}-shm`, { force: true })
-  await rm(`${databasePath}-wal`, { force: true })
 })
 
 describe('outreach sync coordinator', () => {
@@ -85,6 +90,7 @@ describe('outreach sync coordinator', () => {
 
     await expect(retryProviderRead({
       provider: 'instantly',
+      pacer: { wait: async () => {} },
       wait: async (ms) => { waits.push(ms) },
       read: async () => {
         attempts += 1
@@ -113,10 +119,41 @@ describe('outreach sync coordinator', () => {
     expect(delays).toEqual([3_000, 1_100])
   })
 
+  it.each([
+    ['instantly', 3_000],
+    ['heyreach', 1_100],
+  ] as const)('serializes concurrent %s runs and every retry attempt at least %dms apart', async (provider, minimumInterval) => {
+    let now = 0
+    const attemptTimes: number[] = []
+    const attempts = [0, 0]
+    const pacer = createProviderPacer({
+      now: () => now,
+      sleep: async (delay) => { now += delay },
+    })
+
+    await Promise.all([0, 1].map((runIndex) => retryProviderRead({
+      provider,
+      pacer,
+      wait: async (delay) => { now += delay },
+      read: async () => {
+        attemptTimes.push(now)
+        attempts[runIndex] += 1
+        if (attempts[runIndex] === 1) throw { safeError: { category: 'rate_limited' as const } }
+        return 'page'
+      },
+    })))
+
+    const ordered = [...attemptTimes].sort((left, right) => left - right)
+    expect(ordered).toHaveLength(4)
+    for (let index = 1; index < ordered.length; index += 1) {
+      expect(ordered[index]! - ordered[index - 1]!).toBeGreaterThanOrEqual(minimumInterval)
+    }
+  })
+
   it('does not retry authorization failures', async () => {
     let attempts = 0
     await expect(retryProviderRead({
-      provider: 'heyreach', wait: async () => { throw new Error('must not wait') },
+      provider: 'heyreach', pacer: { wait: async () => {} }, wait: async () => { throw new Error('must not wait') },
       read: async () => { attempts += 1; throw { safeError: { category: 'forbidden' as const } } },
     })).rejects.toMatchObject({ safeError: { category: 'forbidden' } })
     expect(attempts).toBe(1)
@@ -137,7 +174,9 @@ describe('outreach sync coordinator', () => {
 
     expect(calls).toEqual([expect.objectContaining({ externalCampaignId: 'external-instantly', cursor: null, watermark: null })])
     await expect(coordinator.getStatus('sync-tenant', runId)).resolves.toMatchObject({
-      status: 'completed', counts: { messagesProcessed: 1 }, providerSummary: { instantly: { state: 'completed', pages: 1 } },
+      status: 'completed',
+      counts: { messagesProcessed: 1 },
+      providerSummary: { providers: [{ provider: 'instantly', state: 'completed', mappings: [{ providerRunId: 'sync-instantly', pages: 1 }] }] },
     })
     await expect(raw.execute('SELECT sync_cursor, sync_watermark FROM campaign_provider_runs WHERE id = ?', ['sync-instantly']))
       .resolves.toMatchObject({ rows: [{ sync_cursor: null, sync_watermark: '2026-08-13T10:00:00.000Z' }] })
@@ -168,7 +207,10 @@ describe('outreach sync coordinator', () => {
     expect(calls[0]).toMatchObject({ cursor: 'resume-token', syncRunId: 'interrupted-run' })
     await expect(raw.execute('SELECT sync_cursor FROM campaign_provider_runs WHERE id = ?', ['sync-instantly']))
       .resolves.toMatchObject({ rows: [{ sync_cursor: originalCursor }] })
-    await expect(coordinator.getStatus('sync-tenant', runId)).resolves.toMatchObject({ status: 'failed', providerSummary: { instantly: { errorCode: 'forbidden' } } })
+    await expect(coordinator.getStatus('sync-tenant', runId)).resolves.toMatchObject({
+      status: 'failed',
+      providerSummary: { providers: [{ provider: 'instantly', state: 'failed', mappings: [{ providerRunId: 'sync-instantly', errorCode: 'forbidden' }] }] },
+    })
   })
 
   it('isolates provider failures, retains the successful provider data, and makes replay idempotent', async () => {
@@ -188,9 +230,64 @@ describe('outreach sync coordinator', () => {
     const replayRunId = await coordinator.enqueue({ tenantId: 'sync-tenant', campaignId: 'sync-campaign', providers: ['instantly'] })
     await coordinator.drain(replayRunId)
 
-    await expect(coordinator.getStatus('sync-tenant', runId)).resolves.toMatchObject({ status: 'partial', providerSummary: { heyreach: { errorCode: 'provider_unavailable' }, instantly: { state: 'completed' } } })
+    await expect(coordinator.getStatus('sync-tenant', runId)).resolves.toMatchObject({
+      status: 'partial',
+      providerSummary: {
+        providers: [
+          { provider: 'heyreach', state: 'failed', mappings: [{ providerRunId: 'sync-heyreach', errorCode: 'provider_unavailable' }] },
+          { provider: 'instantly', state: 'completed', mappings: [{ providerRunId: 'sync-instantly', state: 'completed' }] },
+        ],
+      },
+    })
     await expect(raw.execute('SELECT count(*) AS count FROM outreach_messages WHERE tenant_id = ?', ['sync-tenant']))
       .resolves.toMatchObject({ rows: [{ count: 1 }] })
+  })
+
+  it('keeps two mappings for the same provider and reports mixed outcomes without overwriting committed counts', async () => {
+    await raw.execute({
+      sql: `INSERT INTO campaign_provider_runs (id, tenant_id, campaign_id, provider, external_campaign_id, external_name)
+            VALUES (?, ?, ?, 'instantly', ?, ?)`,
+      args: ['sync-instantly-2', 'sync-tenant', 'sync-campaign', 'external-instantly-2', 'Second provider mapping'],
+    })
+    const first = adapter('instantly', [page([message()], null)], [])
+    let secondRead = 0
+    const second = adapter('instantly', async () => {
+      secondRead += 1
+      if (secondRead === 1) {
+        return page([message({
+          externalMessageId: 'sync-message-2', externalThreadId: 'sync-thread-2', externalIdentityId: 'sync-person-2',
+          email: 'second@example.test', providerTimestamp: '2026-08-13T10:01:00.000Z',
+        })], 'continue-second')
+      }
+      throw { safeError: { category: 'forbidden' as const } }
+    }, [])
+    const coordinator = new OutreachSyncCoordinator({
+      raw, autoStart: false, pacer: { wait: async () => {} }, retryWait: async () => {},
+      adapters: { forProvider: (run) => run.providerRunId === 'sync-instantly' ? first : second },
+    })
+    const runId = await coordinator.enqueue({ tenantId: 'sync-tenant', campaignId: 'sync-campaign', providers: ['instantly'] })
+
+    await coordinator.drain(runId)
+
+    await expect(coordinator.getStatus('sync-tenant', runId)).resolves.toMatchObject({
+      status: 'partial',
+      counts: { pagesProcessed: 2, messagesProcessed: 2 },
+      providerSummary: {
+        providers: [{
+          provider: 'instantly',
+          state: 'partial',
+          mappings: [
+            { providerRunId: 'sync-instantly', state: 'completed', pages: 1 },
+            {
+              providerRunId: 'sync-instantly-2', state: 'failed', pages: 1, errorCode: 'forbidden',
+              lastSuccessfulDataAt: '2026-08-13T10:01:00.000Z',
+            },
+          ],
+        }],
+      },
+    })
+    await expect(raw.execute('SELECT count(*) AS count FROM outreach_messages WHERE tenant_id = ?', ['sync-tenant']))
+      .resolves.toMatchObject({ rows: [{ count: 2 }] })
   })
 
   it('marks running rows interrupted only when startup recovery is explicitly invoked', async () => {
@@ -203,7 +300,30 @@ describe('outreach sync coordinator', () => {
     await coordinator.recoverInterruptedRuns()
 
     await expect(coordinator.getStatus('sync-tenant', 'orphan-run')).resolves.toMatchObject({
-      status: 'failed', providerSummary: { interrupted: { errorCode: 'interrupted' } },
+      status: 'failed', providerSummary: { providers: [], recoveryErrorCode: 'interrupted' },
     })
+  })
+
+  it('allowlists persisted status fields before returning aggregate mapping summaries', async () => {
+    const coordinator = new OutreachSyncCoordinator({ raw, autoStart: false })
+    const runId = await coordinator.enqueue({ tenantId: 'sync-tenant', campaignId: 'sync-campaign', providers: ['instantly'] })
+    await raw.execute({
+      sql: 'UPDATE outreach_sync_runs SET provider_summary = ? WHERE id = ?',
+      args: [JSON.stringify({
+        providers: [{
+          provider: 'instantly', state: 'completed', externalCampaignId: 'must-not-escape',
+          mappings: [{ providerRunId: 'sync-instantly', state: 'completed', pages: 1, identity: 'must-not-escape' }],
+        }],
+      }), runId],
+    })
+
+    const status = await coordinator.getStatus('sync-tenant', runId)
+    expect(status?.providerSummary).toEqual({
+      providers: [{
+        provider: 'instantly', state: 'completed',
+        mappings: [{ providerRunId: 'sync-instantly', state: 'completed', pages: 1 }],
+      }],
+    })
+    expect(JSON.stringify(status)).not.toContain('must-not-escape')
   })
 })

@@ -205,10 +205,20 @@ export class HeyReachOutreachReadAdapter implements OutreachReadAdapter {
   async readMessagePage(input: ReadMessagePageInput): Promise<ReadMessagePageResult> {
     const senderAccountId = this.senderAccountId()
     const campaignId = positiveInteger(input.externalCampaignId)
-    const cutoff = watermarkCutoff(input.watermark ?? this.scope.syncWatermark, this.scope.overlapMs)
+    // A caller-supplied watermark is already the inclusive lower bound. This
+    // prevents the sync coordinator's approved overlap from being subtracted a
+    // second time inside the provider adapter.
+    const cutoff = input.watermark === undefined
+      ? watermarkCutoff(this.scope.syncWatermark, this.scope.overlapMs)
+      : input.watermark === null
+        ? null
+        : validTimestamp(input.watermark)
+          ? Date.parse(input.watermark)
+          : null
     const syncRunId = cutoff === null ? null : validSyncRunId(input.syncRunId) ? input.syncRunId : null
     const offset = parseOffset(input.cursor, syncRunId)
-    if (campaignId === null || offset === null || (cutoff !== null && syncRunId === null) || ((input.watermark ?? this.scope.syncWatermark) !== null && (input.watermark ?? this.scope.syncWatermark) !== undefined && cutoff === null)) {
+    const suppliedWatermark = input.watermark === undefined ? this.scope.syncWatermark : input.watermark
+    if (campaignId === null || offset === null || (cutoff !== null && syncRunId === null) || (suppliedWatermark !== null && suppliedWatermark !== undefined && cutoff === null)) {
       throw new HeyReachOutreachReadError({ category: 'invalid_payload' })
     }
 

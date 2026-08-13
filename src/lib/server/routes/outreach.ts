@@ -6,7 +6,7 @@ import {
   type CampaignDiscovery,
 } from '../../outreach/campaign-links'
 import type { OutreachProvider } from '../../outreach/contracts'
-import { OutreachSyncCoordinator } from '../../outreach/sync'
+import { OutreachSyncCoordinator } from '../../outreach/sync.js'
 import { resolveTenant } from '../../tenant'
 
 const PROVIDERS = new Set<OutreachProvider>(['heyreach', 'instantly'])
@@ -120,7 +120,8 @@ export function createOutreachRoutes(options: RouteOptions = {}) {
     if (typeof body.campaignId !== 'string' || !body.campaignId.trim()) return c.json({ error: 'bad_request' }, 400)
     const providers = body.providers === undefined
       ? undefined
-      : Array.isArray(body.providers) && body.providers.every((provider) => providerFrom(provider) !== null)
+      : Array.isArray(body.providers) && body.providers.length > 0
+        && body.providers.every((provider) => providerFrom(provider) !== null)
         ? body.providers as OutreachProvider[]
         : null
     if (providers === null) return c.json({ error: 'invalid_provider' }, 400)

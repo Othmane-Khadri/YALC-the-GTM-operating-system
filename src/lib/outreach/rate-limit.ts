@@ -1,5 +1,5 @@
-import type { OutreachProvider } from './contracts'
-import { toSafeProviderError, type SafeProviderError } from './errors'
+import type { OutreachProvider } from './contracts.js'
+import { toSafeProviderError, type SafeProviderError } from './errors.js'
 
 export const PROVIDER_MIN_INTERVAL_MS = {
   instantly: 3_000,
@@ -12,6 +12,7 @@ export interface ProviderPacer {
 
 export interface ProviderReadRetryOptions<T> {
   provider: OutreachProvider
+  pacer: ProviderPacer
   read(): Promise<T>
   /** Injectable delay seam; production callers use the default sleep. */
   wait?(ms: number): Promise<void>
@@ -51,6 +52,9 @@ export async function retryProviderRead<T>(options: ProviderReadRetryOptions<T>)
   let attempt = 0
 
   while (attempt < maxAttempts) {
+    // Pace every actual request attempt, including retries. The shared pacer
+    // instance serializes reservations across concurrent sync runs.
+    await options.pacer.wait(options.provider)
     try {
       return await options.read()
     } catch (error) {
@@ -73,13 +77,25 @@ export function createProviderPacer(options: {
   const now = options.now ?? Date.now
   const sleep = options.sleep ?? defaultWait
   const lastRead = new Map<OutreachProvider, number>()
+  const queues = new Map<OutreachProvider, Promise<void>>()
   return {
     async wait(provider) {
-      const previous = lastRead.get(provider)
-      const current = now()
-      const delay = previous === undefined ? 0 : Math.max(0, PROVIDER_MIN_INTERVAL_MS[provider] - (current - previous))
-      if (delay > 0) await sleep(delay)
-      lastRead.set(provider, now())
+      const previousReservation = queues.get(provider) ?? Promise.resolve()
+      const reservation = previousReservation.catch(() => {}).then(async () => {
+        const previousRead = lastRead.get(provider)
+        const current = now()
+        const delay = previousRead === undefined
+          ? 0
+          : Math.max(0, PROVIDER_MIN_INTERVAL_MS[provider] - (current - previousRead))
+        if (delay > 0) await sleep(delay)
+        lastRead.set(provider, now())
+      })
+      queues.set(provider, reservation)
+      try {
+        await reservation
+      } finally {
+        if (queues.get(provider) === reservation) queues.delete(provider)
+      }
     },
   }
 }

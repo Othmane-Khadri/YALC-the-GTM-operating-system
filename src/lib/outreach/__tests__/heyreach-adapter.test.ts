@@ -106,6 +106,29 @@ describe('HeyReach outreach read adapter', () => {
     })
   })
 
+  it('treats an explicit incremental watermark as the final cutoff without applying another overlap', async () => {
+    const pageAtFiveMinutesBeforeCutoff = Array.from({ length: 50 }, (_, index) => ({
+      id: `chat-${index}`,
+      read: false,
+      totalMessages: 0,
+      linkedInAccountId: 77,
+      lastMessageAt: '2026-08-13T09:45:00.000Z',
+    }))
+    vi.mocked(listCampaignConversationPage).mockResolvedValue({ totalCount: 100, items: pageAtFiveMinutesBeforeCutoff })
+
+    const result = await new HeyReachOutreachReadAdapter({
+      senderAccountId: 77,
+      syncWatermark: '2026-08-13T10:00:00.000Z',
+    }).readMessagePage({
+      externalCampaignId: campaignId,
+      cursor: null,
+      syncRunId: 'ten-minute-overlap-run',
+      watermark: '2026-08-13T09:50:00.000Z',
+    })
+
+    expect(result.nextCursor).toBeNull()
+  })
+
   it('continues an interrupted incremental run only when its opaque cursor belongs to that run', async () => {
     const currentPage = Array.from({ length: 50 }, (_, index) => ({
       id: `chat-${index}`,

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { rawClient } from '../lib/db'
 import { createOutreachRoutes } from '../lib/server/routes/outreach'
-import { OutreachSyncCoordinator } from '../lib/outreach/sync'
+import { OutreachSyncCoordinator } from '../lib/outreach/sync.js'
 
 const TEST_PREFIX = 'task-7-'
 
@@ -222,7 +222,7 @@ describe('campaign links', () => {
     const racingRaw = {
       ...rawClient,
       execute: async (statement: Parameters<typeof rawClient.execute>[0], args?: Parameters<typeof rawClient.execute>[1]) => {
-        const sql = typeof statement === 'string' ? statement : statement.sql
+        const sql = typeof statement === 'string' ? statement : (statement as { sql: string }).sql
         if (!importWon && /UPDATE campaign_provider_runs/.test(sql) && /SET campaign_id/.test(sql)) {
           importWon = true
           await rawClient.execute({
@@ -282,7 +282,7 @@ describe('campaign links', () => {
     const racingRaw = {
       ...rawClient,
       execute: async (statement: Parameters<typeof rawClient.execute>[0], args?: Parameters<typeof rawClient.execute>[1]) => {
-        const sql = typeof statement === 'string' ? statement : statement.sql
+        const sql = typeof statement === 'string' ? statement : (statement as { sql: string }).sql
         const result = args === undefined ? await rawClient.execute(statement) : await rawClient.execute(statement, args)
         if (/SELECT id, campaign_id, sender_account_id, first_message_imported_at/.test(sql)) {
           readCount += 1
@@ -356,6 +356,16 @@ describe('campaign links', () => {
 })
 
 describe('sync', () => {
+  it('rejects an explicitly empty provider selection with a sanitized validation error', async () => {
+    const { response, body } = await json(appFor(), '/sync', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenant: 'tenant-a', campaignId: `${TEST_PREFIX}local-a`, providers: [] }),
+    })
+
+    expect(response.status).toBe(400)
+    expect(body).toEqual({ error: 'invalid_provider' })
+  })
+
   it('returns a tenant-scoped queued run before work finishes and exposes aggregate-only status', async () => {
     const coordinator = new OutreachSyncCoordinator({ raw: rawClient, autoStart: false })
     const route = appFor('tenant-a', rawClient, coordinator)
