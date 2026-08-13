@@ -70,17 +70,29 @@ export interface LeadStatus {
   bounced_at?: string
 }
 
-export interface InboxReply {
-  id?: string
-  campaign_id?: string
-  lead_email?: string
-  from_email?: string
-  to_email?: string
-  subject?: string
-  body?: string
-  body_text?: string
-  received_at?: string
-  thread_id?: string
+export interface InstantlyEmail {
+  id?: string | null
+  campaign_id?: string | null
+  thread_id?: string | null
+  timestamp_created?: string | null
+  timestamp_email?: string | null
+  message_id?: string | null
+  subject?: string | null
+  body?: {
+    text?: string | null
+    html?: string | null
+  } | null
+  lead?: string | null
+  lead_id?: string | null
+  from_address_email?: string | null
+  ue_type?: number | null
+  is_auto_reply?: number | boolean | null
+  email_type?: 'received' | 'sent' | 'manual' | string | null
+}
+
+export interface InstantlyEmailList {
+  items?: InstantlyEmail[]
+  next_starting_after?: string | null
 }
 
 // ─── Service ───────────────────────────────────────────────────────────────
@@ -167,22 +179,26 @@ export class InstantlyService {
     return res.items ?? []
   }
 
-  // ─── Unibox / Inbox ────────────────────────────────────────────────────
+  // ─── Campaign emails ──────────────────────────────────────────────────
 
   /**
-   * Fetch recent inbox replies across all campaigns within a lookback window.
-   * Wraps Instantly's `/api/v2/unibox/emails` endpoint and filters server-side
-   * by `received_at >= now - lookback_hours`.
+   * Read one campaign-scoped page of emails from Instantly's official v2
+   * endpoint. Pagination is deliberately caller-owned.
    */
-  async listInboxReplies(opts: { lookbackHours: number; limit?: number }): Promise<InboxReply[]> {
-    const limit = opts.limit ?? 100
-    const cutoffMs = Date.now() - opts.lookbackHours * 3_600_000
-    const since = new Date(cutoffMs).toISOString()
-    const res = await this.request<{ items?: InboxReply[] }>(
-      'GET',
-      `/api/v2/unibox/emails?direction=inbound&since=${encodeURIComponent(since)}&limit=${limit}`,
-    )
-    return res.items ?? []
+  async listCampaignEmails(input: {
+    campaignId: string
+    startingAfter?: string | null
+    limit?: number
+    minTimestampCreated?: string | null
+  }): Promise<{ items: InstantlyEmail[]; nextStartingAfter: string | null }> {
+    const params = new URLSearchParams({
+      campaign_id: input.campaignId,
+      limit: String(Math.min(Math.max(input.limit ?? 100, 1), 100)),
+    })
+    if (input.startingAfter) params.set('starting_after', input.startingAfter)
+    if (input.minTimestampCreated) params.set('min_timestamp_created', input.minTimestampCreated)
+    const page = await this.request<InstantlyEmailList>('GET', `/api/v2/emails?${params}`)
+    return { items: page.items ?? [], nextStartingAfter: page.next_starting_after ?? null }
   }
 
   // ─── Analytics ─────────────────────────────────────────────────────────

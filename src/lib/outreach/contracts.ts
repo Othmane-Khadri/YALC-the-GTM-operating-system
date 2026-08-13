@@ -11,6 +11,7 @@ export interface ProviderCampaign {
 }
 
 export interface NormalizedMessage {
+  channel: OutreachChannel
   externalMessageId: string | null
   externalThreadId: string
   externalIdentityId: string | null

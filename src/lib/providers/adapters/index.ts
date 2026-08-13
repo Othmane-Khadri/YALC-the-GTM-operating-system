@@ -242,22 +242,24 @@ export const WEB_FETCH_CAPABILITY = {
 export const INBOX_REPLIES_FETCH_CAPABILITY = {
   id: 'inbox-replies-fetch',
   description:
-    'Pull recent inbound replies from a cold-email tool within a lookback window.',
+    'Read one normalized, campaign-scoped email page from a cold-email tool.',
   inputSchema: {
     type: 'object',
     properties: {
-      lookbackHours: { type: 'number' },
-      limit: { type: 'number' },
+      campaignId: { type: 'string' },
+      cursor: { type: ['string', 'null'] },
+      pageSize: { type: 'number', minimum: 1, maximum: 100 },
     },
-    required: ['lookbackHours'],
+    required: ['campaignId'],
     additionalProperties: true,
   },
   outputSchema: {
     type: 'object',
     properties: {
       replies: { type: 'array', items: { type: 'object' } },
+      nextCursor: { type: ['string', 'null'] },
     },
-    required: ['replies'],
+    required: ['replies', 'nextCursor'],
   },
   defaultPriority: ['instantly', 'brevo'],
 } as const

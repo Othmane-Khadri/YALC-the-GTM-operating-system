@@ -1,0 +1,116 @@
+{
+  "items": [
+    {
+      "id": "email-100",
+      "campaign_id": "inst-campaign-42",
+      "thread_id": "thread-7",
+      "timestamp_created": "2026-08-13T09:00:00.000Z",
+      "timestamp_email": "2026-08-13T09:00:00.000Z",
+      "message_id": "<synthetic-inbound@example.test>",
+      "subject": "Re: sample outreach",
+      "body": {
+        "text": "Please send the details.",
+        "html": "<p>Please send the details.</p><img src=\"https://example.test/tracker.png\">"
+      },
+      "lead": "recipient@example.test",
+      "lead_id": "lead-7",
+      "from_address_email": "recipient@example.test",
+      "ue_type": 2,
+      "is_auto_reply": 0,
+      "attachment_json": { "files": [{ "filename": "sample.pdf" }] }
+    },
+    {
+      "id": "email-101",
+      "campaign_id": "inst-campaign-42",
+      "thread_id": "thread-7",
+      "timestamp_created": "2026-08-13T09:01:00.000Z",
+      "body": { "text": "Campaign step text", "html": "<p>Campaign step text</p>" },
+      "lead": "recipient@example.test",
+      "lead_id": "lead-7",
+      "ue_type": 1,
+      "is_auto_reply": 0
+    },
+    {
+      "id": "email-102",
+      "campaign_id": "inst-campaign-42",
+      "thread_id": "thread-7",
+      "timestamp_created": "2026-08-13T09:02:00.000Z",
+      "body": { "text": "Automatic response", "html": "<p>Automatic response</p>" },
+      "lead": "recipient@example.test",
+      "lead_id": "lead-7",
+      "ue_type": 2,
+      "is_auto_reply": 1
+    },
+    {
+      "id": "email-103",
+      "campaign_id": "inst-campaign-42",
+      "thread_id": "thread-7",
+      "timestamp_created": "2026-08-13T09:03:00.000Z",
+      "body": { "text": "Manual send", "html": "<p>Manual send</p>" },
+      "lead": "recipient@example.test",
+      "lead_id": "lead-7",
+      "ue_type": 3,
+      "is_auto_reply": 0
+    },
+    {
+      "id": "email-104",
+      "campaign_id": "inst-campaign-42",
+      "thread_id": "thread-7",
+      "timestamp_created": "2026-08-13T09:04:00.000Z",
+      "body": { "text": "Scheduled send", "html": "<p>Scheduled send</p>" },
+      "lead": "recipient@example.test",
+      "lead_id": "lead-7",
+      "ue_type": 4,
+      "is_auto_reply": 0
+    },
+    {
+      "id": "email-105",
+      "campaign_id": "inst-campaign-42",
+      "thread_id": "thread-7",
+      "timestamp_created": "2026-08-13T09:05:00.000Z",
+      "body": { "text": "Unclassified sent email", "html": "<p>Unclassified sent email</p>" },
+      "lead": "recipient@example.test",
+      "lead_id": "lead-7",
+      "ue_type": 99,
+      "email_type": "sent"
+    },
+    {
+      "id": "wrong-campaign",
+      "campaign_id": "inst-campaign-42-copy",
+      "thread_id": "thread-8",
+      "timestamp_created": "2026-08-13T09:06:00.000Z",
+      "body": { "text": "Must not import" },
+      "lead": "recipient@example.test",
+      "ue_type": 2
+    },
+    {
+      "id": "invalid-timestamp",
+      "campaign_id": "inst-campaign-42",
+      "thread_id": "thread-9",
+      "timestamp_created": "not-a-timestamp",
+      "body": { "text": "Must not import" },
+      "lead": "recipient@example.test",
+      "ue_type": 2
+    },
+    {
+      "id": "invalid-identity",
+      "campaign_id": "inst-campaign-42",
+      "thread_id": "thread-10",
+      "timestamp_created": "2026-08-13T09:08:00.000Z",
+      "body": { "text": "Must not import" },
+      "lead": "not-an-email",
+      "ue_type": 2
+    },
+    {
+      "id": "invalid-direction",
+      "campaign_id": "inst-campaign-42",
+      "thread_id": "thread-11",
+      "timestamp_created": "2026-08-13T09:09:00.000Z",
+      "body": { "text": "Must not import" },
+      "lead": "recipient@example.test",
+      "ue_type": 99,
+      "email_type": "received"
+    }
+  ],
+  "next_starting_after": "email-100"
+}

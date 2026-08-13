@@ -1,21 +1,22 @@
 import type { CapabilityAdapter } from '../capabilities.js'
-import { instantlyService } from '../../services/instantly.js'
+import { InstantlyOutreachReadAdapter } from '../../outreach/adapters/instantly.js'
 import { MissingApiKeyError, ProviderApiError } from './index.js'
 
 interface InboxRepliesFetchInput {
-  lookbackHours?: number
-  limit?: number
-  /** Snake-case alias. */
-  lookback_hours?: number
+  campaignId?: string
+  cursor?: string | null
+  pageSize?: number
+  /** Snake-case aliases. */
+  campaign_id?: string
+  page_size?: number
 }
 
 /**
  * Instantly inbox-replies-fetch adapter.
  *
- * Pulls inbound emails from Instantly's `/api/v2/unibox/emails` endpoint
- * within the requested lookback window. The Brevo equivalent will plug in
- * once the Brevo MCP ships; the capability registry's `defaultPriority`
- * already lists Brevo as a fallback.
+ * Reads one normalized email page from Instantly's official, campaign-scoped
+ * `/api/v2/emails` endpoint. Pagination belongs to the caller; this adapter
+ * deliberately does not traverse pages or access a workspace-wide inbox.
  */
 export const inboxRepliesFetchInstantlyAdapter: CapabilityAdapter = {
   capabilityId: 'inbox-replies-fetch',
@@ -26,19 +27,20 @@ export const inboxRepliesFetchInstantlyAdapter: CapabilityAdapter = {
       throw new MissingApiKeyError('instantly', 'INSTANTLY_API_KEY')
     }
     const raw = (input ?? {}) as InboxRepliesFetchInput
-    const lookbackHours = raw.lookbackHours ?? raw.lookback_hours
-    if (typeof lookbackHours !== 'number' || lookbackHours <= 0) {
+    const campaignId = raw.campaignId ?? raw.campaign_id
+    if (typeof campaignId !== 'string' || campaignId.length === 0) {
       throw new ProviderApiError(
         'instantly',
-        'lookbackHours (or lookback_hours) is required and must be a positive number',
+        'campaignId (or campaign_id) is required',
       )
     }
     try {
-      const replies = await instantlyService.listInboxReplies({
-        lookbackHours,
-        limit: raw.limit,
+      const page = await new InstantlyOutreachReadAdapter().readMessagePage({
+        externalCampaignId: campaignId,
+        cursor: raw.cursor ?? null,
+        pageSize: raw.pageSize ?? raw.page_size,
       })
-      return { replies }
+      return { replies: page.messages, nextCursor: page.nextCursor }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       throw new ProviderApiError('instantly', message)
