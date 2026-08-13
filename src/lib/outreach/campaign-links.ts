@@ -33,7 +33,7 @@ export interface CampaignLinkInput {
 
 export type CampaignLinkResult =
   | { ok: true; created: boolean; link: CampaignLink }
-  | { ok: false; error: 'campaign_not_found' | 'invalid_sender' | 'mapping_locked' }
+  | { ok: false; error: 'campaign_not_found' | 'invalid_sender' | 'mapping_locked' | 'mapping_conflict' }
 
 export const defaultCampaignDiscovery: CampaignDiscovery = {
   async instantly() {
@@ -62,9 +62,9 @@ function exactString(value: string): boolean {
   return value.length > 0 && value === value.trim()
 }
 
-function parseLegacyHeyReachCampaignId(tenantId: string, externalCampaignId: string): string | null {
+function parseLegacyHeyReachCampaignId(externalCampaignId: string): string | null {
   if (!/^[1-9]\d*$/.test(externalCampaignId)) return null
-  return `heyreach:${tenantId}:${externalCampaignId}`
+  return `heyreach:${externalCampaignId}`
 }
 
 function toLink(row: Record<string, unknown>): CampaignLink {
@@ -140,10 +140,12 @@ export class CampaignLinkService {
       if (existing.first_message_imported_at !== null && existing.first_message_imported_at !== undefined) {
         return { ok: false, error: 'mapping_locked' }
       }
-      await this.raw.execute({
+      const reassigned = await this.raw.execute({
         sql: `UPDATE campaign_provider_runs
           SET campaign_id = ?, external_name = ?, external_status = ?, sender_account_id = ?, updated_at = datetime('now')
-          WHERE id = ? AND tenant_id = ? AND provider = ? AND external_campaign_id = ?`,
+          WHERE id = ? AND tenant_id = ? AND provider = ? AND external_campaign_id = ?
+            AND first_message_imported_at IS NULL
+          RETURNING id, campaign_id, sender_account_id`,
         args: [
           input.campaignId,
           providerCampaign.externalName,
@@ -155,12 +157,19 @@ export class CampaignLinkService {
           input.externalCampaignId,
         ],
       })
-      return { ok: true, created: false, link: { ...prior, campaignId: input.campaignId, senderAccountId } }
+      const updated = reassigned.rows[0] as Record<string, unknown> | undefined
+      if (updated) return { ok: true, created: false, link: toLink(updated) }
+
+      const current = await this.findLink(input.tenantId, input.provider, input.externalCampaignId)
+      if (current?.campaignId === input.campaignId && current.senderAccountId === senderAccountId) {
+        return { ok: true, created: false, link: current }
+      }
+      return { ok: false, error: 'mapping_locked' }
     }
 
     const id = randomUUID()
-    await this.raw.execute({
-      sql: `INSERT INTO campaign_provider_runs
+    const inserted = await this.raw.execute({
+      sql: `INSERT OR IGNORE INTO campaign_provider_runs
         (id, tenant_id, campaign_id, provider, external_campaign_id, external_name, external_status, sender_account_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
@@ -174,7 +183,12 @@ export class CampaignLinkService {
         senderAccountId,
       ],
     })
-    return { ok: true, created: true, link: { id, campaignId: input.campaignId, senderAccountId } }
+    const current = await this.findLink(input.tenantId, input.provider, input.externalCampaignId)
+    if (!current) return { ok: false, error: 'mapping_conflict' }
+    if (current.campaignId === input.campaignId && current.senderAccountId === senderAccountId) {
+      return { ok: true, created: inserted.rowsAffected > 0, link: current }
+    }
+    return { ok: false, error: 'mapping_conflict' }
   }
 
   private validateSender(
@@ -188,7 +202,7 @@ export class CampaignLinkService {
   }
 
   private async adoptExactLegacyHeyReachCampaign(tenantId: string, campaign: DiscoveredProviderCampaign): Promise<void> {
-    const legacyId = parseLegacyHeyReachCampaignId(tenantId, campaign.externalCampaignId)
+    const legacyId = parseLegacyHeyReachCampaignId(campaign.externalCampaignId)
     if (!legacyId) return
 
     const local = await this.raw.execute({
@@ -213,5 +227,16 @@ export class CampaignLinkService {
         senderAccountId,
       ],
     })
+  }
+
+  private async findLink(tenantId: string, provider: OutreachProvider, externalCampaignId: string): Promise<CampaignLink | null> {
+    const result = await this.raw.execute({
+      sql: `SELECT id, campaign_id, sender_account_id
+        FROM campaign_provider_runs
+        WHERE tenant_id = ? AND provider = ? AND external_campaign_id = ?`,
+      args: [tenantId, provider, externalCampaignId],
+    })
+    const row = result.rows[0] as Record<string, unknown> | undefined
+    return row ? toLink(row) : null
   }
 }

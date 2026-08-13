@@ -34,9 +34,9 @@ async function seedCampaign(input: {
   })
 }
 
-function appFor(tenantId = 'tenant-a') {
+function appFor(tenantId = 'tenant-a', raw: typeof rawClient = rawClient) {
   return createOutreachRoutes({
-    raw: rawClient,
+    raw,
     resolveTenant: () => tenantId,
     discover: {
       instantly: async () => [{
@@ -67,8 +67,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rawClient.execute({
-    sql: 'DELETE FROM campaigns WHERE id LIKE ? OR id = ?',
-    args: [`${TEST_PREFIX}%`, 'heyreach:tenant-a:9001'],
+    sql: 'DELETE FROM campaigns WHERE id LIKE ? OR id IN (?, ?)',
+    args: [`${TEST_PREFIX}%`, 'heyreach:9001', 'heyreach:tenant-a:9001'],
   })
   await rawClient.execute({
     sql: 'DELETE FROM conversations WHERE id LIKE ?',
@@ -96,7 +96,7 @@ describe('campaign discovery', () => {
 
   it('adopts only an exact tenant-owned HeyReach legacy campaign with a valid sender', async () => {
     await seedCampaign({
-      id: 'heyreach:tenant-a:9001',
+      id: 'heyreach:9001',
       tenantId: 'tenant-a',
       title: 'Any title is ignored',
       linkedInAccountId: '77',
@@ -108,11 +108,25 @@ describe('campaign discovery', () => {
       campaigns: [{
         externalCampaignId: '9001',
         link: {
-          campaignId: 'heyreach:tenant-a:9001',
+          campaignId: 'heyreach:9001',
           senderAccountId: '77',
         },
       }],
     })
+  })
+
+  it('does not adopt tenant-prefixed or other legacy ID variants', async () => {
+    await seedCampaign({
+      id: 'heyreach:tenant-a:9001',
+      tenantId: 'tenant-a',
+      title: 'Looks legacy but is not the importer form',
+      linkedInAccountId: '77',
+    })
+
+    const { response, body } = await json(appFor(), '/provider-campaigns?provider=heyreach&tenant=tenant-a')
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({ campaigns: [{ externalCampaignId: '9001', link: null }] })
   })
 
   it('does not link similar campaign titles', async () => {
@@ -188,6 +202,76 @@ describe('campaign links', () => {
 
     expect(response.status).toBe(409)
     expect(body).toEqual({ error: 'mapping_locked' })
+  })
+
+  it('does not reassign when import marks the mapping locked after the initial read', async () => {
+    const route = appFor()
+    const initial = await json(route, '/campaign-links', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        tenant: 'tenant-a', provider: 'instantly', externalCampaignId: 'instant-9001', campaignId: `${TEST_PREFIX}local-a`,
+      }),
+    })
+    const runId = (initial.body.link as { id: string }).id
+    await seedCampaign({ id: `${TEST_PREFIX}race-replacement`, tenantId: 'tenant-a', title: 'Race replacement' })
+
+    let importWon = false
+    const racingRaw = {
+      ...rawClient,
+      execute: async (statement: Parameters<typeof rawClient.execute>[0], args?: Parameters<typeof rawClient.execute>[1]) => {
+        const sql = typeof statement === 'string' ? statement : statement.sql
+        if (!importWon && /UPDATE campaign_provider_runs/.test(sql) && /SET campaign_id/.test(sql)) {
+          importWon = true
+          await rawClient.execute({
+            sql: 'UPDATE campaign_provider_runs SET first_message_imported_at = ? WHERE id = ?',
+            args: ['2026-08-13T12:01:00.000Z', runId],
+          })
+        }
+        return args === undefined ? rawClient.execute(statement) : rawClient.execute(statement, args)
+      },
+    } as typeof rawClient
+
+    const { response, body } = await json(appFor('tenant-a', racingRaw), '/campaign-links', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        tenant: 'tenant-a', provider: 'instantly', externalCampaignId: 'instant-9001', campaignId: `${TEST_PREFIX}race-replacement`,
+      }),
+    })
+
+    expect(response.status).toBe(409)
+    expect(body).toEqual({ error: 'mapping_locked' })
+  })
+
+  it('treats simultaneous identical mapping requests as one idempotent mapping', async () => {
+    const route = appFor()
+    const request = {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        tenant: 'tenant-a', provider: 'instantly', externalCampaignId: 'instant-9001', campaignId: `${TEST_PREFIX}local-a`,
+      }),
+    }
+
+    const [left, right] = await Promise.all([
+      json(route, '/campaign-links', request),
+      json(route, '/campaign-links', request),
+    ])
+
+    expect([left.response.status, right.response.status].sort()).toEqual([200, 201])
+    expect(left.body).toEqual(right.body)
+  })
+
+  it.each([null, [], 'not-an-object'])('rejects non-object JSON bodies without dereferencing them: %j', async (body) => {
+    const { response, body: responseBody } = await json(appFor(), '/campaign-links', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+    expect(response.status).toBe(400)
+    expect(responseBody).toEqual({ error: 'bad_request' })
   })
 
   it('does not allow a caller to select another tenant or link its campaign', async () => {

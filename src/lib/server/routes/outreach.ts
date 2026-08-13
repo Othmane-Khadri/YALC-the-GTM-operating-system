@@ -61,12 +61,16 @@ export function createOutreachRoutes(options: RouteOptions = {}) {
   })
 
   routes.post('/campaign-links', async (c) => {
-    let body: Record<string, unknown>
+    let parsed: unknown
     try {
-      body = await c.req.json() as Record<string, unknown>
+      parsed = await c.req.json()
     } catch {
       return c.json({ error: 'bad_request' }, 400)
     }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return c.json({ error: 'bad_request' }, 400)
+    }
+    const body = parsed as Record<string, unknown>
     const tenantId = activeTenant()
     if (!requestedTenantMatches(tenantId, body.tenant)) {
       return c.json({ error: 'tenant_forbidden' }, 403)
@@ -86,7 +90,11 @@ export function createOutreachRoutes(options: RouteOptions = {}) {
         senderAccountId: typeof body.senderAccountId === 'string' ? body.senderAccountId : null,
       })
       if (!result.ok) {
-        const status = result.error === 'mapping_locked' ? 409 : result.error === 'campaign_not_found' ? 404 : 400
+        const status = result.error === 'mapping_locked' || result.error === 'mapping_conflict'
+          ? 409
+          : result.error === 'campaign_not_found'
+            ? 404
+            : 400
         return c.json({ error: result.error }, status)
       }
       return c.json({ link: result.link }, result.created ? 201 : 200)
