@@ -201,6 +201,8 @@ async function mcpToolCall<T>(name: string, args: unknown): Promise<T> {
 export type ChatSender = 'ME' | 'CORRESPONDENT'
 
 export interface ChatMessage {
+  id?: string
+  messageId?: string
   createdAt: string
   body: string
   subject: string | null
@@ -229,33 +231,57 @@ interface ConversationsResponse {
   items: Conversation[]
 }
 
-/** List conversations for a campaign+sender. Auto-paginates. */
+export interface CampaignConversationPage {
+  totalCount: number
+  items: Conversation[]
+}
+
+/**
+ * Read exactly one resumable conversation page for a campaign/sender pair.
+ * The caller owns the cursor so imports cannot conceal multiple remote reads
+ * inside one local transaction.
+ */
+export async function listCampaignConversationPage(opts: {
+  campaignId: number
+  accountId: number
+  offset: number
+  limit: number
+  bypass?: boolean
+}): Promise<CampaignConversationPage> {
+  const offset = Number.isFinite(opts.offset) ? Math.max(0, Math.floor(opts.offset)) : 0
+  const limit = Number.isFinite(opts.limit) ? Math.min(Math.max(Math.floor(opts.limit), 1), 50) : 50
+  const cacheKey = `conversations:${opts.accountId}:${opts.campaignId}:${offset}:${limit}`
+  const readPage = () => mcpToolCall<ConversationsResponse>('get_conversations_v2', {
+    linkedInAccountIds: [opts.accountId],
+    campaignIds: [opts.campaignId],
+    offset,
+    limit,
+  })
+
+  if (opts.bypass) return readPage()
+
+  return withCache(
+    { scope: CACHE_SCOPE, key: cacheKey, ttlMs: 60 * 60_000 }, // 1h — conversation lists evolve slowly
+    readPage,
+  )
+}
+
+/** List conversations for a campaign+sender. Kept for existing callers. */
 export async function listCampaignConversations(opts: {
   campaignId: number
   accountId: number
   bypass?: boolean
 }): Promise<Conversation[]> {
-  const cacheKey = `conversations:${opts.accountId}:${opts.campaignId}`
-  return withCache(
-    { scope: CACHE_SCOPE, key: cacheKey, ttlMs: 60 * 60_000 }, // 1h — conversation lists evolve slowly
-    async () => {
-      const out: Conversation[] = []
-      let offset = 0
-      for (;;) {
-        const page = await mcpToolCall<ConversationsResponse>('get_conversations_v2', {
-          linkedInAccountIds: [opts.accountId],
-          campaignIds: [opts.campaignId],
-          offset,
-          limit: 50,
-        })
-        out.push(...page.items)
-        if (page.items.length < 50) break
-        offset += 50
-        if (offset > 5000) break // safety
-      }
-      return out
-    },
-  )
+  const out: Conversation[] = []
+  let offset = 0
+  for (;;) {
+    const page = await listCampaignConversationPage({ ...opts, offset, limit: 50 })
+    out.push(...page.items)
+    if (page.items.length < 50) break
+    offset += page.items.length
+    if (offset > 5000) break // safety for compatibility callers
+  }
+  return out
 }
 
 /** Fetch a full chatroom (messages array) for a conversation. */
@@ -265,13 +291,14 @@ export async function getChatroom(opts: {
   bypass?: boolean
 }): Promise<Conversation> {
   const cacheKey = `chatroom:${opts.accountId}:${opts.conversationId}`
+  const readChatroom = () => mcpToolCall<Conversation>('get_chatroom', {
+    accountId: opts.accountId,
+    conversationId: opts.conversationId,
+  })
+  if (opts.bypass) return readChatroom()
   return withCache(
     { scope: CACHE_SCOPE, key: cacheKey, ttlMs: 60 * 60_000 },
-    () =>
-      mcpToolCall<Conversation>('get_chatroom', {
-        accountId: opts.accountId,
-        conversationId: opts.conversationId,
-      }),
+    readChatroom,
   )
 }
 
