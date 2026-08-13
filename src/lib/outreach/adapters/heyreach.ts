@@ -61,8 +61,14 @@ function positiveInteger(value: string | number | null | undefined): number | nu
   return Number.isSafeInteger(parsed) ? parsed : null
 }
 
-function parseOffset(cursor: string | null): number | null {
+function parseOffset(cursor: string | null, incremental: boolean): number | null {
   if (cursor === null) return 0
+  if (incremental) {
+    // A plain offset belongs to the completed initial backfill persisted in
+    // campaign_provider_runs. An incremental scan must always restart at zero.
+    if (!cursor.startsWith('incremental:')) return 0
+    cursor = cursor.slice('incremental:'.length)
+  }
   if (!/^\d+$/.test(cursor)) return null
   const parsed = Number(cursor)
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null
@@ -190,8 +196,8 @@ export class HeyReachOutreachReadAdapter implements OutreachReadAdapter {
   async readMessagePage(input: ReadMessagePageInput): Promise<ReadMessagePageResult> {
     const senderAccountId = this.senderAccountId()
     const campaignId = positiveInteger(input.externalCampaignId)
-    const offset = parseOffset(input.cursor)
     const cutoff = watermarkCutoff(this.scope.syncWatermark, this.scope.overlapMs)
+    const offset = parseOffset(input.cursor, cutoff !== null)
     if (campaignId === null || offset === null || (this.scope.syncWatermark !== null && this.scope.syncWatermark !== undefined && cutoff === null)) {
       throw new HeyReachOutreachReadError({ category: 'invalid_payload' })
     }
@@ -236,7 +242,10 @@ export class HeyReachOutreachReadAdapter implements OutreachReadAdapter {
       }
 
       let chatroom = summary
-      if (!chatroom.messages || chatroom.messages.length === 0) {
+      const needsHydration = !chatroom.messages
+        || chatroom.messages.length === 0
+        || chatroom.messages.length < chatroom.totalMessages
+      if (needsHydration) {
         try {
           chatroom = await this.reader.getChatroom({
             accountId: senderAccountId,
@@ -271,7 +280,9 @@ export class HeyReachOutreachReadAdapter implements OutreachReadAdapter {
         && Date.parse(conversation.lastMessageAt) < cutoff)
     const nextCursor = page.items.length < limit || pageIsEntirelyBeforeWatermark
       ? null
-      : String(offset + page.items.length)
+      : cutoff === null
+        ? String(offset + page.items.length)
+        : `incremental:${offset + page.items.length}`
 
     return {
       messages,

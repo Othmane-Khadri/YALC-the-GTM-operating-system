@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import chatroom from './fixtures/heyreach-chatroom.json'
+import partialSummary from './fixtures/heyreach-partial-summary.json'
 
 vi.mock('../../services/heyreach', () => ({
   listAllCampaigns: vi.fn(),
@@ -90,8 +91,15 @@ describe('HeyReach outreach read adapter', () => {
 
     await expect(backfill.readMessagePage({ externalCampaignId: campaignId, cursor: null }))
       .resolves.toMatchObject({ nextCursor: '50' })
-    await expect(incremental.readMessagePage({ externalCampaignId: campaignId, cursor: null }))
+    await expect(incremental.readMessagePage({ externalCampaignId: campaignId, cursor: '50' }))
       .resolves.toMatchObject({ nextCursor: null })
+    expect(listCampaignConversationPage).toHaveBeenLastCalledWith({
+      campaignId: 9001,
+      accountId: 77,
+      offset: 0,
+      limit: 50,
+      bypass: true,
+    })
   })
 
   it('rejects invalid sender scope without making an unscoped provider read', async () => {
@@ -100,6 +108,26 @@ describe('HeyReach outreach read adapter', () => {
         .readMessagePage({ externalCampaignId: campaignId, cursor: null }),
     ).rejects.toMatchObject({ safeError: { category: 'invalid_payload' } })
     expect(listCampaignConversationPage).not.toHaveBeenCalled()
+  })
+
+  it('hydrates a nonempty preview when it does not contain the complete chatroom transcript', async () => {
+    vi.mocked(listCampaignConversationPage).mockResolvedValue({
+      totalCount: 1,
+      items: [partialSummary.summary as Conversation],
+    })
+    vi.mocked(getChatroom).mockResolvedValue(partialSummary.chatroom as Conversation)
+
+    const result = await new HeyReachOutreachReadAdapter({ senderAccountId: 77 })
+      .readMessagePage({ externalCampaignId: campaignId, cursor: null })
+
+    expect(getChatroom).toHaveBeenCalledWith({ accountId: 77, conversationId: 'chat-preview', bypass: true })
+    expect(result.messages.map((message) => message.bodyText)).toEqual([
+      'Full transcript first message',
+      'Full transcript reply',
+      'Full transcript follow-up',
+    ])
+    expect(result.messages.map((message) => message.direction)).toEqual(['outbound', 'inbound', 'outbound'])
+    expect(result.normalization).toEqual({ imported: 3, malformed: 0, mismatched: 0 })
   })
 
   it('returns only aggregate counts for mismatched conversations and malformed messages', async () => {

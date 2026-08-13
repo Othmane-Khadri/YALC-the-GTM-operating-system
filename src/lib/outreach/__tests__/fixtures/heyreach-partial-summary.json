@@ -1,0 +1,52 @@
+{
+  "summary": {
+    "id": "chat-preview",
+    "read": false,
+    "totalMessages": 3,
+    "linkedInAccountId": 77,
+    "lastMessageAt": "2026-08-13T10:02:00.000Z",
+    "messages": [
+      {
+        "createdAt": "2026-08-13T10:00:00.000Z",
+        "body": "Preview-only message",
+        "subject": null,
+        "postLink": null,
+        "isInMail": false,
+        "sender": "ME"
+      }
+    ]
+  },
+  "chatroom": {
+    "id": "chat-preview",
+    "read": false,
+    "totalMessages": 3,
+    "linkedInAccountId": 77,
+    "lastMessageAt": "2026-08-13T10:02:00.000Z",
+    "messages": [
+      {
+        "createdAt": "2026-08-13T10:00:00.000Z",
+        "body": "Full transcript first message",
+        "subject": null,
+        "postLink": null,
+        "isInMail": false,
+        "sender": "ME"
+      },
+      {
+        "createdAt": "2026-08-13T10:01:00.000Z",
+        "body": "Full transcript reply",
+        "subject": null,
+        "postLink": null,
+        "isInMail": false,
+        "sender": "CORRESPONDENT"
+      },
+      {
+        "createdAt": "2026-08-13T10:02:00.000Z",
+        "body": "Full transcript follow-up",
+        "subject": null,
+        "postLink": null,
+        "isInMail": false,
+        "sender": "ME"
+      }
+    ]
+  }
+}
