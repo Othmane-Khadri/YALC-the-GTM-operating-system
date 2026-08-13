@@ -151,5 +151,24 @@ WHEN NEW.`inbox_state` IS NOT NULL AND NEW.`inbox_state` NOT IN ('pending', 'res
 BEGIN
   SELECT RAISE(ABORT, 'invalid campaign_leads.inbox_state');
 END;--> statement-breakpoint
+-- Composite tenant FKs keep cross-tenant references invalid. These narrowly
+-- scoped triggers preserve optional-reference SET NULL behavior without nulling
+-- the mandatory tenant_id column of a composite relationship.
+CREATE TRIGGER `outreach_drafts_clear_deleted_conversation`
+BEFORE DELETE ON `outreach_conversations`
+BEGIN
+  UPDATE `outreach_drafts`
+  SET `outreach_conversation_id` = NULL
+  WHERE `tenant_id` = OLD.`tenant_id`
+    AND `outreach_conversation_id` = OLD.`id`;
+END;--> statement-breakpoint
+CREATE TRIGGER `outreach_sync_runs_clear_deleted_campaign`
+BEFORE DELETE ON `campaigns`
+BEGIN
+  UPDATE `outreach_sync_runs`
+  SET `campaign_id` = NULL
+  WHERE `tenant_id` = OLD.`tenant_id`
+    AND `campaign_id` = OLD.`id`;
+END;--> statement-breakpoint
 CREATE UNIQUE INDEX `campaign_leads_tenant_id_idx` ON `campaign_leads` (`tenant_id`,`id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `campaigns_tenant_id_idx` ON `campaigns` (`tenant_id`,`id`);

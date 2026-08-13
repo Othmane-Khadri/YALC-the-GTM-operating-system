@@ -523,6 +523,8 @@ export const outreachDrafts = sqliteTable('outreach_drafts', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text('tenant_id').notNull(),
   campaignLeadId: text('campaign_lead_id').notNull(),
+  // Optional local context. The migration's tenant-scoped delete trigger clears
+  // this id before a conversation is removed, while retaining the draft.
   outreachConversationId: text('outreach_conversation_id'),
   targetChannel: text('target_channel', { enum: ['linkedin', 'email'] }).notNull(),
   bodyText: text('body_text').notNull(),
@@ -549,6 +551,8 @@ export const outreachDrafts = sqliteTable('outreach_drafts', {
 export const outreachSyncRuns = sqliteTable('outreach_sync_runs', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text('tenant_id').notNull(),
+  // Null means an all-linked-campaign run. The migration's tenant-scoped delete
+  // trigger clears this id before its campaign is removed, retaining the audit row.
   campaignId: text('campaign_id'),
   requestedProviders: text('requested_providers', { mode: 'json' }).notNull(),
   status: text('status', { enum: ['queued', 'running', 'partial', 'succeeded', 'failed'] }).notNull().default('queued'),

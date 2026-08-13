@@ -357,5 +357,69 @@ describe('outreach schema contract', () => {
       sql: 'UPDATE campaign_leads SET inbox_state = ? WHERE id = ?',
       args: ['invalid', 'lead-a'],
     })).rejects.toThrow()
+
+    await raw.execute({
+      sql: `INSERT INTO outreach_drafts
+            (id, tenant_id, campaign_lead_id, outreach_conversation_id, target_channel, body_text, origin)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: ['draft-a', 'tenant-a', 'lead-a', 'outreach-conversation-a', 'linkedin', 'Retain this draft', 'manual'],
+    })
+    await raw.execute({
+      sql: `INSERT INTO outreach_conversations
+            (id, tenant_id, campaign_lead_id, provider_run_id, provider, channel, external_thread_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: ['outreach-conversation-b', 'tenant-b', 'lead-b', 'run-b', 'instantly', 'email', 'thread-b'],
+    })
+    await raw.execute({
+      sql: `INSERT INTO outreach_drafts
+            (id, tenant_id, campaign_lead_id, outreach_conversation_id, target_channel, body_text, origin)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: ['draft-b', 'tenant-b', 'lead-b', 'outreach-conversation-b', 'email', 'Other tenant draft', 'manual'],
+    })
+    await raw.execute({
+      sql: 'INSERT INTO outreach_sync_runs (id, tenant_id, campaign_id, requested_providers) VALUES (?, ?, ?, ?)',
+      args: ['sync-a', 'tenant-a', 'campaign-a', '["heyreach"]'],
+    })
+    await raw.execute({
+      sql: 'INSERT INTO outreach_sync_runs (id, tenant_id, campaign_id, requested_providers) VALUES (?, ?, ?, ?)',
+      args: ['sync-b', 'tenant-b', 'campaign-b', '["instantly"]'],
+    })
+
+    await raw.execute('DELETE FROM outreach_conversations WHERE id = ?', ['outreach-conversation-a'])
+    const retainedDraft = await raw.execute(
+      'SELECT tenant_id, campaign_lead_id, outreach_conversation_id FROM outreach_drafts WHERE id = ?',
+      ['draft-a'],
+    )
+    expect(retainedDraft.rows).toEqual([{
+      tenant_id: 'tenant-a',
+      campaign_lead_id: 'lead-a',
+      outreach_conversation_id: null,
+    }])
+    const otherTenantDraft = await raw.execute(
+      'SELECT tenant_id, outreach_conversation_id FROM outreach_drafts WHERE id = ?',
+      ['draft-b'],
+    )
+    expect(otherTenantDraft.rows).toEqual([{
+      tenant_id: 'tenant-b',
+      outreach_conversation_id: 'outreach-conversation-b',
+    }])
+
+    await raw.execute('DELETE FROM campaigns WHERE id = ?', ['campaign-a'])
+    const retainedSync = await raw.execute(
+      'SELECT tenant_id, campaign_id FROM outreach_sync_runs WHERE id = ?',
+      ['sync-a'],
+    )
+    expect(retainedSync.rows).toEqual([{
+      tenant_id: 'tenant-a',
+      campaign_id: null,
+    }])
+    const otherTenantSync = await raw.execute(
+      'SELECT tenant_id, campaign_id FROM outreach_sync_runs WHERE id = ?',
+      ['sync-b'],
+    )
+    expect(otherTenantSync.rows).toEqual([{
+      tenant_id: 'tenant-b',
+      campaign_id: 'campaign-b',
+    }])
   })
 })
