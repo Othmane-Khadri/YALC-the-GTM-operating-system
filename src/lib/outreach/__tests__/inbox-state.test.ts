@@ -162,6 +162,66 @@ describe('deriveInboxBucket', () => {
     }, NOW)).toBe('needs_reply')
   })
 
+  it('returns responded after a newer inbound reopens a resolve and a later human reply closes that thread', () => {
+    expect(deriveInboxBucket([
+      {
+        conversationId: 'thread-a',
+        direction: 'inbound',
+        kind: 'human',
+        providerTimestamp: '2026-08-13T10:03:00.000Z',
+      },
+      {
+        conversationId: 'thread-a',
+        direction: 'outbound',
+        kind: 'human',
+        providerTimestamp: '2026-08-13T10:04:00.000Z',
+      },
+    ], {
+      inboxState: 'resolved',
+      snoozedUntil: null,
+      inboxStateUpdatedAt: '2026-08-13T10:02:00.000Z',
+    }, NOW)).toBe('responded')
+  })
+
+  it('combines an answered thread and another unanswered thread as needs reply', () => {
+    expect(deriveInboxBucket([
+      {
+        conversationId: 'thread-answered',
+        direction: 'inbound',
+        kind: 'human',
+        providerTimestamp: '2026-08-13T10:00:00.000Z',
+      },
+      {
+        conversationId: 'thread-answered',
+        direction: 'outbound',
+        kind: 'human',
+        providerTimestamp: '2026-08-13T10:01:00.000Z',
+      },
+      {
+        conversationId: 'thread-pending',
+        direction: 'inbound',
+        kind: 'human',
+        providerTimestamp: '2026-08-13T10:02:00.000Z',
+      },
+    ], null, NOW)).toBe('needs_reply')
+  })
+
+  it('rejects impossible calendar timestamps and invalid offsets', () => {
+    expect(() => deriveInboxBucket([{
+      conversationId: 'thread-a',
+      direction: 'inbound',
+      kind: 'human',
+      providerTimestamp: '2026-02-30T10:00:00.000Z',
+    }], null, NOW)).toThrow(RangeError)
+
+    expect(() => deriveInboxBucket([{
+      conversationId: 'thread-a',
+      direction: 'inbound',
+      kind: 'human',
+      providerTimestamp: '2026-08-13T10:00:00.000+24:00',
+    }], null, NOW)).toThrow(RangeError)
+  })
+
   it('uses normalized instants and requires a strictly later human response', () => {
     expect(deriveInboxBucket([
       {
