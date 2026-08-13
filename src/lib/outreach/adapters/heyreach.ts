@@ -205,10 +205,10 @@ export class HeyReachOutreachReadAdapter implements OutreachReadAdapter {
   async readMessagePage(input: ReadMessagePageInput): Promise<ReadMessagePageResult> {
     const senderAccountId = this.senderAccountId()
     const campaignId = positiveInteger(input.externalCampaignId)
-    const cutoff = watermarkCutoff(this.scope.syncWatermark, this.scope.overlapMs)
+    const cutoff = watermarkCutoff(input.watermark ?? this.scope.syncWatermark, this.scope.overlapMs)
     const syncRunId = cutoff === null ? null : validSyncRunId(input.syncRunId) ? input.syncRunId : null
     const offset = parseOffset(input.cursor, syncRunId)
-    if (campaignId === null || offset === null || (cutoff !== null && syncRunId === null) || (this.scope.syncWatermark !== null && this.scope.syncWatermark !== undefined && cutoff === null)) {
+    if (campaignId === null || offset === null || (cutoff !== null && syncRunId === null) || ((input.watermark ?? this.scope.syncWatermark) !== null && (input.watermark ?? this.scope.syncWatermark) !== undefined && cutoff === null)) {
       throw new HeyReachOutreachReadError({ category: 'invalid_payload' })
     }
 

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { rawClient } from '../lib/db'
 import { createOutreachRoutes } from '../lib/server/routes/outreach'
+import { OutreachSyncCoordinator } from '../lib/outreach/sync'
 
 const TEST_PREFIX = 'task-7-'
 
@@ -34,10 +35,11 @@ async function seedCampaign(input: {
   })
 }
 
-function appFor(tenantId = 'tenant-a', raw: typeof rawClient = rawClient) {
+function appFor(tenantId = 'tenant-a', raw: typeof rawClient = rawClient, sync?: OutreachSyncCoordinator) {
   return createOutreachRoutes({
     raw,
     resolveTenant: () => tenantId,
+    sync,
     discover: {
       instantly: async () => [{
         externalCampaignId: 'instant-9001',
@@ -350,5 +352,38 @@ describe('campaign links', () => {
     const response = await createApp().request('/api/outreach/provider-campaigns?provider=unknown')
     expect(response.status).toBe(400)
     await expect(response.json()).resolves.toEqual({ error: 'invalid_provider' })
+  })
+})
+
+describe('sync', () => {
+  it('returns a tenant-scoped queued run before work finishes and exposes aggregate-only status', async () => {
+    const coordinator = new OutreachSyncCoordinator({ raw: rawClient, autoStart: false })
+    const route = appFor('tenant-a', rawClient, coordinator)
+    const { response, body } = await json(route, '/sync', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenant: 'tenant-a', campaignId: `${TEST_PREFIX}local-a`, providers: ['instantly'] }),
+    })
+
+    expect(response.status).toBe(202)
+    expect(body).toMatchObject({ status: 'queued', statusUrl: expect.stringMatching(/^\/api\/outreach\/sync\//) })
+    const runId = String(body.runId)
+    const status = await json(route, `/sync/${runId}?tenant=tenant-a`)
+    expect(status.response.status).toBe(200)
+    expect(status.body).toMatchObject({ status: 'queued', requestedProviders: ['instantly'], counts: { messagesProcessed: 0 } })
+    expect(JSON.stringify(status.body)).not.toMatch(/bodyText|email|thread|externalId|providerTimestamp/i)
+  })
+
+  it('does not reveal another tenant sync status', async () => {
+    const coordinator = new OutreachSyncCoordinator({ raw: rawClient, autoStart: false })
+    const tenantARoute = appFor('tenant-a', rawClient, coordinator)
+    const start = await json(tenantARoute, '/sync', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tenant: 'tenant-a', campaignId: `${TEST_PREFIX}local-a`, providers: ['instantly'] }),
+    })
+    const tenantBRoute = appFor('tenant-b', rawClient, coordinator)
+    const status = await json(tenantBRoute, `/sync/${String(start.body.runId)}?tenant=tenant-b`)
+    expect(status.response.status).toBe(404)
+    expect(status.body).toEqual({ error: 'not_found' })
   })
 })

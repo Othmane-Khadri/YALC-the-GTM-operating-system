@@ -30,6 +30,8 @@ export interface ReadMessagePageInput {
   pageSize?: number
   /** Local sync-run identity; providers must treat it as opaque. */
   syncRunId?: string | null
+  /** Inclusive lower bound for an incremental pass, never provider payload data. */
+  watermark?: string | null
 }
 
 /** Aggregate-only import accounting: never carries provider record content. */

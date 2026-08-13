@@ -135,6 +135,7 @@ export class InstantlyOutreachReadAdapter implements OutreachReadAdapter {
         campaignId: input.externalCampaignId,
         startingAfter: input.cursor,
         limit: Math.min(Math.max(input.pageSize ?? 100, 1), 100),
+        minTimestampCreated: input.watermark ?? null,
       })
     } catch (error) {
       throw new InstantlyOutreachReadError(toSafeProviderError(error))

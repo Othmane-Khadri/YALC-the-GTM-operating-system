@@ -1461,7 +1461,7 @@ program
   .action(async (opts) => {
     const { startServer } = await import('../lib/server/index')
     const port = parseInt(opts.port, 10)
-    startServer(port)
+    await startServer(port)
     const { execFile } = await import('child_process')
     execFile('open', [`http://localhost:${port}/campaigns`])
   })
@@ -1518,7 +1518,7 @@ program
     }
     if (opts.open) {
       const { startServer } = await import('../lib/server/index')
-      startServer(3847)
+      await startServer(3847)
       const { execFile } = await import('child_process')
       if (!/^\d{4}-\d{2}$/.test(month)) { console.error('Invalid month format. Use YYYY-MM.'); process.exit(1) }
       execFile('open', [`http://localhost:3847/monthly-report?month=${month}`])

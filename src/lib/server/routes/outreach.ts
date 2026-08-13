@@ -6,6 +6,7 @@ import {
   type CampaignDiscovery,
 } from '../../outreach/campaign-links'
 import type { OutreachProvider } from '../../outreach/contracts'
+import { OutreachSyncCoordinator } from '../../outreach/sync'
 import { resolveTenant } from '../../tenant'
 
 const PROVIDERS = new Set<OutreachProvider>(['heyreach', 'instantly'])
@@ -14,6 +15,7 @@ type RouteOptions = {
   raw?: typeof rawClient
   discover?: CampaignDiscovery
   resolveTenant?: () => string
+  sync?: OutreachSyncCoordinator
 }
 
 function providerFrom(value: unknown): OutreachProvider | null {
@@ -33,6 +35,7 @@ function requestedTenantMatches(activeTenant: string, requestedTenant: unknown):
 export function createOutreachRoutes(options: RouteOptions = {}) {
   const routes = new Hono()
   const service = new CampaignLinkService(options.raw ?? rawClient, options.discover ?? defaultCampaignDiscovery)
+  const sync = options.sync ?? new OutreachSyncCoordinator({ raw: options.raw ?? rawClient })
   const activeTenant = options.resolveTenant ?? (() => resolveTenant())
 
   routes.get('/provider-campaigns', async (c) => {
@@ -101,6 +104,39 @@ export function createOutreachRoutes(options: RouteOptions = {}) {
     } catch {
       return c.json({ error: 'provider_unavailable' }, 503)
     }
+  })
+
+  routes.post('/sync', async (c) => {
+    let parsed: unknown
+    try {
+      parsed = await c.req.json()
+    } catch {
+      return c.json({ error: 'bad_request' }, 400)
+    }
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return c.json({ error: 'bad_request' }, 400)
+    const body = parsed as Record<string, unknown>
+    const tenantId = activeTenant()
+    if (!requestedTenantMatches(tenantId, body.tenant)) return c.json({ error: 'tenant_forbidden' }, 403)
+    if (typeof body.campaignId !== 'string' || !body.campaignId.trim()) return c.json({ error: 'bad_request' }, 400)
+    const providers = body.providers === undefined
+      ? undefined
+      : Array.isArray(body.providers) && body.providers.every((provider) => providerFrom(provider) !== null)
+        ? body.providers as OutreachProvider[]
+        : null
+    if (providers === null) return c.json({ error: 'invalid_provider' }, 400)
+    try {
+      const runId = await sync.enqueue({ tenantId, campaignId: body.campaignId, providers })
+      return c.json({ runId, status: 'queued', statusUrl: `/api/outreach/sync/${runId}` }, 202)
+    } catch {
+      return c.json({ error: 'campaign_not_found' }, 404)
+    }
+  })
+
+  routes.get('/sync/:id', async (c) => {
+    const tenantId = activeTenant()
+    if (!requestedTenantMatches(tenantId, c.req.query('tenant'))) return c.json({ error: 'tenant_forbidden' }, 403)
+    const status = await sync.getStatus(tenantId, c.req.param('id'))
+    return status ? c.json(status) : c.json({ error: 'not_found' }, 404)
   })
 
   return routes

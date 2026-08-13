@@ -164,7 +164,7 @@ async function startAndOpen(port: number, path: string): Promise<string> {
   }
 
   const { startServer } = await import('../../server/index')
-  startServer(port)
+  await startServer(port)
 
   const { execFile } = await import('child_process')
   execFile('open', [url])
