@@ -369,11 +369,143 @@ export const campaignLeads = sqliteTable('campaign_leads', {
   emailRepliedAt: text('email_replied_at'),
   emailBouncedAt: text('email_bounced_at'),
   emailStatus: text('email_status'), // queued | sent | opened | replied | bounced
+  // Local Inbox state. Null means the Inbox derives state from message history.
+  inboxState: text('inbox_state', { enum: ['pending', 'resolved', 'snoozed'] }),
+  snoozedUntil: text('snoozed_until'),
+  inboxStateUpdatedAt: text('inbox_state_updated_at'),
   // Notion sync
   notionPageId: text('notion_page_id'),
   createdAt: text('created_at').default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').default(sql`(datetime('now'))`),
 })
+
+// ─── Multichannel Outreach Inbox ──────────────────────────────────────────
+// Provider mappings, imported conversations, and local draft/state data. These
+// tables are a provider-neutral read model; they do not authorize sending.
+export const campaignProviderRuns = sqliteTable('campaign_provider_runs', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text('tenant_id').notNull(),
+  campaignId: text('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  provider: text('provider', { enum: ['heyreach', 'instantly'] }).notNull(),
+  externalCampaignId: text('external_campaign_id').notNull(),
+  externalName: text('external_name').notNull(),
+  externalStatus: text('external_status'),
+  senderAccountId: text('sender_account_id'),
+  syncCursor: text('sync_cursor'),
+  syncWatermark: text('sync_watermark'),
+  firstMessageImportedAt: text('first_message_imported_at'),
+  lastSyncStartedAt: text('last_sync_started_at'),
+  lastSyncSucceededAt: text('last_sync_succeeded_at'),
+  lastSyncFailedAt: text('last_sync_failed_at'),
+  lastErrorCode: text('last_error_code'),
+  createdAt: text('created_at').default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').default(sql`(datetime('now'))`),
+}, (t) => ({
+  uniqueExternalCampaign: uniqueIndex('campaign_provider_runs_tenant_provider_external_idx')
+    .on(t.tenantId, t.provider, t.externalCampaignId),
+  byCampaign: index('campaign_provider_runs_tenant_campaign_idx').on(t.tenantId, t.campaignId),
+}))
+
+export const outreachIdentities = sqliteTable('outreach_identities', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text('tenant_id').notNull(),
+  campaignId: text('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  campaignLeadId: text('campaign_lead_id').notNull().references(() => campaignLeads.id, { onDelete: 'cascade' }),
+  provider: text('provider', { enum: ['heyreach', 'instantly'] }).notNull(),
+  identityType: text('identity_type', { enum: ['provider_id', 'email', 'linkedin_url'] }).notNull(),
+  externalIdentityId: text('external_identity_id'),
+  normalizedValue: text('normalized_value').notNull(),
+  evidenceType: text('evidence_type', { enum: ['provider_payload', 'existing_record', 'manual_link'] }).notNull(),
+  createdAt: text('created_at').default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').default(sql`(datetime('now'))`),
+}, (t) => ({
+  uniqueIdentityValue: uniqueIndex('outreach_identities_tenant_campaign_provider_type_value_idx')
+    .on(t.tenantId, t.campaignId, t.provider, t.identityType, t.normalizedValue),
+  uniqueExternalIdentity: uniqueIndex('outreach_identities_tenant_campaign_provider_external_idx')
+    .on(t.tenantId, t.campaignId, t.provider, t.externalIdentityId),
+  byCampaignLead: index('outreach_identities_tenant_lead_idx').on(t.tenantId, t.campaignLeadId),
+}))
+
+export const outreachConversations = sqliteTable('outreach_conversations', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text('tenant_id').notNull(),
+  campaignLeadId: text('campaign_lead_id').notNull().references(() => campaignLeads.id, { onDelete: 'cascade' }),
+  providerRunId: text('provider_run_id').notNull().references(() => campaignProviderRuns.id, { onDelete: 'cascade' }),
+  provider: text('provider', { enum: ['heyreach', 'instantly'] }).notNull(),
+  channel: text('channel', { enum: ['linkedin', 'email'] }).notNull(),
+  externalThreadId: text('external_thread_id').notNull(),
+  providerUnread: integer('provider_unread', { mode: 'boolean' }),
+  providerIntent: text('provider_intent'),
+  lastMessageAt: text('last_message_at'),
+  lastInboundAt: text('last_inbound_at'),
+  lastHumanOutboundAt: text('last_human_outbound_at'),
+  lastDirection: text('last_direction', { enum: ['inbound', 'outbound'] }),
+  lastMessageKind: text('last_message_kind', { enum: ['campaign_automated', 'human', 'auto_reply', 'unknown'] }),
+  firstSeenAt: text('first_seen_at'),
+  lastSyncedAt: text('last_synced_at'),
+}, (t) => ({
+  uniqueExternalThread: uniqueIndex('outreach_conversations_tenant_provider_thread_idx')
+    .on(t.tenantId, t.provider, t.externalThreadId),
+  byCampaignLead: index('outreach_conversations_tenant_lead_idx').on(t.tenantId, t.campaignLeadId),
+}))
+
+export const outreachMessages = sqliteTable('outreach_messages', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text('tenant_id').notNull(),
+  outreachConversationId: text('outreach_conversation_id').notNull()
+    .references(() => outreachConversations.id, { onDelete: 'cascade' }),
+  provider: text('provider', { enum: ['heyreach', 'instantly'] }).notNull(),
+  externalMessageId: text('external_message_id'),
+  fingerprint: text('fingerprint').notNull(),
+  direction: text('direction', { enum: ['inbound', 'outbound'] }).notNull(),
+  messageKind: text('message_kind', { enum: ['campaign_automated', 'human', 'auto_reply', 'unknown'] }).notNull(),
+  subject: text('subject'),
+  bodyText: text('body_text').notNull(),
+  providerTimestamp: text('provider_timestamp').notNull(),
+  importedAt: text('imported_at').default(sql`(datetime('now'))`),
+}, (t) => ({
+  uniqueFingerprint: uniqueIndex('outreach_messages_tenant_provider_fingerprint_idx')
+    .on(t.tenantId, t.provider, t.fingerprint),
+  uniqueExternalMessage: uniqueIndex('outreach_messages_tenant_provider_external_idx')
+    .on(t.tenantId, t.provider, t.externalMessageId),
+  byConversationTimestamp: index('outreach_messages_tenant_conversation_timestamp_idx')
+    .on(t.tenantId, t.outreachConversationId, t.providerTimestamp),
+}))
+
+export const outreachDrafts = sqliteTable('outreach_drafts', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text('tenant_id').notNull(),
+  campaignLeadId: text('campaign_lead_id').notNull().references(() => campaignLeads.id, { onDelete: 'cascade' }),
+  outreachConversationId: text('outreach_conversation_id')
+    .references(() => outreachConversations.id, { onDelete: 'set null' }),
+  targetChannel: text('target_channel', { enum: ['linkedin', 'email'] }).notNull(),
+  bodyText: text('body_text').notNull(),
+  origin: text('origin', { enum: ['codex', 'manual'] }).notNull(),
+  status: text('status', { enum: ['draft', 'copied', 'discarded'] }).notNull().default('draft'),
+  createdAt: text('created_at').default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').default(sql`(datetime('now'))`),
+})
+
+export const outreachSyncRuns = sqliteTable('outreach_sync_runs', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tenantId: text('tenant_id').notNull(),
+  campaignId: text('campaign_id').references(() => campaigns.id, { onDelete: 'set null' }),
+  requestedProviders: text('requested_providers', { mode: 'json' }).notNull(),
+  status: text('status', { enum: ['queued', 'running', 'partial', 'succeeded', 'failed'] }).notNull().default('queued'),
+  providerSummary: text('provider_summary', { mode: 'json' }).notNull().default('{}'),
+  pagesProcessed: integer('pages_processed').notNull().default(0),
+  conversationsProcessed: integer('conversations_processed').notNull().default(0),
+  messagesProcessed: integer('messages_processed').notNull().default(0),
+  malformedMessages: integer('malformed_messages').notNull().default(0),
+  identityConflicts: integer('identity_conflicts').notNull().default(0),
+  startedAt: text('started_at'),
+  finishedAt: text('finished_at'),
+  createdAt: text('created_at').default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').default(sql`(datetime('now'))`),
+}, (t) => ({
+  byStatus: index('outreach_sync_runs_tenant_status_idx').on(t.tenantId, t.status),
+  byCampaign: index('outreach_sync_runs_tenant_campaign_idx').on(t.tenantId, t.campaignId),
+}))
 
 // ─── Provider Stats ────────────────────────────────────────────────────────
 // Provider performance tracking per execution
