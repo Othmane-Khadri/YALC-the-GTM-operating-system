@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { Client } from '@libsql/client'
 import { randomUUID } from 'node:crypto'
 import { rawClient } from '../../db/index.js'
-import { deriveInboxBucket, type InboxStateMessage, type LocalInboxState } from '../../outreach/inbox-state.js'
+import { deriveInboxBucket, parseInboxTimestamp, type InboxStateMessage, type LocalInboxState } from '../../outreach/inbox-state.js'
 import { resolveTenant } from '../../tenant/index.js'
 
 type RouteOptions = {
@@ -14,6 +14,7 @@ type RouteOptions = {
 type Row = Record<string, unknown>
 
 const PREVIEW_LENGTH = 240
+export const MAX_DRAFT_BODY_CODE_POINTS = 10_000
 const INBOX_STATES = new Set(['pending', 'resolved', 'snoozed'])
 const CHANNELS = new Set(['linkedin', 'email'])
 const DRAFT_ORIGINS = new Set(['manual', 'codex'])
@@ -77,9 +78,17 @@ function pageLimit(value: string | undefined): number | null {
 
 function futureTimestamp(value: unknown, reference: Date): string | null {
   if (typeof value !== 'string' || !value.trim()) return null
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime()) || parsed.getTime() <= reference.getTime()) return null
-  return parsed.toISOString()
+  try {
+    const parsed = parseInboxTimestamp(value, 'snoozedUntil')
+    if (parsed <= reference.getTime()) return null
+    return new Date(parsed).toISOString()
+  } catch {
+    return null
+  }
+}
+
+function codePointLength(value: string): number {
+  return Array.from(value).length
 }
 
 /**
@@ -98,6 +107,10 @@ export function createLeadsRoutes(options: RouteOptions = {}) {
     if (!requestedTenantMatches(tenantId, c.req.query('tenant'))) {
       return c.json({ error: 'tenant_forbidden' }, 403)
     }
+
+    // This local read model has no canonical B2B/Partnerships column. Returning
+    // an unfiltered result would let callers mistake all leads for that type.
+    if (c.req.query('type')?.trim()) return c.json({ error: 'unsupported_filter' }, 400)
 
     const campaignId = c.req.query('campaignId') ?? c.req.query('campaign_id')
     const lifecycleStatuses = (c.req.query('lifecycleStatus') ?? c.req.query('status'))
@@ -247,7 +260,7 @@ export function createLeadsRoutes(options: RouteOptions = {}) {
 
     const cursorClause = cursor === null
       ? ''
-      : ' AND (message.provider_timestamp < ? OR (message.provider_timestamp = ? AND message.id < ?))'
+      : ' AND (message.provider_timestamp > ? OR (message.provider_timestamp = ? AND message.id > ?))'
     const timeline = await raw.execute({
       sql: `SELECT message.id, conversation.id AS conversation_id, conversation.channel,
           message.provider, message.direction, message.message_kind, message.subject,
@@ -259,7 +272,7 @@ export function createLeadsRoutes(options: RouteOptions = {}) {
           AND conversation.provider_run_id = message.provider_run_id
         WHERE message.tenant_id = ? AND conversation.tenant_id = ?
           AND conversation.campaign_lead_id = ?${cursorClause}
-        ORDER BY message.provider_timestamp DESC, message.id DESC
+        ORDER BY message.provider_timestamp ASC, message.id ASC
         LIMIT ?`,
       args: [
         tenantId,
@@ -273,7 +286,7 @@ export function createLeadsRoutes(options: RouteOptions = {}) {
     const hasMore = rows.length > limit
     const page = rows.slice(0, limit)
     const next = hasMore ? page[page.length - 1] : null
-    const messages = page.reverse().map((message) => ({
+    const messages = page.map((message) => ({
       id: asString(message.id),
       leadId,
       conversationId: asString(message.conversation_id),
@@ -342,6 +355,7 @@ export function createLeadsRoutes(options: RouteOptions = {}) {
     const tenantId = activeTenant()
     if (!requestedTenantMatches(tenantId, body.tenant)) return c.json({ error: 'tenant_forbidden' }, 403)
     if (typeof body.bodyText !== 'string' || !body.bodyText.trim()) return c.json({ error: 'invalid_body' }, 400)
+    if (codePointLength(body.bodyText) > MAX_DRAFT_BODY_CODE_POINTS) return c.json({ error: 'body_too_long' }, 400)
     if (typeof body.channel !== 'string' || !CHANNELS.has(body.channel)) return c.json({ error: 'invalid_channel' }, 400)
     if (typeof body.origin !== 'string' || !DRAFT_ORIGINS.has(body.origin)) return c.json({ error: 'invalid_origin' }, 400)
     if (body.conversationId !== undefined && body.conversationId !== null && typeof body.conversationId !== 'string') {

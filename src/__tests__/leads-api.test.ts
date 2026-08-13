@@ -135,7 +135,7 @@ describe('tenant-safe multichannel lead list', () => {
   })
 
   it('keeps the established list filter aliases and count response contract', async () => {
-    const { response, body } = await request('/?campaignId=task-9-campaign-a&lifecycleStatus=Queued,Disqualified&q=ada&include=lastMessage&type=B2B')
+    const { response, body } = await request('/?campaignId=task-9-campaign-a&lifecycleStatus=Queued,Disqualified&q=ada&include=lastMessage')
 
     expect(response.status).toBe(200)
     expect(body.count).toBe(1)
@@ -148,7 +148,14 @@ describe('tenant-safe multichannel lead list', () => {
     })])
   })
 
-  it('returns only the requested lead timeline in chronological cursor pages and bounds page size', async () => {
+  it('rejects an unsupported canonical type filter instead of returning unfiltered leads', async () => {
+    const { response, body } = await request('/?type=B2B')
+
+    expect(response.status).toBe(400)
+    expect(body).toEqual({ error: 'unsupported_filter' })
+  })
+
+  it('returns globally chronological cursor pages without duplicates when timestamps tie', async () => {
     await seedMessage({
       tenantId: TENANT_A,
       runId: `${PREFIX}lead-a-run`,
@@ -160,7 +167,14 @@ describe('tenant-safe multichannel lead list', () => {
       tenantId: TENANT_A,
       runId: `${PREFIX}lead-a-run`,
       conversationId: `${PREFIX}lead-a-conversation`,
-      id: `${PREFIX}message-12`,
+      id: `${PREFIX}message-12-a`,
+      timestamp: '2026-08-13T12:00:00.000Z',
+    })
+    await seedMessage({
+      tenantId: TENANT_A,
+      runId: `${PREFIX}lead-a-run`,
+      conversationId: `${PREFIX}lead-a-conversation`,
+      id: `${PREFIX}message-12-b`,
       timestamp: '2026-08-13T12:00:00.000Z',
     })
 
@@ -168,8 +182,8 @@ describe('tenant-safe multichannel lead list', () => {
 
     expect(first.response.status).toBe(200)
     expect(first.body.messages).toEqual([
+      expect.objectContaining({ id: `${PREFIX}lead-a-message`, leadId: `${PREFIX}lead-a`, providerTimestamp: '2026-08-13T10:00:00.000Z' }),
       expect.objectContaining({ id: `${PREFIX}message-11`, leadId: `${PREFIX}lead-a`, providerTimestamp: '2026-08-13T11:00:00.000Z' }),
-      expect.objectContaining({ id: `${PREFIX}message-12`, leadId: `${PREFIX}lead-a`, providerTimestamp: '2026-08-13T12:00:00.000Z' }),
     ])
     expect(first.body.nextCursor).toEqual(expect.any(String))
     expect(first.body.truncated).toBe(true)
@@ -177,13 +191,21 @@ describe('tenant-safe multichannel lead list', () => {
     const second = await request(`/${PREFIX}lead-a/messages?limit=2&cursor=${encodeURIComponent(first.body.nextCursor as string)}`)
     expect(second.response.status).toBe(200)
     expect(second.body.messages).toEqual([
-      expect.objectContaining({ id: `${PREFIX}lead-a-message`, leadId: `${PREFIX}lead-a`, providerTimestamp: '2026-08-13T10:00:00.000Z' }),
+      expect.objectContaining({ id: `${PREFIX}message-12-a`, leadId: `${PREFIX}lead-a`, providerTimestamp: '2026-08-13T12:00:00.000Z' }),
+      expect.objectContaining({ id: `${PREFIX}message-12-b`, leadId: `${PREFIX}lead-a`, providerTimestamp: '2026-08-13T12:00:00.000Z' }),
     ])
     expect(second.body.nextCursor).toBeNull()
-    expect(new Set([
+    const allMessages = [
       ...(first.body.messages as Array<{ id: string }>).map((message) => message.id),
       ...(second.body.messages as Array<{ id: string }>).map((message) => message.id),
-    ])).toHaveLength(3)
+    ]
+    expect(allMessages).toEqual([
+      `${PREFIX}lead-a-message`,
+      `${PREFIX}message-11`,
+      `${PREFIX}message-12-a`,
+      `${PREFIX}message-12-b`,
+    ])
+    expect(new Set(allMessages)).toHaveLength(4)
 
     const overLimit = await request(`/${PREFIX}lead-a/messages?limit=101`)
     expect(overLimit.response.status).toBe(400)
@@ -234,6 +256,13 @@ describe('tenant-safe multichannel lead list', () => {
     })
     expect(invalidSnooze.response.status).toBe(400)
     expect(invalidSnooze.body).toEqual({ error: 'invalid_snooze' })
+
+    const impossibleSnoozeResponse = await route.request(`/${PREFIX}lead-a/inbox-state`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ state: 'snoozed', snoozedUntil: '2026-09-31T12:00:00.000Z' }),
+    })
+    const impossibleSnooze = await impossibleSnoozeResponse.json() as Record<string, unknown>
+    expect(impossibleSnoozeResponse.status).toBe(400)
+    expect(impossibleSnooze).toEqual({ error: 'invalid_snooze' })
   })
 
   it('stores a local draft without a provider path and rejects foreign lead or conversation references', async () => {
@@ -286,5 +315,32 @@ describe('tenant-safe multichannel lead list', () => {
     })
     expect(foreignLeadDraft.response.status).toBe(404)
     expect(foreignLeadDraft.body).toEqual({ error: 'not_found' })
+  })
+
+  it('accepts a 10,000-code-point local draft and rejects a larger Unicode body before insert', async () => {
+    const maximum = 'a'.repeat(10_000)
+    const boundary = await request(`/${PREFIX}lead-a/drafts`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ bodyText: maximum, channel: 'email', origin: 'manual' }),
+    })
+    expect(boundary.response.status).toBe(201)
+
+    const before = await rawClient.execute({
+      sql: 'SELECT count(*) AS count FROM outreach_drafts WHERE tenant_id = ? AND campaign_lead_id = ?',
+      args: [TENANT_A, `${PREFIX}lead-a`],
+    })
+    const overLimit = await request(`/${PREFIX}lead-a/drafts`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ bodyText: `${maximum}😀`, channel: 'email', origin: 'manual' }),
+    })
+    const after = await rawClient.execute({
+      sql: 'SELECT count(*) AS count FROM outreach_drafts WHERE tenant_id = ? AND campaign_lead_id = ?',
+      args: [TENANT_A, `${PREFIX}lead-a`],
+    })
+
+    expect(overLimit.response.status).toBe(400)
+    expect(overLimit.body).toEqual({ error: 'body_too_long' })
+    expect(Array.from(`${maximum}😀`)).toHaveLength(10_001)
+    expect(after.rows).toEqual(before.rows)
   })
 })

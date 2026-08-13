@@ -22,7 +22,11 @@ function daysInMonth(year: number, month: number): number {
   return [4, 6, 9, 11].includes(month) ? 30 : 31
 }
 
-function timestamp(value: string | Date, name: string): number {
+/**
+ * Parses an ISO 8601 timestamp with a timezone and rejects JS date rollover
+ * (for example 2026-09-31). Shared by Inbox derivation and local snoozes.
+ */
+export function parseInboxTimestamp(value: string | Date, name: string): number {
   if (typeof value === 'string') {
     const parts = TIMESTAMP_PATTERN.exec(value)
     if (!parts) throw new RangeError(`${name} must be an ISO 8601 timestamp with a timezone`)
@@ -55,7 +59,7 @@ export function deriveInboxBucket(
   localState: LocalInboxState | null,
   now: string | Date,
 ): InboxBucket {
-  const nowTimestamp = timestamp(now, 'now')
+  const nowTimestamp = parseInboxTimestamp(now, 'now')
   const messagesByConversation = new Map<string, Array<{ direction: MessageDirection, kind: MessageKind, timestamp: number }>>()
 
   for (const message of messages) {
@@ -64,7 +68,7 @@ export function deriveInboxBucket(
     conversation.push({
       direction: message.direction,
       kind: message.kind,
-      timestamp: timestamp(message.providerTimestamp, 'providerTimestamp'),
+      timestamp: parseInboxTimestamp(message.providerTimestamp, 'providerTimestamp'),
     })
     messagesByConversation.set(message.conversationId, conversation)
   }
@@ -88,13 +92,13 @@ export function deriveInboxBucket(
   }
 
   const stateUpdatedAt = localState?.inboxState === 'resolved' || localState?.inboxState === 'snoozed'
-    ? localState.inboxStateUpdatedAt === null ? null : timestamp(localState.inboxStateUpdatedAt, 'inboxStateUpdatedAt')
+    ? localState.inboxStateUpdatedAt === null ? null : parseInboxTimestamp(localState.inboxStateUpdatedAt, 'inboxStateUpdatedAt')
     : null
   const hasInboundAfterLocalState = stateUpdatedAt !== null
     && actionableInboundTimestamps.some((inboundTimestamp) => inboundTimestamp > stateUpdatedAt)
   const activeSnooze = localState?.inboxState === 'snoozed'
     && localState.snoozedUntil !== null
-    && timestamp(localState.snoozedUntil, 'snoozedUntil') > nowTimestamp
+    && parseInboxTimestamp(localState.snoozedUntil, 'snoozedUntil') > nowTimestamp
 
   if (unansweredInboundTimestamps.length > 0) {
     if (activeSnooze && stateUpdatedAt !== null && !hasInboundAfterLocalState) return null
