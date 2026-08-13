@@ -111,24 +111,33 @@ describe('outreach schema contract', () => {
     ]))
 
     expect(await foreignKeys('campaign_provider_runs')).toEqual(expect.arrayContaining([
+      { from: 'tenant_id', table: 'campaigns', to: 'tenant_id' },
       { from: 'campaign_id', table: 'campaigns', to: 'id' },
     ]))
     expect(await foreignKeys('outreach_identities')).toEqual(expect.arrayContaining([
+      { from: 'tenant_id', table: 'campaigns', to: 'tenant_id' },
       { from: 'campaign_id', table: 'campaigns', to: 'id' },
+      { from: 'tenant_id', table: 'campaign_leads', to: 'tenant_id' },
       { from: 'campaign_lead_id', table: 'campaign_leads', to: 'id' },
     ]))
     expect(await foreignKeys('outreach_conversations')).toEqual(expect.arrayContaining([
+      { from: 'tenant_id', table: 'campaign_leads', to: 'tenant_id' },
       { from: 'campaign_lead_id', table: 'campaign_leads', to: 'id' },
+      { from: 'tenant_id', table: 'campaign_provider_runs', to: 'tenant_id' },
       { from: 'provider_run_id', table: 'campaign_provider_runs', to: 'id' },
     ]))
     expect(await foreignKeys('outreach_messages')).toEqual(expect.arrayContaining([
+      { from: 'tenant_id', table: 'outreach_conversations', to: 'tenant_id' },
       { from: 'outreach_conversation_id', table: 'outreach_conversations', to: 'id' },
     ]))
     expect(await foreignKeys('outreach_drafts')).toEqual(expect.arrayContaining([
+      { from: 'tenant_id', table: 'campaign_leads', to: 'tenant_id' },
       { from: 'campaign_lead_id', table: 'campaign_leads', to: 'id' },
+      { from: 'tenant_id', table: 'outreach_conversations', to: 'tenant_id' },
       { from: 'outreach_conversation_id', table: 'outreach_conversations', to: 'id' },
     ]))
     expect(await foreignKeys('outreach_sync_runs')).toEqual(expect.arrayContaining([
+      { from: 'tenant_id', table: 'campaigns', to: 'tenant_id' },
       { from: 'campaign_id', table: 'campaigns', to: 'id' },
     ]))
 
@@ -170,8 +179,21 @@ describe('outreach schema contract', () => {
       args: ['campaign-a', 'tenant-a', 'conversation-a', 'Campaign A', 'Hypothesis', 'draft', 'linkedin', '{}', '{}'],
     })
     await raw.execute({
+      sql: 'INSERT INTO conversations (id, title) VALUES (?, ?)',
+      args: ['conversation-b', 'Schema contract B'],
+    })
+    await raw.execute({
+      sql: `INSERT INTO campaigns (id, tenant_id, conversation_id, title, hypothesis, status, channels, success_metrics, metrics)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['campaign-b', 'tenant-b', 'conversation-b', 'Campaign B', 'Hypothesis', 'draft', 'email', '{}', '{}'],
+    })
+    await raw.execute({
       sql: 'INSERT INTO campaign_leads (id, tenant_id, campaign_id, provider_id) VALUES (?, ?, ?, ?)',
       args: ['lead-a', 'tenant-a', 'campaign-a', 'lead-a'],
+    })
+    await raw.execute({
+      sql: 'INSERT INTO campaign_leads (id, tenant_id, campaign_id, provider_id) VALUES (?, ?, ?, ?)',
+      args: ['lead-b', 'tenant-b', 'campaign-b', 'lead-b'],
     })
     const lead = await raw.execute(
       'SELECT inbox_state, snoozed_until, inbox_state_updated_at FROM campaign_leads WHERE id = ?',
@@ -194,6 +216,146 @@ describe('outreach schema contract', () => {
             (id, tenant_id, campaign_id, provider, external_campaign_id, external_name)
             VALUES (?, ?, ?, ?, ?, ?)`,
       args: ['run-a-duplicate', 'tenant-a', 'campaign-a', 'heyreach', 'external-campaign', 'Campaign'],
+    })).rejects.toThrow()
+    await raw.execute({
+      sql: `INSERT INTO campaign_provider_runs
+            (id, tenant_id, campaign_id, provider, external_campaign_id, external_name)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+      args: ['run-b', 'tenant-b', 'campaign-b', 'instantly', 'external-campaign', 'Campaign B'],
+    })
+    await raw.execute({
+      sql: `INSERT INTO outreach_conversations
+            (id, tenant_id, campaign_lead_id, provider_run_id, provider, channel, external_thread_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: ['outreach-conversation-a', 'tenant-a', 'lead-a', 'run-a', 'heyreach', 'linkedin', 'thread-a'],
+    })
+
+    await expect(raw.execute({
+      sql: `INSERT INTO campaign_provider_runs
+            (id, tenant_id, campaign_id, provider, external_campaign_id, external_name)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+      args: ['cross-run', 'tenant-b', 'campaign-a', 'heyreach', 'cross-run', 'Cross tenant'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_identities
+            (id, tenant_id, campaign_id, campaign_lead_id, provider, identity_type, normalized_value, evidence_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['cross-identity', 'tenant-b', 'campaign-b', 'lead-a', 'instantly', 'email', 'cross@example.com', 'provider_payload'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_conversations
+            (id, tenant_id, campaign_lead_id, provider_run_id, provider, channel, external_thread_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: ['cross-conversation', 'tenant-b', 'lead-a', 'run-b', 'instantly', 'email', 'thread-cross'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_messages
+            (id, tenant_id, outreach_conversation_id, provider, fingerprint, direction, message_kind, body_text, provider_timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['cross-message', 'tenant-b', 'outreach-conversation-a', 'heyreach', 'cross-fingerprint', 'inbound', 'human', 'Cross tenant', '2026-08-13T00:00:00Z'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_drafts
+            (id, tenant_id, campaign_lead_id, outreach_conversation_id, target_channel, body_text, origin)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: ['cross-draft', 'tenant-b', 'lead-b', 'outreach-conversation-a', 'email', 'Cross tenant', 'manual'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: 'INSERT INTO outreach_sync_runs (id, tenant_id, campaign_id, requested_providers) VALUES (?, ?, ?, ?)',
+      args: ['cross-sync', 'tenant-b', 'campaign-a', '["instantly"]'],
+    })).rejects.toThrow()
+
+    await expect(raw.execute({
+      sql: `INSERT INTO campaign_provider_runs
+            (id, tenant_id, campaign_id, provider, external_campaign_id, external_name)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+      args: ['invalid-run-provider', 'tenant-a', 'campaign-a', 'invalid', 'invalid-provider', 'Invalid'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_identities
+            (id, tenant_id, campaign_id, campaign_lead_id, provider, identity_type, normalized_value, evidence_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['invalid-identity-provider', 'tenant-a', 'campaign-a', 'lead-a', 'invalid', 'email', 'invalid-provider@example.com', 'provider_payload'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_identities
+            (id, tenant_id, campaign_id, campaign_lead_id, provider, identity_type, normalized_value, evidence_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['invalid-identity-type', 'tenant-a', 'campaign-a', 'lead-a', 'instantly', 'invalid', 'invalid-type@example.com', 'provider_payload'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_identities
+            (id, tenant_id, campaign_id, campaign_lead_id, provider, identity_type, normalized_value, evidence_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['invalid-evidence-type', 'tenant-a', 'campaign-a', 'lead-a', 'instantly', 'email', 'invalid-evidence@example.com', 'invalid'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_conversations
+            (id, tenant_id, campaign_lead_id, provider_run_id, provider, channel, external_thread_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: ['invalid-conversation-provider', 'tenant-a', 'lead-a', 'run-a', 'invalid', 'linkedin', 'invalid-provider-thread'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_conversations
+            (id, tenant_id, campaign_lead_id, provider_run_id, provider, channel, external_thread_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: ['invalid-channel', 'tenant-a', 'lead-a', 'run-a', 'heyreach', 'invalid', 'invalid-channel-thread'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_conversations
+            (id, tenant_id, campaign_lead_id, provider_run_id, provider, channel, external_thread_id, last_direction)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['invalid-last-direction', 'tenant-a', 'lead-a', 'run-a', 'heyreach', 'linkedin', 'invalid-last-direction-thread', 'invalid'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_conversations
+            (id, tenant_id, campaign_lead_id, provider_run_id, provider, channel, external_thread_id, last_message_kind)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['invalid-last-kind', 'tenant-a', 'lead-a', 'run-a', 'heyreach', 'linkedin', 'invalid-last-kind-thread', 'invalid'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_messages
+            (id, tenant_id, outreach_conversation_id, provider, fingerprint, direction, message_kind, body_text, provider_timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['invalid-message-provider', 'tenant-a', 'outreach-conversation-a', 'invalid', 'invalid-message-provider', 'inbound', 'human', 'Invalid', '2026-08-13T00:00:00Z'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_messages
+            (id, tenant_id, outreach_conversation_id, provider, fingerprint, direction, message_kind, body_text, provider_timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['invalid-message-direction', 'tenant-a', 'outreach-conversation-a', 'heyreach', 'invalid-message-direction', 'invalid', 'human', 'Invalid', '2026-08-13T00:00:00Z'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_messages
+            (id, tenant_id, outreach_conversation_id, provider, fingerprint, direction, message_kind, body_text, provider_timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: ['invalid-message-kind', 'tenant-a', 'outreach-conversation-a', 'heyreach', 'invalid-message-kind', 'inbound', 'invalid', 'Invalid', '2026-08-13T00:00:00Z'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_drafts
+            (id, tenant_id, campaign_lead_id, target_channel, body_text, origin)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+      args: ['invalid-draft-channel', 'tenant-a', 'lead-a', 'invalid', 'Invalid', 'manual'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_drafts
+            (id, tenant_id, campaign_lead_id, target_channel, body_text, origin)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+      args: ['invalid-draft-origin', 'tenant-a', 'lead-a', 'email', 'Invalid', 'invalid'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: `INSERT INTO outreach_drafts
+            (id, tenant_id, campaign_lead_id, target_channel, body_text, origin, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: ['invalid-draft-status', 'tenant-a', 'lead-a', 'email', 'Invalid', 'manual', 'invalid'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: 'INSERT INTO outreach_sync_runs (id, tenant_id, campaign_id, requested_providers, status) VALUES (?, ?, ?, ?, ?)',
+      args: ['invalid-sync-status', 'tenant-a', 'campaign-a', '["heyreach"]', 'invalid'],
+    })).rejects.toThrow()
+    await expect(raw.execute({
+      sql: 'UPDATE campaign_leads SET inbox_state = ? WHERE id = ?',
+      args: ['invalid', 'lead-a'],
     })).rejects.toThrow()
   })
 })

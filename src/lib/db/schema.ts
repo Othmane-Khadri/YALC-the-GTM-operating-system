@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, uniqueIndex, index } from 'drizzle-orm/sqlite-core'
+import { check, foreignKey, index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { relations, sql } from 'drizzle-orm'
 
 // ─── Conversations ──────────────────────────────────────────────────────────
@@ -273,7 +273,9 @@ export const campaigns = sqliteTable('campaigns', {
   schedule: text('schedule', { mode: 'json' }),
   createdAt: text('created_at').default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').default(sql`(datetime('now'))`),
-})
+}, (t) => ({
+  uniqueTenantId: uniqueIndex('campaigns_tenant_id_idx').on(t.tenantId, t.id),
+}))
 
 // ─── Campaign Steps ─────────────────────────────────────────────────────────
 export const campaignSteps = sqliteTable('campaign_steps', {
@@ -377,7 +379,9 @@ export const campaignLeads = sqliteTable('campaign_leads', {
   notionPageId: text('notion_page_id'),
   createdAt: text('created_at').default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').default(sql`(datetime('now'))`),
-})
+}, (t) => ({
+  uniqueTenantId: uniqueIndex('campaign_leads_tenant_id_idx').on(t.tenantId, t.id),
+}))
 
 // ─── Multichannel Outreach Inbox ──────────────────────────────────────────
 // Provider mappings, imported conversations, and local draft/state data. These
@@ -385,7 +389,7 @@ export const campaignLeads = sqliteTable('campaign_leads', {
 export const campaignProviderRuns = sqliteTable('campaign_provider_runs', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text('tenant_id').notNull(),
-  campaignId: text('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
+  campaignId: text('campaign_id').notNull(),
   provider: text('provider', { enum: ['heyreach', 'instantly'] }).notNull(),
   externalCampaignId: text('external_campaign_id').notNull(),
   externalName: text('external_name').notNull(),
@@ -401,16 +405,23 @@ export const campaignProviderRuns = sqliteTable('campaign_provider_runs', {
   createdAt: text('created_at').default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').default(sql`(datetime('now'))`),
 }, (t) => ({
+  campaignTenant: foreignKey({
+    columns: [t.tenantId, t.campaignId],
+    foreignColumns: [campaigns.tenantId, campaigns.id],
+    name: 'campaign_provider_runs_tenant_campaign_fk',
+  }).onDelete('cascade'),
+  uniqueTenantId: uniqueIndex('campaign_provider_runs_tenant_id_idx').on(t.tenantId, t.id),
   uniqueExternalCampaign: uniqueIndex('campaign_provider_runs_tenant_provider_external_idx')
     .on(t.tenantId, t.provider, t.externalCampaignId),
   byCampaign: index('campaign_provider_runs_tenant_campaign_idx').on(t.tenantId, t.campaignId),
+  providerValues: check('campaign_provider_runs_provider_check', sql`${t.provider} in ('heyreach', 'instantly')`),
 }))
 
 export const outreachIdentities = sqliteTable('outreach_identities', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text('tenant_id').notNull(),
-  campaignId: text('campaign_id').notNull().references(() => campaigns.id, { onDelete: 'cascade' }),
-  campaignLeadId: text('campaign_lead_id').notNull().references(() => campaignLeads.id, { onDelete: 'cascade' }),
+  campaignId: text('campaign_id').notNull(),
+  campaignLeadId: text('campaign_lead_id').notNull(),
   provider: text('provider', { enum: ['heyreach', 'instantly'] }).notNull(),
   identityType: text('identity_type', { enum: ['provider_id', 'email', 'linkedin_url'] }).notNull(),
   externalIdentityId: text('external_identity_id'),
@@ -419,18 +430,32 @@ export const outreachIdentities = sqliteTable('outreach_identities', {
   createdAt: text('created_at').default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').default(sql`(datetime('now'))`),
 }, (t) => ({
+  campaignTenant: foreignKey({
+    columns: [t.tenantId, t.campaignId],
+    foreignColumns: [campaigns.tenantId, campaigns.id],
+    name: 'outreach_identities_tenant_campaign_fk',
+  }).onDelete('cascade'),
+  campaignLeadTenant: foreignKey({
+    columns: [t.tenantId, t.campaignLeadId],
+    foreignColumns: [campaignLeads.tenantId, campaignLeads.id],
+    name: 'outreach_identities_tenant_campaign_lead_fk',
+  }).onDelete('cascade'),
+  uniqueTenantId: uniqueIndex('outreach_identities_tenant_id_idx').on(t.tenantId, t.id),
   uniqueIdentityValue: uniqueIndex('outreach_identities_tenant_campaign_provider_type_value_idx')
     .on(t.tenantId, t.campaignId, t.provider, t.identityType, t.normalizedValue),
   uniqueExternalIdentity: uniqueIndex('outreach_identities_tenant_campaign_provider_external_idx')
     .on(t.tenantId, t.campaignId, t.provider, t.externalIdentityId),
   byCampaignLead: index('outreach_identities_tenant_lead_idx').on(t.tenantId, t.campaignLeadId),
+  providerValues: check('outreach_identities_provider_check', sql`${t.provider} in ('heyreach', 'instantly')`),
+  identityTypeValues: check('outreach_identities_identity_type_check', sql`${t.identityType} in ('provider_id', 'email', 'linkedin_url')`),
+  evidenceTypeValues: check('outreach_identities_evidence_type_check', sql`${t.evidenceType} in ('provider_payload', 'existing_record', 'manual_link')`),
 }))
 
 export const outreachConversations = sqliteTable('outreach_conversations', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text('tenant_id').notNull(),
-  campaignLeadId: text('campaign_lead_id').notNull().references(() => campaignLeads.id, { onDelete: 'cascade' }),
-  providerRunId: text('provider_run_id').notNull().references(() => campaignProviderRuns.id, { onDelete: 'cascade' }),
+  campaignLeadId: text('campaign_lead_id').notNull(),
+  providerRunId: text('provider_run_id').notNull(),
   provider: text('provider', { enum: ['heyreach', 'instantly'] }).notNull(),
   channel: text('channel', { enum: ['linkedin', 'email'] }).notNull(),
   externalThreadId: text('external_thread_id').notNull(),
@@ -444,16 +469,30 @@ export const outreachConversations = sqliteTable('outreach_conversations', {
   firstSeenAt: text('first_seen_at'),
   lastSyncedAt: text('last_synced_at'),
 }, (t) => ({
+  campaignLeadTenant: foreignKey({
+    columns: [t.tenantId, t.campaignLeadId],
+    foreignColumns: [campaignLeads.tenantId, campaignLeads.id],
+    name: 'outreach_conversations_tenant_campaign_lead_fk',
+  }).onDelete('cascade'),
+  providerRunTenant: foreignKey({
+    columns: [t.tenantId, t.providerRunId],
+    foreignColumns: [campaignProviderRuns.tenantId, campaignProviderRuns.id],
+    name: 'outreach_conversations_tenant_provider_run_fk',
+  }).onDelete('cascade'),
+  uniqueTenantId: uniqueIndex('outreach_conversations_tenant_id_idx').on(t.tenantId, t.id),
   uniqueExternalThread: uniqueIndex('outreach_conversations_tenant_provider_thread_idx')
     .on(t.tenantId, t.provider, t.externalThreadId),
   byCampaignLead: index('outreach_conversations_tenant_lead_idx').on(t.tenantId, t.campaignLeadId),
+  providerValues: check('outreach_conversations_provider_check', sql`${t.provider} in ('heyreach', 'instantly')`),
+  channelValues: check('outreach_conversations_channel_check', sql`${t.channel} in ('linkedin', 'email')`),
+  lastDirectionValues: check('outreach_conversations_last_direction_check', sql`${t.lastDirection} in ('inbound', 'outbound')`),
+  lastMessageKindValues: check('outreach_conversations_last_message_kind_check', sql`${t.lastMessageKind} in ('campaign_automated', 'human', 'auto_reply', 'unknown')`),
 }))
 
 export const outreachMessages = sqliteTable('outreach_messages', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text('tenant_id').notNull(),
-  outreachConversationId: text('outreach_conversation_id').notNull()
-    .references(() => outreachConversations.id, { onDelete: 'cascade' }),
+  outreachConversationId: text('outreach_conversation_id').notNull(),
   provider: text('provider', { enum: ['heyreach', 'instantly'] }).notNull(),
   externalMessageId: text('external_message_id'),
   fingerprint: text('fingerprint').notNull(),
@@ -464,32 +503,53 @@ export const outreachMessages = sqliteTable('outreach_messages', {
   providerTimestamp: text('provider_timestamp').notNull(),
   importedAt: text('imported_at').default(sql`(datetime('now'))`),
 }, (t) => ({
+  conversationTenant: foreignKey({
+    columns: [t.tenantId, t.outreachConversationId],
+    foreignColumns: [outreachConversations.tenantId, outreachConversations.id],
+    name: 'outreach_messages_tenant_conversation_fk',
+  }).onDelete('cascade'),
   uniqueFingerprint: uniqueIndex('outreach_messages_tenant_provider_fingerprint_idx')
     .on(t.tenantId, t.provider, t.fingerprint),
   uniqueExternalMessage: uniqueIndex('outreach_messages_tenant_provider_external_idx')
     .on(t.tenantId, t.provider, t.externalMessageId),
   byConversationTimestamp: index('outreach_messages_tenant_conversation_timestamp_idx')
     .on(t.tenantId, t.outreachConversationId, t.providerTimestamp),
+  providerValues: check('outreach_messages_provider_check', sql`${t.provider} in ('heyreach', 'instantly')`),
+  directionValues: check('outreach_messages_direction_check', sql`${t.direction} in ('inbound', 'outbound')`),
+  messageKindValues: check('outreach_messages_kind_check', sql`${t.messageKind} in ('campaign_automated', 'human', 'auto_reply', 'unknown')`),
 }))
 
 export const outreachDrafts = sqliteTable('outreach_drafts', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text('tenant_id').notNull(),
-  campaignLeadId: text('campaign_lead_id').notNull().references(() => campaignLeads.id, { onDelete: 'cascade' }),
-  outreachConversationId: text('outreach_conversation_id')
-    .references(() => outreachConversations.id, { onDelete: 'set null' }),
+  campaignLeadId: text('campaign_lead_id').notNull(),
+  outreachConversationId: text('outreach_conversation_id'),
   targetChannel: text('target_channel', { enum: ['linkedin', 'email'] }).notNull(),
   bodyText: text('body_text').notNull(),
   origin: text('origin', { enum: ['codex', 'manual'] }).notNull(),
   status: text('status', { enum: ['draft', 'copied', 'discarded'] }).notNull().default('draft'),
   createdAt: text('created_at').default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').default(sql`(datetime('now'))`),
-})
+}, (t) => ({
+  campaignLeadTenant: foreignKey({
+    columns: [t.tenantId, t.campaignLeadId],
+    foreignColumns: [campaignLeads.tenantId, campaignLeads.id],
+    name: 'outreach_drafts_tenant_campaign_lead_fk',
+  }).onDelete('cascade'),
+  conversationTenant: foreignKey({
+    columns: [t.tenantId, t.outreachConversationId],
+    foreignColumns: [outreachConversations.tenantId, outreachConversations.id],
+    name: 'outreach_drafts_tenant_conversation_fk',
+  }).onDelete('no action'),
+  channelValues: check('outreach_drafts_channel_check', sql`${t.targetChannel} in ('linkedin', 'email')`),
+  originValues: check('outreach_drafts_origin_check', sql`${t.origin} in ('codex', 'manual')`),
+  statusValues: check('outreach_drafts_status_check', sql`${t.status} in ('draft', 'copied', 'discarded')`),
+}))
 
 export const outreachSyncRuns = sqliteTable('outreach_sync_runs', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text('tenant_id').notNull(),
-  campaignId: text('campaign_id').references(() => campaigns.id, { onDelete: 'set null' }),
+  campaignId: text('campaign_id'),
   requestedProviders: text('requested_providers', { mode: 'json' }).notNull(),
   status: text('status', { enum: ['queued', 'running', 'partial', 'succeeded', 'failed'] }).notNull().default('queued'),
   providerSummary: text('provider_summary', { mode: 'json' }).notNull().default('{}'),
@@ -503,8 +563,14 @@ export const outreachSyncRuns = sqliteTable('outreach_sync_runs', {
   createdAt: text('created_at').default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').default(sql`(datetime('now'))`),
 }, (t) => ({
+  campaignTenant: foreignKey({
+    columns: [t.tenantId, t.campaignId],
+    foreignColumns: [campaigns.tenantId, campaigns.id],
+    name: 'outreach_sync_runs_tenant_campaign_fk',
+  }).onDelete('no action'),
   byStatus: index('outreach_sync_runs_tenant_status_idx').on(t.tenantId, t.status),
   byCampaign: index('outreach_sync_runs_tenant_campaign_idx').on(t.tenantId, t.campaignId),
+  statusValues: check('outreach_sync_runs_status_check', sql`${t.status} in ('queued', 'running', 'partial', 'succeeded', 'failed')`),
 }))
 
 // ─── Provider Stats ────────────────────────────────────────────────────────

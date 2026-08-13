@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "74c0f5fc-f129-45c3-a7eb-0477a0366df1",
+  "id": "365ab9c2-faab-4cc4-bf95-ae57fa97eb17",
   "prevId": "a77457cf-54e5-4715-82e2-72d04e24d1b4",
   "tables": {
     "api_connections": {
@@ -651,7 +651,16 @@
           "default": "(datetime('now'))"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "campaign_leads_tenant_id_idx": {
+          "name": "campaign_leads_tenant_id_idx",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "isUnique": true
+        }
+      },
       "foreignKeys": {
         "campaign_leads_campaign_id_campaigns_id_fk": {
           "name": "campaign_leads_campaign_id_campaigns_id_fk",
@@ -810,6 +819,14 @@
         }
       },
       "indexes": {
+        "campaign_provider_runs_tenant_id_idx": {
+          "name": "campaign_provider_runs_tenant_id_idx",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "isUnique": true
+        },
         "campaign_provider_runs_tenant_provider_external_idx": {
           "name": "campaign_provider_runs_tenant_provider_external_idx",
           "columns": [
@@ -829,14 +846,16 @@
         }
       },
       "foreignKeys": {
-        "campaign_provider_runs_campaign_id_campaigns_id_fk": {
-          "name": "campaign_provider_runs_campaign_id_campaigns_id_fk",
+        "campaign_provider_runs_tenant_campaign_fk": {
+          "name": "campaign_provider_runs_tenant_campaign_fk",
           "tableFrom": "campaign_provider_runs",
           "tableTo": "campaigns",
           "columnsFrom": [
+            "tenant_id",
             "campaign_id"
           ],
           "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "cascade",
@@ -845,7 +864,12 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "campaign_provider_runs_provider_check": {
+          "name": "campaign_provider_runs_provider_check",
+          "value": "\"campaign_provider_runs\".\"provider\" in ('heyreach', 'instantly')"
+        }
+      }
     },
     "campaign_steps": {
       "name": "campaign_steps",
@@ -1260,7 +1284,16 @@
           "default": "(datetime('now'))"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "campaigns_tenant_id_idx": {
+          "name": "campaigns_tenant_id_idx",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "isUnique": true
+        }
+      },
       "foreignKeys": {
         "campaigns_conversation_id_conversations_id_fk": {
           "name": "campaigns_conversation_id_conversations_id_fk",
@@ -2268,6 +2301,14 @@
         }
       },
       "indexes": {
+        "outreach_conversations_tenant_id_idx": {
+          "name": "outreach_conversations_tenant_id_idx",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "isUnique": true
+        },
         "outreach_conversations_tenant_provider_thread_idx": {
           "name": "outreach_conversations_tenant_provider_thread_idx",
           "columns": [
@@ -2287,27 +2328,31 @@
         }
       },
       "foreignKeys": {
-        "outreach_conversations_campaign_lead_id_campaign_leads_id_fk": {
-          "name": "outreach_conversations_campaign_lead_id_campaign_leads_id_fk",
+        "outreach_conversations_tenant_campaign_lead_fk": {
+          "name": "outreach_conversations_tenant_campaign_lead_fk",
           "tableFrom": "outreach_conversations",
           "tableTo": "campaign_leads",
           "columnsFrom": [
+            "tenant_id",
             "campaign_lead_id"
           ],
           "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "outreach_conversations_provider_run_id_campaign_provider_runs_id_fk": {
-          "name": "outreach_conversations_provider_run_id_campaign_provider_runs_id_fk",
+        "outreach_conversations_tenant_provider_run_fk": {
+          "name": "outreach_conversations_tenant_provider_run_fk",
           "tableFrom": "outreach_conversations",
           "tableTo": "campaign_provider_runs",
           "columnsFrom": [
+            "tenant_id",
             "provider_run_id"
           ],
           "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "cascade",
@@ -2316,7 +2361,24 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "outreach_conversations_provider_check": {
+          "name": "outreach_conversations_provider_check",
+          "value": "\"outreach_conversations\".\"provider\" in ('heyreach', 'instantly')"
+        },
+        "outreach_conversations_channel_check": {
+          "name": "outreach_conversations_channel_check",
+          "value": "\"outreach_conversations\".\"channel\" in ('linkedin', 'email')"
+        },
+        "outreach_conversations_last_direction_check": {
+          "name": "outreach_conversations_last_direction_check",
+          "value": "\"outreach_conversations\".\"last_direction\" in ('inbound', 'outbound')"
+        },
+        "outreach_conversations_last_message_kind_check": {
+          "name": "outreach_conversations_last_message_kind_check",
+          "value": "\"outreach_conversations\".\"last_message_kind\" in ('campaign_automated', 'human', 'auto_reply', 'unknown')"
+        }
+      }
     },
     "outreach_drafts": {
       "name": "outreach_drafts",
@@ -2397,36 +2459,53 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "outreach_drafts_campaign_lead_id_campaign_leads_id_fk": {
-          "name": "outreach_drafts_campaign_lead_id_campaign_leads_id_fk",
+        "outreach_drafts_tenant_campaign_lead_fk": {
+          "name": "outreach_drafts_tenant_campaign_lead_fk",
           "tableFrom": "outreach_drafts",
           "tableTo": "campaign_leads",
           "columnsFrom": [
+            "tenant_id",
             "campaign_lead_id"
           ],
           "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "outreach_drafts_outreach_conversation_id_outreach_conversations_id_fk": {
-          "name": "outreach_drafts_outreach_conversation_id_outreach_conversations_id_fk",
+        "outreach_drafts_tenant_conversation_fk": {
+          "name": "outreach_drafts_tenant_conversation_fk",
           "tableFrom": "outreach_drafts",
           "tableTo": "outreach_conversations",
           "columnsFrom": [
+            "tenant_id",
             "outreach_conversation_id"
           ],
           "columnsTo": [
+            "tenant_id",
             "id"
           ],
-          "onDelete": "set null",
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "outreach_drafts_channel_check": {
+          "name": "outreach_drafts_channel_check",
+          "value": "\"outreach_drafts\".\"target_channel\" in ('linkedin', 'email')"
+        },
+        "outreach_drafts_origin_check": {
+          "name": "outreach_drafts_origin_check",
+          "value": "\"outreach_drafts\".\"origin\" in ('codex', 'manual')"
+        },
+        "outreach_drafts_status_check": {
+          "name": "outreach_drafts_status_check",
+          "value": "\"outreach_drafts\".\"status\" in ('draft', 'copied', 'discarded')"
+        }
+      }
     },
     "outreach_identities": {
       "name": "outreach_identities",
@@ -2512,6 +2591,14 @@
         }
       },
       "indexes": {
+        "outreach_identities_tenant_id_idx": {
+          "name": "outreach_identities_tenant_id_idx",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "isUnique": true
+        },
         "outreach_identities_tenant_campaign_provider_type_value_idx": {
           "name": "outreach_identities_tenant_campaign_provider_type_value_idx",
           "columns": [
@@ -2543,27 +2630,31 @@
         }
       },
       "foreignKeys": {
-        "outreach_identities_campaign_id_campaigns_id_fk": {
-          "name": "outreach_identities_campaign_id_campaigns_id_fk",
+        "outreach_identities_tenant_campaign_fk": {
+          "name": "outreach_identities_tenant_campaign_fk",
           "tableFrom": "outreach_identities",
           "tableTo": "campaigns",
           "columnsFrom": [
+            "tenant_id",
             "campaign_id"
           ],
           "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "outreach_identities_campaign_lead_id_campaign_leads_id_fk": {
-          "name": "outreach_identities_campaign_lead_id_campaign_leads_id_fk",
+        "outreach_identities_tenant_campaign_lead_fk": {
+          "name": "outreach_identities_tenant_campaign_lead_fk",
           "tableFrom": "outreach_identities",
           "tableTo": "campaign_leads",
           "columnsFrom": [
+            "tenant_id",
             "campaign_lead_id"
           ],
           "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "cascade",
@@ -2572,7 +2663,20 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "outreach_identities_provider_check": {
+          "name": "outreach_identities_provider_check",
+          "value": "\"outreach_identities\".\"provider\" in ('heyreach', 'instantly')"
+        },
+        "outreach_identities_identity_type_check": {
+          "name": "outreach_identities_identity_type_check",
+          "value": "\"outreach_identities\".\"identity_type\" in ('provider_id', 'email', 'linkedin_url')"
+        },
+        "outreach_identities_evidence_type_check": {
+          "name": "outreach_identities_evidence_type_check",
+          "value": "\"outreach_identities\".\"evidence_type\" in ('provider_payload', 'existing_record', 'manual_link')"
+        }
+      }
     },
     "outreach_messages": {
       "name": "outreach_messages",
@@ -2693,14 +2797,16 @@
         }
       },
       "foreignKeys": {
-        "outreach_messages_outreach_conversation_id_outreach_conversations_id_fk": {
-          "name": "outreach_messages_outreach_conversation_id_outreach_conversations_id_fk",
+        "outreach_messages_tenant_conversation_fk": {
+          "name": "outreach_messages_tenant_conversation_fk",
           "tableFrom": "outreach_messages",
           "tableTo": "outreach_conversations",
           "columnsFrom": [
+            "tenant_id",
             "outreach_conversation_id"
           ],
           "columnsTo": [
+            "tenant_id",
             "id"
           ],
           "onDelete": "cascade",
@@ -2709,7 +2815,20 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "outreach_messages_provider_check": {
+          "name": "outreach_messages_provider_check",
+          "value": "\"outreach_messages\".\"provider\" in ('heyreach', 'instantly')"
+        },
+        "outreach_messages_direction_check": {
+          "name": "outreach_messages_direction_check",
+          "value": "\"outreach_messages\".\"direction\" in ('inbound', 'outbound')"
+        },
+        "outreach_messages_kind_check": {
+          "name": "outreach_messages_kind_check",
+          "value": "\"outreach_messages\".\"message_kind\" in ('campaign_automated', 'human', 'auto_reply', 'unknown')"
+        }
+      }
     },
     "outreach_sync_runs": {
       "name": "outreach_sync_runs",
@@ -2848,23 +2967,30 @@
         }
       },
       "foreignKeys": {
-        "outreach_sync_runs_campaign_id_campaigns_id_fk": {
-          "name": "outreach_sync_runs_campaign_id_campaigns_id_fk",
+        "outreach_sync_runs_tenant_campaign_fk": {
+          "name": "outreach_sync_runs_tenant_campaign_fk",
           "tableFrom": "outreach_sync_runs",
           "tableTo": "campaigns",
           "columnsFrom": [
+            "tenant_id",
             "campaign_id"
           ],
           "columnsTo": [
+            "tenant_id",
             "id"
           ],
-          "onDelete": "set null",
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "checkConstraints": {
+        "outreach_sync_runs_status_check": {
+          "name": "outreach_sync_runs_status_check",
+          "value": "\"outreach_sync_runs\".\"status\" in ('queued', 'running', 'partial', 'succeeded', 'failed')"
+        }
+      }
     },
     "provider_preferences": {
       "name": "provider_preferences",

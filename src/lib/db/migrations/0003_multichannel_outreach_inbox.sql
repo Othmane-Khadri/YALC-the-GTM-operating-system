@@ -16,9 +16,11 @@ CREATE TABLE `campaign_provider_runs` (
 	`last_error_code` text,
 	`created_at` text DEFAULT (datetime('now')),
 	`updated_at` text DEFAULT (datetime('now')),
-	FOREIGN KEY (`campaign_id`) REFERENCES `campaigns`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`tenant_id`,`campaign_id`) REFERENCES `campaigns`(`tenant_id`,`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "campaign_provider_runs_provider_check" CHECK("campaign_provider_runs"."provider" in ('heyreach', 'instantly'))
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX `campaign_provider_runs_tenant_id_idx` ON `campaign_provider_runs` (`tenant_id`,`id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `campaign_provider_runs_tenant_provider_external_idx` ON `campaign_provider_runs` (`tenant_id`,`provider`,`external_campaign_id`);--> statement-breakpoint
 CREATE INDEX `campaign_provider_runs_tenant_campaign_idx` ON `campaign_provider_runs` (`tenant_id`,`campaign_id`);--> statement-breakpoint
 CREATE TABLE `outreach_conversations` (
@@ -38,10 +40,15 @@ CREATE TABLE `outreach_conversations` (
 	`last_message_kind` text,
 	`first_seen_at` text,
 	`last_synced_at` text,
-	FOREIGN KEY (`campaign_lead_id`) REFERENCES `campaign_leads`(`id`) ON UPDATE no action ON DELETE cascade,
-	FOREIGN KEY (`provider_run_id`) REFERENCES `campaign_provider_runs`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`tenant_id`,`campaign_lead_id`) REFERENCES `campaign_leads`(`tenant_id`,`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`tenant_id`,`provider_run_id`) REFERENCES `campaign_provider_runs`(`tenant_id`,`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "outreach_conversations_provider_check" CHECK("outreach_conversations"."provider" in ('heyreach', 'instantly')),
+	CONSTRAINT "outreach_conversations_channel_check" CHECK("outreach_conversations"."channel" in ('linkedin', 'email')),
+	CONSTRAINT "outreach_conversations_last_direction_check" CHECK("outreach_conversations"."last_direction" in ('inbound', 'outbound')),
+	CONSTRAINT "outreach_conversations_last_message_kind_check" CHECK("outreach_conversations"."last_message_kind" in ('campaign_automated', 'human', 'auto_reply', 'unknown'))
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX `outreach_conversations_tenant_id_idx` ON `outreach_conversations` (`tenant_id`,`id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `outreach_conversations_tenant_provider_thread_idx` ON `outreach_conversations` (`tenant_id`,`provider`,`external_thread_id`);--> statement-breakpoint
 CREATE INDEX `outreach_conversations_tenant_lead_idx` ON `outreach_conversations` (`tenant_id`,`campaign_lead_id`);--> statement-breakpoint
 CREATE TABLE `outreach_drafts` (
@@ -55,8 +62,11 @@ CREATE TABLE `outreach_drafts` (
 	`status` text DEFAULT 'draft' NOT NULL,
 	`created_at` text DEFAULT (datetime('now')),
 	`updated_at` text DEFAULT (datetime('now')),
-	FOREIGN KEY (`campaign_lead_id`) REFERENCES `campaign_leads`(`id`) ON UPDATE no action ON DELETE cascade,
-	FOREIGN KEY (`outreach_conversation_id`) REFERENCES `outreach_conversations`(`id`) ON UPDATE no action ON DELETE set null
+	FOREIGN KEY (`tenant_id`,`campaign_lead_id`) REFERENCES `campaign_leads`(`tenant_id`,`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`tenant_id`,`outreach_conversation_id`) REFERENCES `outreach_conversations`(`tenant_id`,`id`) ON UPDATE no action ON DELETE no action,
+	CONSTRAINT "outreach_drafts_channel_check" CHECK("outreach_drafts"."target_channel" in ('linkedin', 'email')),
+	CONSTRAINT "outreach_drafts_origin_check" CHECK("outreach_drafts"."origin" in ('codex', 'manual')),
+	CONSTRAINT "outreach_drafts_status_check" CHECK("outreach_drafts"."status" in ('draft', 'copied', 'discarded'))
 );
 --> statement-breakpoint
 CREATE TABLE `outreach_identities` (
@@ -71,10 +81,14 @@ CREATE TABLE `outreach_identities` (
 	`evidence_type` text NOT NULL,
 	`created_at` text DEFAULT (datetime('now')),
 	`updated_at` text DEFAULT (datetime('now')),
-	FOREIGN KEY (`campaign_id`) REFERENCES `campaigns`(`id`) ON UPDATE no action ON DELETE cascade,
-	FOREIGN KEY (`campaign_lead_id`) REFERENCES `campaign_leads`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`tenant_id`,`campaign_id`) REFERENCES `campaigns`(`tenant_id`,`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`tenant_id`,`campaign_lead_id`) REFERENCES `campaign_leads`(`tenant_id`,`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "outreach_identities_provider_check" CHECK("outreach_identities"."provider" in ('heyreach', 'instantly')),
+	CONSTRAINT "outreach_identities_identity_type_check" CHECK("outreach_identities"."identity_type" in ('provider_id', 'email', 'linkedin_url')),
+	CONSTRAINT "outreach_identities_evidence_type_check" CHECK("outreach_identities"."evidence_type" in ('provider_payload', 'existing_record', 'manual_link'))
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX `outreach_identities_tenant_id_idx` ON `outreach_identities` (`tenant_id`,`id`);--> statement-breakpoint
 CREATE UNIQUE INDEX `outreach_identities_tenant_campaign_provider_type_value_idx` ON `outreach_identities` (`tenant_id`,`campaign_id`,`provider`,`identity_type`,`normalized_value`);--> statement-breakpoint
 CREATE UNIQUE INDEX `outreach_identities_tenant_campaign_provider_external_idx` ON `outreach_identities` (`tenant_id`,`campaign_id`,`provider`,`external_identity_id`);--> statement-breakpoint
 CREATE INDEX `outreach_identities_tenant_lead_idx` ON `outreach_identities` (`tenant_id`,`campaign_lead_id`);--> statement-breakpoint
@@ -91,7 +105,10 @@ CREATE TABLE `outreach_messages` (
 	`body_text` text NOT NULL,
 	`provider_timestamp` text NOT NULL,
 	`imported_at` text DEFAULT (datetime('now')),
-	FOREIGN KEY (`outreach_conversation_id`) REFERENCES `outreach_conversations`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`tenant_id`,`outreach_conversation_id`) REFERENCES `outreach_conversations`(`tenant_id`,`id`) ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "outreach_messages_provider_check" CHECK("outreach_messages"."provider" in ('heyreach', 'instantly')),
+	CONSTRAINT "outreach_messages_direction_check" CHECK("outreach_messages"."direction" in ('inbound', 'outbound')),
+	CONSTRAINT "outreach_messages_kind_check" CHECK("outreach_messages"."message_kind" in ('campaign_automated', 'human', 'auto_reply', 'unknown'))
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `outreach_messages_tenant_provider_fingerprint_idx` ON `outreach_messages` (`tenant_id`,`provider`,`fingerprint`);--> statement-breakpoint
@@ -113,11 +130,26 @@ CREATE TABLE `outreach_sync_runs` (
 	`finished_at` text,
 	`created_at` text DEFAULT (datetime('now')),
 	`updated_at` text DEFAULT (datetime('now')),
-	FOREIGN KEY (`campaign_id`) REFERENCES `campaigns`(`id`) ON UPDATE no action ON DELETE set null
+	FOREIGN KEY (`tenant_id`,`campaign_id`) REFERENCES `campaigns`(`tenant_id`,`id`) ON UPDATE no action ON DELETE no action,
+	CONSTRAINT "outreach_sync_runs_status_check" CHECK("outreach_sync_runs"."status" in ('queued', 'running', 'partial', 'succeeded', 'failed'))
 );
 --> statement-breakpoint
 CREATE INDEX `outreach_sync_runs_tenant_status_idx` ON `outreach_sync_runs` (`tenant_id`,`status`);--> statement-breakpoint
 CREATE INDEX `outreach_sync_runs_tenant_campaign_idx` ON `outreach_sync_runs` (`tenant_id`,`campaign_id`);--> statement-breakpoint
 ALTER TABLE `campaign_leads` ADD `inbox_state` text;--> statement-breakpoint
 ALTER TABLE `campaign_leads` ADD `snoozed_until` text;--> statement-breakpoint
-ALTER TABLE `campaign_leads` ADD `inbox_state_updated_at` text;
+ALTER TABLE `campaign_leads` ADD `inbox_state_updated_at` text;--> statement-breakpoint
+CREATE TRIGGER `campaign_leads_inbox_state_insert_check`
+BEFORE INSERT ON `campaign_leads`
+WHEN NEW.`inbox_state` IS NOT NULL AND NEW.`inbox_state` NOT IN ('pending', 'resolved', 'snoozed')
+BEGIN
+  SELECT RAISE(ABORT, 'invalid campaign_leads.inbox_state');
+END;--> statement-breakpoint
+CREATE TRIGGER `campaign_leads_inbox_state_update_check`
+BEFORE UPDATE OF `inbox_state` ON `campaign_leads`
+WHEN NEW.`inbox_state` IS NOT NULL AND NEW.`inbox_state` NOT IN ('pending', 'resolved', 'snoozed')
+BEGIN
+  SELECT RAISE(ABORT, 'invalid campaign_leads.inbox_state');
+END;--> statement-breakpoint
+CREATE UNIQUE INDEX `campaign_leads_tenant_id_idx` ON `campaign_leads` (`tenant_id`,`id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `campaigns_tenant_id_idx` ON `campaigns` (`tenant_id`,`id`);
