@@ -23,6 +23,7 @@ import { gatesRoutes } from './routes/gates'
 import { visualizeApiRoutes, visualizePageRoutes } from './routes/visualize'
 import { dashboardRoutes } from './routes/dashboard'
 import { outreachRoutes } from './routes/outreach'
+import { leadsRoutes } from './routes/leads.js'
 import { OutreachSyncCoordinator } from '../outreach/sync.js'
 import { rawClient } from '../db/index.js'
 
@@ -98,6 +99,7 @@ export function createApp() {
   app.route('/api/visualize', visualizeApiRoutes)
   app.route('/api/dashboard', dashboardRoutes)
   app.route('/api/outreach', outreachRoutes)
+  app.route('/api/leads', leadsRoutes)
 
   // Generated visualization page — serves saved HTML from
   // `~/.gtm-os/visualizations/<view_id>.html` with the right Content-Type.
