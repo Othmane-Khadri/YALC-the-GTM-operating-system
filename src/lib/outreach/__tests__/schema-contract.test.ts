@@ -11,6 +11,7 @@ const migrationNames = [
   '0001_sticky_junta.sql',
   '0002_warm_liz_osborn.sql',
   '0003_multichannel_outreach_inbox.sql',
+  '0004_lucky_chat.sql',
 ]
 
 async function applyMigrations() {
@@ -96,7 +97,7 @@ describe('outreach schema contract', () => {
       'first_seen_at', 'last_synced_at',
     ]))
     await expect(columnNames('outreach_messages')).resolves.toEqual(expect.arrayContaining([
-      'tenant_id', 'outreach_conversation_id', 'provider', 'external_message_id',
+      'tenant_id', 'outreach_conversation_id', 'provider_run_id', 'provider', 'external_message_id',
       'fingerprint', 'direction', 'message_kind', 'subject', 'body_text',
       'provider_timestamp', 'imported_at',
     ]))
@@ -129,6 +130,8 @@ describe('outreach schema contract', () => {
     expect(await foreignKeys('outreach_messages')).toEqual(expect.arrayContaining([
       { from: 'tenant_id', table: 'outreach_conversations', to: 'tenant_id' },
       { from: 'outreach_conversation_id', table: 'outreach_conversations', to: 'id' },
+      { from: 'tenant_id', table: 'campaign_provider_runs', to: 'tenant_id' },
+      { from: 'provider_run_id', table: 'campaign_provider_runs', to: 'id' },
     ]))
     expect(await foreignKeys('outreach_drafts')).toEqual(expect.arrayContaining([
       { from: 'tenant_id', table: 'campaign_leads', to: 'tenant_id' },
@@ -153,13 +156,13 @@ describe('outreach schema contract', () => {
     )
     await expectUniqueIndex(
       'outreach_conversations',
-      'outreach_conversations_tenant_provider_thread_idx',
-      ['tenant_id', 'provider', 'external_thread_id'],
+      'outreach_conversations_tenant_run_provider_thread_idx',
+      ['tenant_id', 'provider_run_id', 'provider', 'external_thread_id'],
     )
     await expectUniqueIndex(
       'outreach_messages',
-      'outreach_messages_tenant_provider_fingerprint_idx',
-      ['tenant_id', 'provider', 'fingerprint'],
+      'outreach_messages_tenant_run_provider_fingerprint_idx',
+      ['tenant_id', 'provider_run_id', 'provider', 'fingerprint'],
     )
 
     const campaignLeadColumns = await raw.execute('PRAGMA table_info(campaign_leads)')

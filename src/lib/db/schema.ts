@@ -480,8 +480,8 @@ export const outreachConversations = sqliteTable('outreach_conversations', {
     name: 'outreach_conversations_tenant_provider_run_fk',
   }).onDelete('cascade'),
   uniqueTenantId: uniqueIndex('outreach_conversations_tenant_id_idx').on(t.tenantId, t.id),
-  uniqueExternalThread: uniqueIndex('outreach_conversations_tenant_provider_thread_idx')
-    .on(t.tenantId, t.provider, t.externalThreadId),
+  uniqueExternalThread: uniqueIndex('outreach_conversations_tenant_run_provider_thread_idx')
+    .on(t.tenantId, t.providerRunId, t.provider, t.externalThreadId),
   byCampaignLead: index('outreach_conversations_tenant_lead_idx').on(t.tenantId, t.campaignLeadId),
   providerValues: check('outreach_conversations_provider_check', sql`${t.provider} in ('heyreach', 'instantly')`),
   channelValues: check('outreach_conversations_channel_check', sql`${t.channel} in ('linkedin', 'email')`),
@@ -493,6 +493,8 @@ export const outreachMessages = sqliteTable('outreach_messages', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   tenantId: text('tenant_id').notNull(),
   outreachConversationId: text('outreach_conversation_id').notNull(),
+  // Provider run is the immutable canonical-campaign scope for message keys.
+  providerRunId: text('provider_run_id').notNull(),
   provider: text('provider', { enum: ['heyreach', 'instantly'] }).notNull(),
   externalMessageId: text('external_message_id'),
   fingerprint: text('fingerprint').notNull(),
@@ -508,10 +510,15 @@ export const outreachMessages = sqliteTable('outreach_messages', {
     foreignColumns: [outreachConversations.tenantId, outreachConversations.id],
     name: 'outreach_messages_tenant_conversation_fk',
   }).onDelete('cascade'),
-  uniqueFingerprint: uniqueIndex('outreach_messages_tenant_provider_fingerprint_idx')
-    .on(t.tenantId, t.provider, t.fingerprint),
-  uniqueExternalMessage: uniqueIndex('outreach_messages_tenant_provider_external_idx')
-    .on(t.tenantId, t.provider, t.externalMessageId),
+  providerRunTenant: foreignKey({
+    columns: [t.tenantId, t.providerRunId],
+    foreignColumns: [campaignProviderRuns.tenantId, campaignProviderRuns.id],
+    name: 'outreach_messages_tenant_provider_run_fk',
+  }).onDelete('cascade'),
+  uniqueFingerprint: uniqueIndex('outreach_messages_tenant_run_provider_fingerprint_idx')
+    .on(t.tenantId, t.providerRunId, t.provider, t.fingerprint),
+  uniqueExternalMessage: uniqueIndex('outreach_messages_tenant_run_provider_external_idx')
+    .on(t.tenantId, t.providerRunId, t.provider, t.externalMessageId),
   byConversationTimestamp: index('outreach_messages_tenant_conversation_timestamp_idx')
     .on(t.tenantId, t.outreachConversationId, t.providerTimestamp),
   providerValues: check('outreach_messages_provider_check', sql`${t.provider} in ('heyreach', 'instantly')`),

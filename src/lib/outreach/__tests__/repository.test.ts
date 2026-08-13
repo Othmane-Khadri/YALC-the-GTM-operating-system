@@ -15,6 +15,7 @@ const migrationNames = [
   '0001_sticky_junta.sql',
   '0002_warm_liz_osborn.sql',
   '0003_multichannel_outreach_inbox.sql',
+  '0004_lucky_chat.sql',
 ]
 
 async function applyMigrations() {
@@ -166,7 +167,7 @@ describe('OutreachRepository.commitPage', () => {
     })
     await repository.commitPage({
       tenantId: 'tenant-a', campaignId: 'campaign-c', providerRunId: 'run-tenant-a-campaign-c', syncRunId: 'sync-tenant-a-campaign-c', provider: 'instantly',
-      page: page([message({ externalMessageId: 'campaign-c-message', externalThreadId: 'campaign-c-thread' })]),
+      page: page([message()]),
     })
 
     await expect(raw.execute(`SELECT tenant_id, campaign_id, count(*) AS count
@@ -181,6 +182,12 @@ describe('OutreachRepository.commitPage', () => {
       INNER JOIN campaign_provider_runs AS run ON run.id = conversation.provider_run_id
       WHERE message.tenant_id = ? AND run.campaign_id = ?`, ['tenant-a', 'campaign-c']))
       .resolves.toMatchObject({ rows: [{ count: 1 }] })
+    await expect(raw.execute(`SELECT id, sync_cursor FROM campaign_provider_runs
+      WHERE tenant_id = ? AND campaign_id IN (?, ?) ORDER BY campaign_id`, ['tenant-a', 'campaign-a', 'campaign-c']))
+      .resolves.toMatchObject({ rows: [
+        { id: 'run-tenant-a', sync_cursor: 'after-page' },
+        { id: 'run-tenant-a-campaign-c', sync_cursor: 'after-page' },
+      ] })
   })
 
   it('rolls back both page rows and cursor when the cursor update fails', async () => {
@@ -222,20 +229,60 @@ describe('OutreachRepository.commitPage', () => {
       .resolves.toMatchObject({ rows: [{ identity_conflicts: 1 }] })
   })
 
-  it('uses an explicit manual link only after no exact provider, LinkedIn, or email identity matched', async () => {
+  it('leaves unresolved threads separate unless each thread has its own explicit manual link', async () => {
     await raw.execute({
       sql: 'INSERT INTO campaign_leads (id, tenant_id, campaign_id, provider_id) VALUES (?, ?, ?, ?)',
-      args: ['manual-lead', 'tenant-a', 'campaign-a', 'manual-existing'],
+      args: ['manual-lead-a', 'tenant-a', 'campaign-a', 'manual-existing-a'],
+    })
+    await raw.execute({
+      sql: 'INSERT INTO campaign_leads (id, tenant_id, campaign_id, provider_id) VALUES (?, ?, ?, ?)',
+      args: ['manual-lead-b', 'tenant-a', 'campaign-a', 'manual-existing-b'],
     })
     const repository = new OutreachRepository(raw)
     await repository.commitPage({
       tenantId: 'tenant-a', campaignId: 'campaign-a', providerRunId: 'run-tenant-a', syncRunId: 'sync-tenant-a', provider: 'instantly',
-      manualLeadId: 'manual-lead',
-      page: page([message({ externalIdentityId: null, email: null, linkedinUrl: null, externalThreadId: 'manual-thread' })]),
+      page: page([
+        message({ externalMessageId: 'unlinked-a', externalIdentityId: null, email: null, linkedinUrl: null, externalThreadId: 'unlinked-thread-a' }),
+        message({ externalMessageId: 'unlinked-b', externalIdentityId: null, email: null, linkedinUrl: null, externalThreadId: 'unlinked-thread-b' }),
+      ]),
     })
+    await expect(raw.execute(`SELECT count(DISTINCT campaign_lead_id) AS count FROM outreach_conversations
+      WHERE tenant_id = ? AND external_thread_id IN (?, ?)`, ['tenant-a', 'unlinked-thread-a', 'unlinked-thread-b']))
+      .resolves.toMatchObject({ rows: [{ count: 2 }] })
 
-    await expect(raw.execute('SELECT campaign_lead_id FROM outreach_conversations WHERE tenant_id = ?', ['tenant-a']))
-      .resolves.toMatchObject({ rows: [{ campaign_lead_id: 'manual-lead' }] })
+    await repository.commitPage({
+      tenantId: 'tenant-a', campaignId: 'campaign-a', providerRunId: 'run-tenant-a', syncRunId: 'sync-tenant-a', provider: 'instantly',
+      manualLeadIdByExternalThreadId: {
+        'manual-thread-a': 'manual-lead-a',
+        'manual-thread-b': 'manual-lead-b',
+      },
+      page: page([
+        message({ externalMessageId: 'manual-a', externalIdentityId: null, email: null, linkedinUrl: null, externalThreadId: 'manual-thread-a' }),
+        message({ externalMessageId: 'manual-b', externalIdentityId: null, email: null, linkedinUrl: null, externalThreadId: 'manual-thread-b' }),
+      ]),
+    })
+    await expect(raw.execute(`SELECT external_thread_id, campaign_lead_id FROM outreach_conversations
+      WHERE tenant_id = ? AND external_thread_id IN (?, ?) ORDER BY external_thread_id`, ['tenant-a', 'manual-thread-a', 'manual-thread-b']))
+      .resolves.toMatchObject({ rows: [
+        { external_thread_id: 'manual-thread-a', campaign_lead_id: 'manual-lead-a' },
+        { external_thread_id: 'manual-thread-b', campaign_lead_id: 'manual-lead-b' },
+      ] })
+  })
+
+  it('rejects a per-thread manual link outside the current tenant and campaign', async () => {
+    await seed('tenant-a', 'campaign-c', 'instantly', 'manual-outside')
+    await raw.execute({
+      sql: 'INSERT INTO campaign_leads (id, tenant_id, campaign_id, provider_id) VALUES (?, ?, ?, ?)',
+      args: ['outside-lead', 'tenant-a', 'campaign-c', 'outside'],
+    })
+    const repository = new OutreachRepository(raw)
+    await expect(repository.commitPage({
+      tenantId: 'tenant-a', campaignId: 'campaign-a', providerRunId: 'run-tenant-a', syncRunId: 'sync-tenant-a', provider: 'instantly',
+      manualLeadIdByExternalThreadId: { 'manual-thread': 'outside-lead' },
+      page: page([message({ externalIdentityId: null, email: null, linkedinUrl: null, externalThreadId: 'manual-thread' })]),
+    })).rejects.toThrow('manual lead link is outside the tenant or canonical campaign')
+    await expect(raw.execute('SELECT count(*) AS count FROM outreach_messages WHERE tenant_id = ? AND provider_run_id = ?', ['tenant-a', 'run-tenant-a']))
+      .resolves.toMatchObject({ rows: [{ count: 0 }] })
   })
 
   it('retains already imported messages when a later page omits them', async () => {

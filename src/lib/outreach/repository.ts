@@ -17,10 +17,10 @@ export interface CommitOutreachPageInput {
   provider: OutreachProvider
   page: ReadMessagePageResult
   /**
-   * A human-confirmed link for this page. It is considered only after provider,
-   * LinkedIn, and email evidence, and must belong to this tenant and campaign.
+   * Human-confirmed links keyed by the provider's exact thread selector. A
+   * mapping is considered only after provider, LinkedIn, and email evidence.
    */
-  manualLeadId?: string | null
+  manualLeadIdByExternalThreadId?: Readonly<Record<string, string | null | undefined>>
 }
 
 export interface CommitOutreachPageResult {
@@ -136,7 +136,12 @@ export class OutreachRepository {
           throw new Error('normalized message requires a thread id and body text')
         }
 
-        const resolution = await this.resolveLead(transaction, input, message)
+        const resolution = await this.resolveLead(
+          transaction,
+          input,
+          message,
+          input.manualLeadIdByExternalThreadId?.[message.externalThreadId] ?? null,
+        )
         identityConflicts += resolution.identityConflicts
         await this.persistUnambiguousIdentities(transaction, input, resolution)
 
@@ -205,7 +210,12 @@ export class OutreachRepository {
     if (!row) throw new Error('sync run is outside the tenant or canonical campaign')
   }
 
-  private async resolveLead(transaction: Transaction, input: CommitOutreachPageInput, message: NormalizedMessage): Promise<LeadResolution> {
+  private async resolveLead(
+    transaction: Transaction,
+    input: CommitOutreachPageInput,
+    message: NormalizedMessage,
+    manualLeadId: string | null,
+  ): Promise<LeadResolution> {
     const candidates = buildIdentityCandidates({
       externalIdentityId: message.externalIdentityId,
       linkedinUrl: message.linkedinUrl,
@@ -223,8 +233,8 @@ export class OutreachRepository {
       else if (selectedLeadId !== leadId) identityConflicts += 1
     }
 
-    if (selectedLeadId === null && input.manualLeadId?.trim()) {
-      selectedLeadId = await this.findManualLead(transaction, input, input.manualLeadId.trim())
+    if (selectedLeadId === null && manualLeadId?.trim()) {
+      selectedLeadId = await this.findManualLead(transaction, input, manualLeadId.trim())
       if (selectedLeadId === null) throw new Error('manual lead link is outside the tenant or canonical campaign')
     }
 
@@ -377,22 +387,23 @@ export class OutreachRepository {
       INNER JOIN campaign_provider_runs AS run
         ON run.id = conversation.provider_run_id AND run.tenant_id = conversation.tenant_id
       WHERE message.tenant_id = ? AND message.provider = ?
-        AND run.campaign_id = ? AND conversation.provider_run_id = ?
+        AND run.campaign_id = ? AND conversation.provider_run_id = ? AND message.provider_run_id = ?
         AND (message.fingerprint = ? OR message.external_message_id = ?)
       LIMIT 1`, [
       input.tenantId,
       input.provider,
       input.campaignId,
       input.providerRunId,
+      input.providerRunId,
       fingerprint,
       message.externalMessageId?.trim() || null,
     ])
     if (existing) return false
     await execute(transaction, `INSERT INTO outreach_messages
-      (id, tenant_id, outreach_conversation_id, provider, external_message_id, fingerprint,
+      (id, tenant_id, outreach_conversation_id, provider_run_id, provider, external_message_id, fingerprint,
        direction, message_kind, subject, body_text, provider_timestamp)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
-      randomUUID(), input.tenantId, conversationId, input.provider, message.externalMessageId?.trim() || null, fingerprint,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+      randomUUID(), input.tenantId, conversationId, input.providerRunId, input.provider, message.externalMessageId?.trim() || null, fingerprint,
       message.direction, message.kind, message.subject, message.bodyText, timestamp,
     ])
     return true
