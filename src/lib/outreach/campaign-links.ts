@@ -23,6 +23,11 @@ export interface CampaignLink {
   senderAccountId: string | null
 }
 
+type MappingState = {
+  link: CampaignLink
+  firstMessageImportedAt: string | null
+}
+
 export interface CampaignLinkInput {
   tenantId: string
   provider: OutreachProvider
@@ -144,6 +149,8 @@ export class CampaignLinkService {
         sql: `UPDATE campaign_provider_runs
           SET campaign_id = ?, external_name = ?, external_status = ?, sender_account_id = ?, updated_at = datetime('now')
           WHERE id = ? AND tenant_id = ? AND provider = ? AND external_campaign_id = ?
+            AND campaign_id = ?
+            AND ((sender_account_id IS NULL AND ? IS NULL) OR sender_account_id = ?)
             AND first_message_imported_at IS NULL
           RETURNING id, campaign_id, sender_account_id`,
         args: [
@@ -155,16 +162,19 @@ export class CampaignLinkService {
           input.tenantId,
           input.provider,
           input.externalCampaignId,
+          prior.campaignId,
+          prior.senderAccountId,
+          prior.senderAccountId,
         ],
       })
       const updated = reassigned.rows[0] as Record<string, unknown> | undefined
       if (updated) return { ok: true, created: false, link: toLink(updated) }
 
-      const current = await this.findLink(input.tenantId, input.provider, input.externalCampaignId)
-      if (current?.campaignId === input.campaignId && current.senderAccountId === senderAccountId) {
-        return { ok: true, created: false, link: current }
+      const current = await this.findMapping(input.tenantId, input.provider, input.externalCampaignId)
+      if (current?.link.campaignId === input.campaignId && current.link.senderAccountId === senderAccountId) {
+        return { ok: true, created: false, link: current.link }
       }
-      return { ok: false, error: 'mapping_locked' }
+      return { ok: false, error: current?.firstMessageImportedAt ? 'mapping_locked' : 'mapping_conflict' }
     }
 
     const id = randomUUID()
@@ -183,10 +193,10 @@ export class CampaignLinkService {
         senderAccountId,
       ],
     })
-    const current = await this.findLink(input.tenantId, input.provider, input.externalCampaignId)
+    const current = await this.findMapping(input.tenantId, input.provider, input.externalCampaignId)
     if (!current) return { ok: false, error: 'mapping_conflict' }
-    if (current.campaignId === input.campaignId && current.senderAccountId === senderAccountId) {
-      return { ok: true, created: inserted.rowsAffected > 0, link: current }
+    if (current.link.campaignId === input.campaignId && current.link.senderAccountId === senderAccountId) {
+      return { ok: true, created: inserted.rowsAffected > 0, link: current.link }
     }
     return { ok: false, error: 'mapping_conflict' }
   }
@@ -229,14 +239,19 @@ export class CampaignLinkService {
     })
   }
 
-  private async findLink(tenantId: string, provider: OutreachProvider, externalCampaignId: string): Promise<CampaignLink | null> {
+  private async findMapping(tenantId: string, provider: OutreachProvider, externalCampaignId: string): Promise<MappingState | null> {
     const result = await this.raw.execute({
-      sql: `SELECT id, campaign_id, sender_account_id
+      sql: `SELECT id, campaign_id, sender_account_id, first_message_imported_at
         FROM campaign_provider_runs
         WHERE tenant_id = ? AND provider = ? AND external_campaign_id = ?`,
       args: [tenantId, provider, externalCampaignId],
     })
     const row = result.rows[0] as Record<string, unknown> | undefined
-    return row ? toLink(row) : null
+    return row
+      ? {
+          link: toLink(row),
+          firstMessageImportedAt: typeof row.first_message_imported_at === 'string' ? row.first_message_imported_at : null,
+        }
+      : null
   }
 }

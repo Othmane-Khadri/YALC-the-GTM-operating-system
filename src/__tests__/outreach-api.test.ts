@@ -263,6 +263,60 @@ describe('campaign links', () => {
     expect(left.body).toEqual(right.body)
   })
 
+  it('allows only one concurrent reassignment from the same prior mapping', async () => {
+    const initialRoute = appFor()
+    await json(initialRoute, '/campaign-links', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        tenant: 'tenant-a', provider: 'instantly', externalCampaignId: 'instant-9001', campaignId: `${TEST_PREFIX}local-a`,
+      }),
+    })
+    await seedCampaign({ id: `${TEST_PREFIX}concurrent-left`, tenantId: 'tenant-a', title: 'Concurrent left' })
+    await seedCampaign({ id: `${TEST_PREFIX}concurrent-right`, tenantId: 'tenant-a', title: 'Concurrent right' })
+
+    let readCount = 0
+    let releaseFirstRead: (() => void) | null = null
+    const racingRaw = {
+      ...rawClient,
+      execute: async (statement: Parameters<typeof rawClient.execute>[0], args?: Parameters<typeof rawClient.execute>[1]) => {
+        const sql = typeof statement === 'string' ? statement : statement.sql
+        const result = args === undefined ? await rawClient.execute(statement) : await rawClient.execute(statement, args)
+        if (/SELECT id, campaign_id, sender_account_id, first_message_imported_at/.test(sql)) {
+          readCount += 1
+          if (readCount === 1) {
+            await new Promise<void>((resolve) => { releaseFirstRead = resolve })
+          } else if (readCount === 2) {
+            releaseFirstRead?.()
+          }
+        }
+        return result
+      },
+    } as typeof rawClient
+    const route = appFor('tenant-a', racingRaw)
+    const requestFor = (campaignId: string) => ({
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        tenant: 'tenant-a', provider: 'instantly', externalCampaignId: 'instant-9001', campaignId,
+      }),
+    })
+
+    const [left, right] = await Promise.all([
+      json(route, '/campaign-links', requestFor(`${TEST_PREFIX}concurrent-left`)),
+      json(route, '/campaign-links', requestFor(`${TEST_PREFIX}concurrent-right`)),
+    ])
+
+    expect([left.response.status, right.response.status].sort()).toEqual([200, 409])
+    const winner = left.response.status === 200 ? left : right
+    const loser = left.response.status === 409 ? left : right
+    expect(loser.body).toEqual({ error: 'mapping_conflict' })
+    await expect(rawClient.execute({
+      sql: 'SELECT campaign_id FROM campaign_provider_runs WHERE tenant_id = ? AND provider = ? AND external_campaign_id = ?',
+      args: ['tenant-a', 'instantly', 'instant-9001'],
+    })).resolves.toMatchObject({ rows: [{ campaign_id: (winner.body.link as { campaignId: string }).campaignId }] })
+  })
+
   it.each([null, [], 'not-an-object'])('rejects non-object JSON bodies without dereferencing them: %j', async (body) => {
     const { response, body: responseBody } = await json(appFor(), '/campaign-links', {
       method: 'POST',
