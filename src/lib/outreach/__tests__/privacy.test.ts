@@ -9,6 +9,14 @@ const tenantId = 'privacy-tenant'
 const campaignId = 'privacy-campaign'
 const conversationId = 'privacy-conversation'
 const providerRunId = 'privacy-provider-run'
+const leadId = 'privacy-existing-lead'
+const identityId = 'privacy-existing-identity'
+const outreachConversationId = 'privacy-existing-conversation'
+const outreachMessageId = 'privacy-existing-message'
+const draftId = 'privacy-existing-draft'
+const priorCursor = JSON.stringify({ mode: 'incremental', syncRunId: 'privacy-prior-run', cursor: 'opaque-prior-cursor' })
+const priorWatermark = '2026-08-13T09:00:00.000Z'
+const priorFirstImportedAt = '2026-08-13T08:00:00.000Z'
 
 const sentinels = [
   'credential_PRIVACY_SENTINEL',
@@ -18,6 +26,20 @@ const sentinels = [
 ]
 
 let syncRunId: string | null = null
+
+type TableSnapshot = { count: number; ids: string[] }
+type OutreachSnapshot = {
+  campaignLeads: TableSnapshot
+  identities: TableSnapshot
+  conversations: TableSnapshot
+  messages: TableSnapshot
+  drafts: TableSnapshot
+  providerRun: {
+    syncCursor: string | null
+    syncWatermark: string | null
+    firstMessageImportedAt: string | null
+  }
+}
 
 function syntheticProviderFailure(): Error & { status: number; body: string } {
   const body = sentinels.join(' | ')
@@ -40,10 +62,65 @@ async function seed(): Promise<void> {
     args: [campaignId, tenantId, conversationId, 'Privacy campaign', 'No raw provider data escapes', 'draft', 'email', '{}', '{}'],
   })
   await rawClient.execute({
-    sql: `INSERT INTO campaign_provider_runs (id, tenant_id, campaign_id, provider, external_campaign_id, external_name)
-          VALUES (?, ?, ?, 'instantly', ?, ?)`,
-    args: [providerRunId, tenantId, campaignId, 'privacy-external-campaign', 'Privacy provider campaign'],
+    sql: `INSERT INTO campaign_provider_runs
+          (id, tenant_id, campaign_id, provider, external_campaign_id, external_name, sync_cursor, sync_watermark, first_message_imported_at)
+          VALUES (?, ?, ?, 'instantly', ?, ?, ?, ?, ?)`,
+    args: [providerRunId, tenantId, campaignId, 'privacy-external-campaign', 'Privacy provider campaign', priorCursor, priorWatermark, priorFirstImportedAt],
   })
+  await rawClient.execute({
+    sql: 'INSERT INTO campaign_leads (id, tenant_id, campaign_id, provider_id, source) VALUES (?, ?, ?, ?, ?)',
+    args: [leadId, tenantId, campaignId, 'privacy-existing-provider-id', 'outreach_import'],
+  })
+  await rawClient.execute({
+    sql: `INSERT INTO outreach_identities
+          (id, tenant_id, campaign_id, campaign_lead_id, provider, identity_type, normalized_value, evidence_type)
+          VALUES (?, ?, ?, ?, 'instantly', 'provider_id', ?, 'provider_payload')`,
+    args: [identityId, tenantId, campaignId, leadId, 'privacy-existing-provider-id'],
+  })
+  await rawClient.execute({
+    sql: `INSERT INTO outreach_conversations
+          (id, tenant_id, campaign_lead_id, provider_run_id, provider, channel, external_thread_id)
+          VALUES (?, ?, ?, ?, 'instantly', 'email', ?)`,
+    args: [outreachConversationId, tenantId, leadId, providerRunId, 'privacy-existing-thread'],
+  })
+  await rawClient.execute({
+    sql: `INSERT INTO outreach_messages
+          (id, tenant_id, outreach_conversation_id, provider_run_id, provider, fingerprint, direction, message_kind, body_text, provider_timestamp)
+          VALUES (?, ?, ?, ?, 'instantly', ?, 'inbound', 'human', ?, ?)`,
+    args: [outreachMessageId, tenantId, outreachConversationId, providerRunId, 'privacy-existing-fingerprint', 'existing local body', priorWatermark],
+  })
+  await rawClient.execute({
+    sql: `INSERT INTO outreach_drafts
+          (id, tenant_id, campaign_lead_id, outreach_conversation_id, target_channel, body_text, origin)
+          VALUES (?, ?, ?, ?, 'email', ?, 'manual')`,
+    args: [draftId, tenantId, leadId, outreachConversationId, 'existing local draft'],
+  })
+}
+
+async function snapshot(): Promise<OutreachSnapshot> {
+  const rows = async (table: 'campaign_leads' | 'outreach_identities' | 'outreach_conversations' | 'outreach_messages' | 'outreach_drafts'): Promise<TableSnapshot> => {
+    const result = await rawClient.execute({ sql: `SELECT id FROM ${table} WHERE tenant_id = ? ORDER BY id`, args: [tenantId] })
+    return { count: result.rows.length, ids: result.rows.map((row) => String(row.id)) }
+  }
+  const providerRun = await rawClient.execute({
+    sql: `SELECT sync_cursor, sync_watermark, first_message_imported_at
+          FROM campaign_provider_runs WHERE id = ? AND tenant_id = ?`,
+    args: [providerRunId, tenantId],
+  })
+  const row = providerRun.rows[0] as Record<string, unknown> | undefined
+  if (!row) throw new Error('missing privacy provider run')
+  return {
+    campaignLeads: await rows('campaign_leads'),
+    identities: await rows('outreach_identities'),
+    conversations: await rows('outreach_conversations'),
+    messages: await rows('outreach_messages'),
+    drafts: await rows('outreach_drafts'),
+    providerRun: {
+      syncCursor: typeof row.sync_cursor === 'string' ? row.sync_cursor : null,
+      syncWatermark: typeof row.sync_watermark === 'string' ? row.sync_watermark : null,
+      firstMessageImportedAt: typeof row.first_message_imported_at === 'string' ? row.first_message_imported_at : null,
+    },
+  }
 }
 
 afterEach(async () => {
@@ -56,8 +133,15 @@ afterEach(async () => {
 })
 
 describe('outreach privacy boundary', () => {
-  it('projects a synthetic provider failure to safe adapter, sync, API, console, and metrics-facing structures without writing or advancing', async () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+  it('projects a synthetic provider failure to safe adapter and sync-status DTOs without emitting or changing normalized state', async () => {
+    const consoleSpies = {
+      log: vi.spyOn(console, 'log').mockImplementation(() => {}),
+      info: vi.spyOn(console, 'info').mockImplementation(() => {}),
+      warn: vi.spyOn(console, 'warn').mockImplementation(() => {}),
+      error: vi.spyOn(console, 'error').mockImplementation(() => {}),
+      debug: vi.spyOn(console, 'debug').mockImplementation(() => {}),
+      trace: vi.spyOn(console, 'trace').mockImplementation(() => {}),
+    }
     const adapter = new InstantlyOutreachReadAdapter({
       async listCampaignEmails() {
         throw syntheticProviderFailure()
@@ -70,10 +154,21 @@ describe('outreach privacy boundary', () => {
     expect(adapterError).toMatchObject({ safeError: { category: 'forbidden', status: 403 } })
 
     await seed()
+    const before = await snapshot()
+    expect(before).toEqual({
+      campaignLeads: { count: 1, ids: [leadId] },
+      identities: { count: 1, ids: [identityId] },
+      conversations: { count: 1, ids: [outreachConversationId] },
+      messages: { count: 1, ids: [outreachMessageId] },
+      drafts: { count: 1, ids: [draftId] },
+      providerRun: { syncCursor: priorCursor, syncWatermark: priorWatermark, firstMessageImportedAt: priorFirstImportedAt },
+    })
+    let providerReads = 0
     const failingAdapter: OutreachReadAdapter = {
       provider: 'instantly',
       discoverCampaigns: async () => [],
       async readMessagePage() {
+        providerReads += 1
         throw syntheticProviderFailure()
       },
     }
@@ -91,12 +186,10 @@ describe('outreach privacy boundary', () => {
     const routes = createOutreachRoutes({ raw: rawClient, resolveTenant: () => tenantId, sync: coordinator })
     const response = await routes.request(`/sync/${syncRunId}?tenant=${tenantId}`)
     const apiStatus = await response.json()
-    const metricsFacing = {
-      counts: syncStatus?.counts,
-      providerSummary: syncStatus?.providerSummary,
-    }
+    const after = await snapshot()
 
     expect(response.status).toBe(200)
+    expect(providerReads).toBe(1)
     expect(syncStatus).toMatchObject({
       status: 'failed',
       counts: { pagesProcessed: 0, conversationsProcessed: 0, messagesProcessed: 0 },
@@ -112,19 +205,11 @@ describe('outreach privacy boundary', () => {
       status: 'failed',
       counts: { pagesProcessed: 0, conversationsProcessed: 0, messagesProcessed: 0 },
     })
-    await expect(rawClient.execute({
-      sql: 'SELECT sync_cursor FROM campaign_provider_runs WHERE id = ? AND tenant_id = ?',
-      args: [providerRunId, tenantId],
-    })).resolves.toMatchObject({ rows: [{ sync_cursor: null }] })
-    await expect(rawClient.execute({
-      sql: 'SELECT count(*) AS count FROM outreach_messages WHERE tenant_id = ?',
-      args: [tenantId],
-    })).resolves.toMatchObject({ rows: [{ count: 0 }] })
+    expect(after).toEqual(before)
 
     expectNoSentinels(adapterError)
     expectNoSentinels(syncStatus)
     expectNoSentinels(apiStatus)
-    expectNoSentinels(metricsFacing)
-    expectNoSentinels(consoleError.mock.calls)
+    for (const spy of Object.values(consoleSpies)) expect(spy).not.toHaveBeenCalled()
   })
 })
