@@ -4,12 +4,12 @@
   "private": false,
   "type": "module",
   "license": "MIT",
-  "description": "YALC — open-source, AI-native GTM operating system. CLI-first engine for lead finding, enrichment, qualification, and campaign orchestration.",
+  "description": "YALC 1.0, the open-source Clay alternative. CLI-first GTM engine for lead finding, enrichment, qualification and campaign orchestration. Yalc 2.0 runs pre configured GTM agents on your existing stack: yalc.ai",
   "repository": {
     "type": "git",
     "url": "https://github.com/Othmane-Khadri/YALC-the-GTM-operating-system.git"
   },
-  "homepage": "https://github.com/Othmane-Khadri/YALC-the-GTM-operating-system",
+  "homepage": "https://www.yalc.ai",
   "author": "Othmane Khadri",
   "keywords": [
     "gtm",
