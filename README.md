@@ -1,4 +1,4 @@
-# YALC — The Open-Source GTM Operating System
+# YALC 1.0, the open-source Clay alternative
 
 ![CI](https://github.com/Othmane-Khadri/YALC-the-GTM-operating-system/actions/workflows/ci.yml/badge.svg)
 [![npm version](https://img.shields.io/npm/v/yalc-gtm-os.svg)](https://www.npmjs.com/package/yalc-gtm-os)
@@ -6,9 +6,24 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Node](https://img.shields.io/badge/Node-%3E%3D20-brightgreen.svg)](https://nodejs.org/)
 
-> AI plans your campaigns, qualifies your leads, and learns from every interaction.
+> Yalc today is an intelligent orchestration layer that runs pre configured GTM agents on your existing tech stack (CRM, sequencer and call recorder).
+> → **[yalc.ai](https://www.yalc.ai)**
 
-YALC is an open-source, AI-native operating system for running any GTM campaign. CLI-first. Intelligence compounds from every interaction.
+This repository is YALC 1.0, the first generation and the open-source one. A CLI-first, MIT-licensed GTM engine you clone, key up, and run on your own machine. It is open source and it stays open source.
+
+**Yalc 2.0 is still a Clay alternative. It replaces Clay a different way.** Where 1.0 replaces Clay by being self-hosted, with enrichment and workflows in markdown files you own, 2.0 replaces it by running pre configured agents across your whole stack at once, reading your CRM, sequencer and call recorder, on playbooks that have already produced revenue. The agents do about eighty percent of each play and hand back the one move that needs a person. Nothing goes out without a human approving it.
+
+| | YALC 1.0 (this repo) | Yalc 2.0 |
+|---|---|---|
+| Replaces Clay by | Being open source and self-hosted | Orchestrating agents across your whole stack |
+| Where it runs | Your machine, your keys | Your existing CRM, sequencer, call recorder |
+| Built for | Operators who want to fork and self-host | Founders, revenue teams, RevOps, agencies |
+| Cost | MIT, you pay providers direct | Compared against an 8k/mo agency retainer |
+| Status | Available, feature complete | In production |
+
+**Want the current product?** → **[See Yalc in action](https://www.yalc.ai)**
+
+---
 
 ## Quick start
 
