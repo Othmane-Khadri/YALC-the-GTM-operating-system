@@ -22,6 +22,27 @@
       "when": 1779119640275,
       "tag": "0002_warm_liz_osborn",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786637165725,
+      "tag": "0003_multichannel_outreach_inbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786642882500,
+      "tag": "0004_lucky_chat",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786643231128,
+      "tag": "0005_tricky_mandroid",
+      "breakpoints": true
     }
   ]
 }

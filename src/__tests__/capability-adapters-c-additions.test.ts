@@ -183,11 +183,11 @@ describe('inbox-replies-fetch instantly adapter', () => {
     ).rejects.toThrow(/INSTANTLY_API_KEY/)
   })
 
-  it('returns replies from the unibox endpoint', async () => {
+  it('returns replies from the legacy unibox capability', async () => {
     process.env.INSTANTLY_API_KEY = 'test-key-1234567890123456789012345'
     const { instantlyService } = await import('../lib/services/instantly')
     vi.spyOn(instantlyService, 'listInboxReplies').mockResolvedValue([
-      { id: 'r1', from_email: 'jane@acme.com', subject: 'Re: hi' },
+      { id: 'r1', from_email: 'recipient@example.test', subject: 'Re: hi' },
     ])
     const { inboxRepliesFetchInstantlyAdapter } = await import(
       '../lib/providers/adapters/inbox-replies-fetch-instantly'
@@ -198,6 +198,32 @@ describe('inbox-replies-fetch instantly adapter', () => {
     )) as { replies: Array<{ id?: string }> }
     expect(out.replies).toHaveLength(1)
     expect(out.replies[0].id).toBe('r1')
+  })
+
+  it('projects legacy provider failures without exposing provider body text', async () => {
+    process.env.INSTANTLY_API_KEY = 'test-key-1234567890123456789012345'
+    const sensitiveProviderBody = 'recipient@example.test token=synthetic-sensitive-value'
+    const { instantlyService } = await import('../lib/services/instantly')
+    vi.spyOn(instantlyService, 'listInboxReplies').mockRejectedValue({
+      status: 429,
+      body: sensitiveProviderBody,
+      message: sensitiveProviderBody,
+    })
+    const { inboxRepliesFetchInstantlyAdapter } = await import(
+      '../lib/providers/adapters/inbox-replies-fetch-instantly'
+    )
+
+    try {
+      await inboxRepliesFetchInstantlyAdapter.execute(
+        { lookbackHours: 24 },
+        { executor: null, registry: null as never },
+      )
+      throw new Error('expected inbox-replies-fetch to fail')
+    } catch (error) {
+      expect(error).toMatchObject({ providerId: 'instantly', status: 429 })
+      expect(error).not.toHaveProperty('body')
+      expect(error instanceof Error ? error.message : '').not.toContain(sensitiveProviderBody)
+    }
   })
 })
 

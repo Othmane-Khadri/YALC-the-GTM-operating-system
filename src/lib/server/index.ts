@@ -22,6 +22,10 @@ import { skillsRoutes } from './routes/skills'
 import { gatesRoutes } from './routes/gates'
 import { visualizeApiRoutes, visualizePageRoutes } from './routes/visualize'
 import { dashboardRoutes } from './routes/dashboard'
+import { outreachRoutes } from './routes/outreach'
+import { leadsRoutes } from './routes/leads.js'
+import { OutreachSyncCoordinator } from '../outreach/sync.js'
+import { rawClient } from '../db/index.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -94,6 +98,8 @@ export function createApp() {
   app.route('/api/gates', gatesRoutes)
   app.route('/api/visualize', visualizeApiRoutes)
   app.route('/api/dashboard', dashboardRoutes)
+  app.route('/api/outreach', outreachRoutes)
+  app.route('/api/leads', leadsRoutes)
 
   // Generated visualization page — serves saved HTML from
   // `~/.gtm-os/visualizations/<view_id>.html` with the right Content-Type.
@@ -218,7 +224,10 @@ a:hover{box-shadow:0 8px 24px rgba(201,80,110,0.08)}</style></head>
   return app
 }
 
-export function startServer(port = 3847) {
+export async function startServer(port = 3847) {
+  // Recovery occurs at process startup, never in createApp(): route tests and
+  // embedded callers may create many apps without mutating durable run state.
+  await new OutreachSyncCoordinator({ raw: rawClient }).recoverInterruptedRuns()
   const app = createApp()
   console.log(`\nGTM-OS Server: http://localhost:${port}`)
   console.log('  /campaigns — Campaign dashboard')

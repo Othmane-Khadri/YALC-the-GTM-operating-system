@@ -1,0 +1,28 @@
+{
+  "id": "chat-1",
+  "read": false,
+  "totalMessages": 2,
+  "linkedInAccountId": 77,
+  "lastMessageAt": "2026-08-13T09:02:00.000Z",
+  "correspondentProfile": {
+    "profileUrl": "https://www.linkedin.com/in/example-prospect/"
+  },
+  "messages": [
+    {
+      "createdAt": "2026-08-13T09:00:00.000Z",
+      "body": "Synthetic outbound message",
+      "subject": null,
+      "postLink": null,
+      "isInMail": false,
+      "sender": "ME"
+    },
+    {
+      "createdAt": "2026-08-13T09:02:00.000Z",
+      "body": "Synthetic inbound reply",
+      "subject": null,
+      "postLink": null,
+      "isInMail": false,
+      "sender": "CORRESPONDENT"
+    }
+  ]
+}

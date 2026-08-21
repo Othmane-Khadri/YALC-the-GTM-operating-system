@@ -1,21 +1,21 @@
 import type { CapabilityAdapter } from '../capabilities.js'
 import { instantlyService } from '../../services/instantly.js'
+import { toSafeProviderError } from '../../outreach/errors.js'
 import { MissingApiKeyError, ProviderApiError } from './index.js'
 
 interface InboxRepliesFetchInput {
   lookbackHours?: number
   limit?: number
-  /** Snake-case alias. */
+  /** Snake-case aliases. */
   lookback_hours?: number
 }
 
 /**
  * Instantly inbox-replies-fetch adapter.
  *
- * Pulls inbound emails from Instantly's `/api/v2/unibox/emails` endpoint
- * within the requested lookback window. The Brevo equivalent will plug in
- * once the Brevo MCP ships; the capability registry's `defaultPriority`
- * already lists Brevo as a fallback.
+ * Retains the established public Unibox capability contract. New outreach
+ * timeline imports must use `InstantlyOutreachReadAdapter` and official
+ * campaign-scoped v2 email reads instead.
  */
 export const inboxRepliesFetchInstantlyAdapter: CapabilityAdapter = {
   capabilityId: 'inbox-replies-fetch',
@@ -40,8 +40,8 @@ export const inboxRepliesFetchInstantlyAdapter: CapabilityAdapter = {
       })
       return { replies }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      throw new ProviderApiError('instantly', message)
+      const safe = toSafeProviderError(err)
+      throw new ProviderApiError('instantly', safe.category, safe.status)
     }
   },
 }
