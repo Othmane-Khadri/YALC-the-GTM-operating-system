@@ -1,0 +1,74 @@
+# Explorium AgentSource — icp-company-search
+#
+# Vendor docs: https://docs.explorium.ai/reference/businesses/fetch_businesses
+# Endpoint:    POST /v1/businesses
+# Auth:        api_key header (static — no OAuth)
+#
+# Searches Explorium's 80M+ company database across 150+ countries using
+# ICP-style filters. Maps YALC's standard icp-company-search input onto
+# Explorium's filter schema and normalises the response to companies[].
+#
+# Field mapping notes:
+#   * input.industry     → linkedin_category filter. Accepts free-text
+#                          LinkedIn® industry labels (e.g. "Software development",
+#                          "Investment banking"). Run the Explorium autocomplete
+#                          endpoint for validated category values.
+#   * input.employeeRange → company_size filter. Must be one of the enumerated
+#                          ranges: "1-10", "11-50", "51-200", "201-500",
+#                          "501-1000", "1001-5000", "5001-10000", "10001+".
+#   * input.location     → company_country_code filter. Expects an ISO Alpha-2
+#                          code (e.g. "US", "DE", "IL"). Note: Apollo accepts
+#                          free-text; Explorium requires the ISO code.
+#   * input.keywords     → website_keywords filter. OR-matched across company
+#                          website content — broad discovery, not taxonomy-exact.
+#
+# v1 scope: page 1 only; up to `limit` results (max 500 per Explorium page).
+# Empty filter strings are included in the body; Explorium ignores values []
+# containing only empty strings rather than erroring — verified in smoke run.
+# Multi-filter arrays and cursor pagination are a v1.1 follow-up.
+manifestVersion: 1
+capability: icp-company-search
+provider: explorium
+version: 0.1.0
+auth:
+  type: header
+  name: api_key
+  value: ${env:EXPLORIUM_API_KEY}
+endpoint:
+  method: POST
+  url: https://api.explorium.ai/v1/businesses
+request:
+  contentType: application/json
+  bodyTemplate: |
+    {
+      "mode": "full",
+      "page_size": 25,
+      "size": 25,
+      "filters": {
+        "linkedin_category": {"values": ["{{input.industry}}"]},
+        "company_size": {"values": ["{{input.employeeRange}}"]},
+        "company_country_code": {"values": ["{{input.location}}"]},
+        "website_keywords": {"values": ["{{input.keywords}}"]}
+      }
+    }
+response:
+  rootPath: data
+  mappings:
+    "companies[].name": "$.name"
+    "companies[].domain": "$.website"
+    "companies[].linkedin_url": "$.linkedin_profile"
+    "companies[].headcount": "$.number_of_employees_range"
+    "companies[].industry": "$.linkedin_industry_category"
+  errorEnvelope:
+    matchPath: $.details
+    messagePath: $.details
+smoke_test:
+  input:
+    industry: "Software development"
+    employeeRange: "11-50"
+    location: "US"
+    keywords: "saas"
+    limit: 5
+  expectNonEmpty:
+    - "companies[0].name"
+    - "companies[0].domain"

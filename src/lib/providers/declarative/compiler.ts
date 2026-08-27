@@ -21,9 +21,12 @@ import schema from './schema.json' with { type: 'json' }
 import type {
   CompiledManifest,
   FetchLike,
+  ManifestEndpoint,
   ManifestPagination,
   ManifestRaw,
+  ManifestRequest,
   ManifestResponse,
+  ManifestStep,
 } from './types.js'
 import { ManifestValidationError } from './types.js'
 import { MissingApiKeyError, ProviderApiError } from '../adapters/index.js'
@@ -33,7 +36,7 @@ const validateManifest: ValidateFunction = ajv.compile(schema as object)
 
 const ENV_REF = /\$\{env:([A-Z0-9_]+)\}/g
 const PLACEHOLDER = /\{\{([^}]+)\}\}/g
-const ALLOWED_ROOTS = new Set(['input', 'env', 'auth'])
+const ALLOWED_ROOTS = new Set(['input', 'env', 'auth', 'steps'])
 
 export interface CompileOptions {
   /** Fetch override for tests. Defaults to `globalThis.fetch`. */
@@ -107,17 +110,28 @@ export function compileManifest(
 function collectTemplateStrings(m: ManifestRaw): string[] {
   const out: string[] = []
   if (m.auth?.value) out.push(m.auth.value)
-  out.push(m.endpoint.url)
-  if (m.endpoint.queryTemplate) {
-    for (const v of Object.values(m.endpoint.queryTemplate)) out.push(v)
-  }
-  if (m.request) {
-    if (m.request.bodyTemplate) out.push(m.request.bodyTemplate)
-    if (m.request.headers) {
-      for (const v of Object.values(m.request.headers)) out.push(v)
-    }
+  if (m.endpoint) collectEndpointTemplates(m.endpoint, m.request, out)
+  if (m.steps) {
+    for (const step of m.steps) collectEndpointTemplates(step.endpoint, step.request, out)
   }
   return out
+}
+
+function collectEndpointTemplates(
+  endpoint: ManifestEndpoint,
+  request: ManifestRequest | undefined,
+  out: string[],
+): void {
+  out.push(endpoint.url)
+  if (endpoint.queryTemplate) {
+    for (const v of Object.values(endpoint.queryTemplate)) out.push(v)
+  }
+  if (request) {
+    if (request.bodyTemplate) out.push(request.bodyTemplate)
+    if (request.headers) {
+      for (const v of Object.values(request.headers)) out.push(v)
+    }
+  }
 }
 
 function parseExprRoot(expr: string): string {
@@ -153,12 +167,26 @@ async function executeManifest(
   if (m.auth.name) authScope.name = m.auth.name
   authScope.type = m.auth.type
 
-  const scope = { input: input ?? {}, env: envScope, auth: authScope }
+  const scope: TemplateScope = {
+    input: input ?? {},
+    env: envScope,
+    auth: authScope,
+    steps: {},
+  }
 
+  if (m.steps && m.steps.length > 0) {
+    return executeSteps(m, scope, fetchImpl, m.steps)
+  }
+  if (!m.endpoint || !m.response) {
+    throw new ProviderApiError(
+      m.provider,
+      'manifest is missing both top-level endpoint/response and a steps[] array',
+    )
+  }
   if (m.pagination) {
     return executePaginated(m, scope, fetchImpl, m.pagination)
   }
-  return executeOnce(m, scope, fetchImpl)
+  return executeOnce(m.endpoint, m.request, m.response, m.provider, scope, fetchImpl, m.auth)
 }
 
 function collectEnvRefs(m: ManifestRaw): string[] {
@@ -170,21 +198,25 @@ function collectEnvRefs(m: ManifestRaw): string[] {
 }
 
 async function executeOnce(
-  m: ManifestRaw,
+  endpoint: ManifestEndpoint,
+  request: ManifestRequest | undefined,
+  response: ManifestResponse,
+  providerId: string,
   scope: TemplateScope,
   fetchImpl: FetchLike,
+  authSpec?: { type: string; name?: string; value?: string },
 ): Promise<unknown> {
-  const { url, headers, body } = buildRequest(m, scope)
+  const { url, headers, body } = buildRequest(endpoint, request, authSpec, scope)
   let res: Response
   try {
     res = await fetchImpl(url, {
-      method: m.endpoint.method,
+      method: endpoint.method,
       headers,
       body,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    throw new ProviderApiError(m.provider, `network error: ${msg}`)
+    throw new ProviderApiError(providerId, `network error: ${msg}`)
   }
 
   let parsed: unknown = null
@@ -198,32 +230,73 @@ async function executeOnce(
   }
 
   if (!res.ok) {
-    const message = extractErrorMessage(m.response.errorEnvelope?.messagePath, parsed) ??
+    const message = extractErrorMessage(response.errorEnvelope?.messagePath, parsed) ??
       `HTTP ${res.status}`
-    throw new ProviderApiError(m.provider, message, res.status)
+    throw new ProviderApiError(providerId, message, res.status)
   }
-  if (matchesErrorEnvelope(m.response, parsed)) {
-    const message = extractErrorMessage(m.response.errorEnvelope?.messagePath, parsed) ?? 'vendor error'
-    throw new ProviderApiError(m.provider, message, res.status)
+  if (matchesErrorEnvelope(response, parsed)) {
+    const message = extractErrorMessage(response.errorEnvelope?.messagePath, parsed) ?? 'vendor error'
+    throw new ProviderApiError(providerId, message, res.status)
   }
 
-  return projectMappings(m.response, parsed)
+  return projectMappings(response, parsed)
+}
+
+/**
+ * Execute a chain of HTTP calls. Each step's projected output is
+ * accumulated into `scope.steps[id]` so subsequent steps can reference
+ * earlier step output via `{{steps.<id>.<path>}}` placeholders. The final
+ * step's projected output is the manifest's return value.
+ *
+ * Step ids must be unique within a manifest (enforced here, not in the
+ * JSON schema, so we get a useful error message that names the duplicate).
+ */
+async function executeSteps(
+  m: ManifestRaw,
+  scope: TemplateScope,
+  fetchImpl: FetchLike,
+  steps: ManifestStep[],
+): Promise<unknown> {
+  const seen = new Set<string>()
+  let lastOutput: unknown = null
+  for (const step of steps) {
+    if (seen.has(step.id)) {
+      throw new ProviderApiError(m.provider, `duplicate step id '${step.id}'`)
+    }
+    seen.add(step.id)
+    const projected = await executeOnce(
+      step.endpoint,
+      step.request,
+      step.response,
+      m.provider,
+      scope,
+      fetchImpl,
+      m.auth,
+    )
+    scope.steps[step.id] = projected
+    lastOutput = projected
+  }
+  return lastOutput
 }
 
 interface TemplateScope {
   input: unknown
   env: Record<string, string>
   auth: Record<string, string>
+  /** Projected outputs from prior steps in a multi-step manifest, keyed by step id. */
+  steps: Record<string, unknown>
 }
 
 function buildRequest(
-  m: ManifestRaw,
+  endpoint: ManifestEndpoint,
+  request: ManifestRequest | undefined,
+  authSpec: { type: string; name?: string; value?: string } | undefined,
   scope: TemplateScope,
 ): { url: string; headers: Record<string, string>; body: string | undefined } {
-  let url = renderTemplate(m.endpoint.url, scope)
-  if (m.endpoint.queryTemplate) {
+  let url = renderTemplate(endpoint.url, scope)
+  if (endpoint.queryTemplate) {
     const qs = new URLSearchParams()
-    for (const [k, v] of Object.entries(m.endpoint.queryTemplate)) {
+    for (const [k, v] of Object.entries(endpoint.queryTemplate)) {
       const rendered = renderTemplate(v, scope)
       if (rendered !== '') qs.set(k, rendered)
     }
@@ -234,26 +307,28 @@ function buildRequest(
   }
 
   const headers: Record<string, string> = {}
-  if (m.request?.headers) {
-    for (const [k, v] of Object.entries(m.request.headers)) {
+  if (request?.headers) {
+    for (const [k, v] of Object.entries(request.headers)) {
       headers[k] = renderTemplate(v, scope)
     }
   }
 
-  // Auth header injection
-  if (m.auth.type === 'header' && m.auth.name && m.auth.value !== undefined) {
-    headers[m.auth.name] = renderEnvRefs(m.auth.value, scope.env)
-  } else if (m.auth.type === 'bearer' && m.auth.value !== undefined) {
-    headers['Authorization'] = `Bearer ${renderEnvRefs(m.auth.value, scope.env)}`
-  } else if (m.auth.type === 'query' && m.auth.name && m.auth.value !== undefined) {
-    const qsAdd = `${encodeURIComponent(m.auth.name)}=${encodeURIComponent(renderEnvRefs(m.auth.value, scope.env))}`
-    url += url.includes('?') ? `&${qsAdd}` : `?${qsAdd}`
+  // Auth header injection (applies to every step in a multi-step manifest)
+  if (authSpec) {
+    if (authSpec.type === 'header' && authSpec.name && authSpec.value !== undefined) {
+      headers[authSpec.name] = renderEnvRefs(authSpec.value, scope.env)
+    } else if (authSpec.type === 'bearer' && authSpec.value !== undefined) {
+      headers['Authorization'] = `Bearer ${renderEnvRefs(authSpec.value, scope.env)}`
+    } else if (authSpec.type === 'query' && authSpec.name && authSpec.value !== undefined) {
+      const qsAdd = `${encodeURIComponent(authSpec.name)}=${encodeURIComponent(renderEnvRefs(authSpec.value, scope.env))}`
+      url += url.includes('?') ? `&${qsAdd}` : `?${qsAdd}`
+    }
   }
 
   let body: string | undefined
-  if (m.request?.bodyTemplate) {
-    if (m.request.contentType) headers['Content-Type'] ??= m.request.contentType
-    body = renderTemplate(m.request.bodyTemplate, scope)
+  if (request?.bodyTemplate) {
+    if (request.contentType) headers['Content-Type'] ??= request.contentType
+    body = renderTemplate(request.bodyTemplate, scope)
   }
 
   return { url, headers, body }
@@ -323,6 +398,7 @@ function readPath(path: string, scope: TemplateScope): unknown {
   if (root === 'input') base = scope.input
   else if (root === 'env') base = scope.env
   else if (root === 'auth') base = scope.auth
+  else if (root === 'steps') base = scope.steps
   else return undefined
   // remainder is everything after the root
   const rest = path.slice(root.length)
@@ -491,6 +567,12 @@ async function executePaginated(
   fetchImpl: FetchLike,
   pag: ManifestPagination,
 ): Promise<Record<string, unknown>> {
+  if (!m.endpoint || !m.response) {
+    throw new ProviderApiError(
+      m.provider,
+      'pagination requires top-level endpoint/response (multi-step + pagination not supported in v1)',
+    )
+  }
   // Page state injected as scope.input.__page__ / __cursor__
   const merged: Record<string, unknown[]> = {}
   let scalarSeed: Record<string, unknown> | null = null
@@ -505,7 +587,15 @@ async function executePaginated(
       __cursor__: cursor,
     }
     const pagedScope: TemplateScope = { ...scope, input: pagedInput }
-    const projected = (await executeOnce(m, pagedScope, fetchImpl)) as Record<string, unknown>
+    const projected = (await executeOnce(
+      m.endpoint,
+      m.request,
+      m.response,
+      m.provider,
+      pagedScope,
+      fetchImpl,
+      m.auth,
+    )) as Record<string, unknown>
     if (scalarSeed === null) {
       scalarSeed = {}
       for (const [k, v] of Object.entries(projected)) {

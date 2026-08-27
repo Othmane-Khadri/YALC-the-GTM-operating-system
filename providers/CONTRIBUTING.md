@@ -22,9 +22,12 @@ A manifest is a single YAML file that declares:
 - `manifestVersion: 1`
 - `capability: <slug>` and `provider: <slug>` (must match the directory and filename)
 - `auth` block (`header`, `query`, `bearer`, or `none`)
-- `endpoint` (HTTP method + URL with `{{input.*}}` / `${env:VAR}` placeholders)
-- `request` (body template, content-type, optional headers)
-- `response.mappings` projecting vendor JSON onto the capability output schema
+- **Either** a single-call shape:
+  - `endpoint` (HTTP method + URL with `{{input.*}}` / `${env:VAR}` placeholders)
+  - `request` (body template, content-type, optional headers)
+  - `response.mappings` projecting vendor JSON onto the capability output schema
+- **Or** a multi-step shape (when the vendor flow needs match-then-enrich):
+  - `steps: [{ id, endpoint, request?, response }, ...]` — each step's projected output is exposed to later steps via `{{steps.<id>.<path>}}`. The final step's projection is what the adapter returns. See `people-enrich/explorium.yaml` for a worked example.
 - `smoke_test` (a single input that should produce non-empty paths in the output)
 
 Don't inline secrets. All credentials reference env vars via `${env:NAME}`.
@@ -65,9 +68,10 @@ A PR cannot merge until every box below is ticked. The PR template (auto-loaded 
 ## What we won't merge
 
 - Manifests that reach a vendor without static API-key auth (OAuth flows are on the engine's roadmap, not v1 of the DSL).
-- Manifests that try to express multi-step flows (call `/token` then `/search`). The DSL is one HTTP call per execute by design.
 - Manifests with hard-coded test credentials.
 - Manifests that duplicate an entry already on `main` without a clear reason.
+
+Multi-step flows (e.g. match → enrich) ARE supported via the `steps` array. Loops, conditionals, and parallel fan-out are out of scope; the chain is strictly linear.
 
 ## Reporting a problem
 
