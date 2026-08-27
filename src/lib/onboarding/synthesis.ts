@@ -126,8 +126,8 @@ function stubBody(section: SectionId, ctx: CompanyContext): string {
       return [
         '# Qualification rules (placeholder)',
         '',
-        '(?i)(cto|ceo|vp|director|head of)',
-        '(?i)(engineering|product|growth|marketing)',
+        '(cto|ceo|vp|director|head of)',
+        '(engineering|product|growth|marketing)',
         '',
         '## Disqualifiers',
         '- student',

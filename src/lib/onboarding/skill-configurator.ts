@@ -53,9 +53,9 @@ Target Roles: ${framework.segments[0]?.targetRoles?.join(', ') ?? 'decision make
 Target Industries: ${framework.segments[0]?.targetIndustries?.join(', ') ?? 'technology'}
 Disqualifiers: ${framework.segments[0]?.disqualifiers?.join(', ') ?? 'student, intern'}
 
-Output ONLY the regex patterns, one per line. No explanations. Example:
-(?i)(cto|ceo|vp|director|head of)
-(?i)(engineering|product|growth|marketing)`,
+Output ONLY the regex patterns, one per line (matched case-insensitively — do not add inline flags). No explanations. Example:
+(cto|ceo|vp|director|head of)
+(engineering|product|growth|marketing)`,
     }],
   })
 

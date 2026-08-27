@@ -505,10 +505,10 @@ export async function runResearchAgent(
       extraction = parseExtractionResponse(raw)
     } else {
       // Dynamic import to avoid circular deps and allow testing without Anthropic SDK
-      const { default: Anthropic } = await import('@anthropic-ai/sdk')
-      const client = new Anthropic()
+      const { getAnthropicClient, PLANNER_MODEL } = await import('../ai/client.js')
+      const client = getAnthropicClient()
       const response = await client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: PLANNER_MODEL,
         max_tokens: 2000,
         messages: [{ role: 'user', content: extractionPrompt }],
       })

@@ -63,6 +63,7 @@
     "prepublishOnly": "pnpm build:web && pnpm typecheck && pnpm test"
   },
   "dependencies": {
+    "@anthropic-ai/bedrock-sdk": "^0.32.0",
     "@anthropic-ai/sdk": "^0.39.0",
     "@hono/node-server": "^1.19.11",
     "@inquirer/prompts": "^8.4.1",

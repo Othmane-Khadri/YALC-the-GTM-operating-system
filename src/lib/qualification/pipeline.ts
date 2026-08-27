@@ -649,7 +649,10 @@ function loadRulesFile(path: string): string[] {
   if (!path || !existsSync(path)) return []
   try {
     const content = readFileSync(path, 'utf-8')
-    return content.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'))
+    // rules are always matched with the 'i' flag (see Gate 1/2 below) — strip a
+    // leading (?i) inline-flag prefix some older templates baked in, since JS
+    // RegExp doesn't support that PCRE syntax and throws SyntaxError on it.
+    return content.split('\n').map(l => l.trim().replace(/^\(\?i\)/, '')).filter(l => l && !l.startsWith('#'))
   } catch {
     return []
   }
