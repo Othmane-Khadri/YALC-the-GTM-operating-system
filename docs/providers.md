@@ -170,6 +170,22 @@ Universal API gateway — one key gives access to 100+ enrichment, scraping, and
 - Additional search and scraping capabilities
 - Access to 100+ APIs through a single key
 
+### SpecStream
+
+Web search and page reading. Searches the live web and reads URLs to markdown. Opt-in: a step runs on SpecStream only when it sets `provider: specstream`, so Firecrawl stays the default for generic search and enrich steps.
+
+| | |
+|---|---|
+| **Env var** | `SPECSTREAM_API_KEY` |
+| **Get it** | https://specstream.ai/docs |
+| **Pricing** | $5 per 1,000 searches; $0.80 per 1,000 pages read. |
+
+**What it unlocks:**
+- `orchestrate` — web search and URL reading for steps with `provider: specstream`
+- `enrich-leads` with `enrichmentType: 'company_research'` — reads each row's website, or searches by company name when no website is set
+
+**Verify:** `yalc-gtm doctor` reads example.com to test connectivity.
+
 ### Mock (built-in)
 
 Test provider for development. Returns synthetic data. No API key needed.
