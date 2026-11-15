@@ -1,0 +1,151 @@
+import type { StepExecutor, WorkflowStepInput, ExecutionContext, RowBatch, ProviderCapability, ProviderHealthStatus } from '../types'
+import type { ColumnDef } from '../../ai/types'
+import { specstreamService } from '../../services/specstream'
+import { SEARCH_COLUMNS } from '../../execution/columns'
+
+export class SpecStreamProvider implements StepExecutor {
+  id = 'specstream'
+  name = 'SpecStream'
+  description = 'Web search and page reading via SpecStream. Searches the live web and reads URLs to markdown for company research.'
+  type = 'builtin' as const
+  capabilities: ProviderCapability[] = ['search', 'enrich']
+
+  isAvailable(): boolean {
+    return specstreamService.isAvailable()
+  }
+
+  async selfHealthCheck(): Promise<ProviderHealthStatus> {
+    if (!process.env.SPECSTREAM_API_KEY) {
+      return { status: 'warn', detail: 'SPECSTREAM_API_KEY not set' }
+    }
+    try {
+      const resp = await fetch('https://api.specstream.ai/v1/extract', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.SPECSTREAM_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ urls: ['https://example.com'], format: 'markdown' }),
+        signal: AbortSignal.timeout(10000),
+      })
+      if (resp.ok) return { status: 'ok', detail: 'extract endpoint reachable' }
+      if (resp.status === 401) return { status: 'fail', detail: 'API key invalid' }
+      if (resp.status === 402) return { status: 'fail', detail: 'balance exhausted' }
+      return { status: 'warn', detail: `HTTP ${resp.status}` }
+    } catch (err) {
+      return {
+        status: 'fail',
+        detail: `connection failed: ${err instanceof Error ? err.message : String(err)}`,
+      }
+    }
+  }
+
+  canExecute(step: WorkflowStepInput): boolean {
+    // Explicit opt-in only, so Firecrawl stays the default for generic search/enrich steps.
+    return step.provider === 'specstream'
+  }
+
+  async *execute(step: WorkflowStepInput, context: ExecutionContext): AsyncIterable<RowBatch> {
+    const url = step.config?.url ? String(step.config.url) : ''
+    const query = step.config?.query ? String(step.config.query) : step.description
+
+    // If a URL is provided, read it
+    if (url) {
+      const markdown = await specstreamService.scrape(url)
+      let hostname = url
+      try { hostname = new URL(url).hostname.replace('www.', '') } catch { /* keep raw url */ }
+      const rows: Record<string, unknown>[] = [{
+        company_name: hostname,
+        website: url,
+        description: markdown.slice(0, 2000),
+        industry: '',
+        location: '',
+      }]
+      yield { rows, batchIndex: 0, totalSoFar: rows.length }
+      return
+    }
+
+    // If enriching with previous rows, read each row's website (or search by company name)
+    if (step.stepType === 'enrich' && context.previousStepRows?.length) {
+      const batchSize = context.batchSize || 10
+      const rows = context.previousStepRows
+      const enrichmentType = String(step.config?.enrichmentType ?? '')
+      const isCompanyResearch = enrichmentType === 'company_research'
+      let totalSoFar = 0
+
+      for (let i = 0; i < rows.length; i += batchSize) {
+        const slice = rows.slice(i, i + batchSize)
+        const enriched = await Promise.all(
+          slice.map(async (row) => {
+            // Skip if already researched (cost guard)
+            if (row.company_description) return row
+
+            const site = String(row.website ?? row.company_website ?? '')
+            const companyName = String(row.company ?? row.company_name ?? '')
+
+            try {
+              if (site) {
+                const content = await specstreamService.scrape(site)
+                return isCompanyResearch
+                  ? { ...row, company_description: content.slice(0, 2000), company_research_source: site }
+                  : { ...row, scraped_content: content.slice(0, 2000) }
+              }
+              if (isCompanyResearch && companyName) {
+                const results = await specstreamService.search(companyName, 1)
+                if (results.length > 0) {
+                  return {
+                    ...row,
+                    company_description: results[0].content.slice(0, 2000),
+                    company_research_source: results[0].url,
+                  }
+                }
+              }
+              return row
+            } catch {
+              return row
+            }
+          }),
+        )
+        totalSoFar += enriched.length
+        yield { rows: enriched, batchIndex: Math.floor(i / batchSize), totalSoFar }
+      }
+      return
+    }
+
+    // Default: web search
+    const results = await specstreamService.search(query, context.totalRequested || 10)
+    const rows = results.map((r) => ({
+      company_name: r.title,
+      website: r.url,
+      description: r.content.slice(0, 500),
+      industry: '',
+      employee_count: '',
+      location: '',
+    }))
+
+    if (rows.length === 0) {
+      yield { rows: [], batchIndex: 0, totalSoFar: 0 }
+      return
+    }
+
+    const batchSize = context.batchSize || 10
+    let totalSoFar = 0
+    for (let i = 0; i < rows.length; i += batchSize) {
+      const slice = rows.slice(i, i + batchSize)
+      totalSoFar += slice.length
+      yield { rows: slice, batchIndex: Math.floor(i / batchSize), totalSoFar }
+    }
+  }
+
+  getColumnDefinitions(step: WorkflowStepInput): ColumnDef[] {
+    const enrichmentType = String(step.config?.enrichmentType ?? '')
+    if (enrichmentType === 'company_research') {
+      return [
+        ...SEARCH_COLUMNS,
+        { key: 'company_description', label: 'Company Description', type: 'text' },
+        { key: 'company_research_source', label: 'Research Source', type: 'url' },
+      ]
+    }
+    return SEARCH_COLUMNS
+  }
+}

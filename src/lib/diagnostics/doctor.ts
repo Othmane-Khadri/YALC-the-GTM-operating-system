@@ -130,6 +130,7 @@ async function loadProviderEnvSchemas(): Promise<ProviderEnvSchema[]> {
     { name: 'notion', importer: () => import('../services/notion') },
     { name: 'fullenrich', importer: () => import('../services/fullenrich') },
     { name: 'instantly', importer: () => import('../services/instantly') },
+    { name: 'specstream', importer: () => import('../services/specstream') },
   ]
   for (const s of services) {
     try {
